@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Send, User, Phone, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +25,7 @@ interface ChatViewProps {
   customerName: string;
   customerPhone?: string;
   customerEmail?: string;
+  customerAvatar?: string;
   channel: string;
   onClose?: () => void;
 }
@@ -34,6 +35,7 @@ const ChatView = ({
   customerName, 
   customerPhone, 
   customerEmail,
+  customerAvatar,
   channel 
 }: ChatViewProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -155,9 +157,10 @@ const ChatView = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
-              <div className="w-full h-full bg-primary/10 flex items-center justify-center">
+              <AvatarImage src={customerAvatar} alt={customerName} />
+              <AvatarFallback>
                 <User className="w-5 h-5 text-primary" />
-              </div>
+              </AvatarFallback>
             </Avatar>
             <div>
               <h3 className="font-semibold text-lg">{customerName}</h3>
