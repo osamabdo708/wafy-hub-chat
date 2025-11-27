@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,23 @@ export const FacebookSettings = () => {
     app_secret: "",
     verify_token: "omnichat_facebook_verify_2024"
   });
+
+  // Load saved settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data, error } = await supabase
+        .from('channel_integrations')
+        .select('config')
+        .eq('channel', 'facebook')
+        .single();
+
+      if (data?.config) {
+        setConfig(data.config as typeof config);
+      }
+    };
+
+    loadSettings();
+  }, []);
 
   const handleSave = async () => {
     setLoading(true);
