@@ -94,6 +94,7 @@ const ChatView = ({
 
     setSending(true);
     try {
+      // Insert message to database
       const { error } = await supabase
         .from('messages')
         .insert({
@@ -103,6 +104,23 @@ const ChatView = ({
         });
 
       if (error) throw error;
+
+      // Send message to Facebook if it's a Facebook conversation
+      if (channel === 'facebook' && customerPhone) {
+        const { error: sendError } = await supabase.functions.invoke('send-facebook-message', {
+          body: {
+            recipientId: customerPhone,
+            message: newMessage.trim()
+          }
+        });
+
+        if (sendError) {
+          console.error('Error sending to Facebook:', sendError);
+          toast.error('تم حفظ الرسالة لكن فشل إرسالها إلى فيسبوك');
+          setSending(false);
+          return;
+        }
+      }
 
       // Update conversation's last_message_at
       await supabase
