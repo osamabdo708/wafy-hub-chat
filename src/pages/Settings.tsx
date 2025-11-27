@@ -4,10 +4,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Bot, Link, Building } from "lucide-react";
+import { Settings as SettingsIcon, Bot, Link, Building, MessageCircle } from "lucide-react";
 import { WhatsAppSettings } from "@/components/WhatsAppSettings";
+import { FacebookSettings } from "@/components/FacebookSettings";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
+import { useState } from "react";
 
 const Settings = () => {
+  const [whatsappOpen, setWhatsappOpen] = useState(true);
+  const [facebookOpen, setFacebookOpen] = useState(false);
+
   return (
     <div className="space-y-6">
       <div>
@@ -83,23 +90,66 @@ const Settings = () => {
         </TabsContent>
 
         <TabsContent value="channels" className="space-y-4">
-          <WhatsAppSettings />
+          <Collapsible open={whatsappOpen} onOpenChange={setWhatsappOpen}>
+            <Card className="overflow-hidden">
+              <CollapsibleTrigger className="w-full p-6 flex items-center justify-between hover:bg-muted/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                    <MessageCircle className="w-5 h-5 text-green-500" />
+                  </div>
+                  <div className="text-right">
+                    <h3 className="text-lg font-bold">واتساب بيزنس</h3>
+                    <p className="text-sm text-muted-foreground">WhatsApp Business Cloud API</p>
+                  </div>
+                </div>
+                <ChevronDown className={`w-5 h-5 transition-transform ${whatsappOpen ? 'rotate-180' : ''}`} />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-6 pb-6">
+                  <WhatsAppSettings />
+                </div>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+
+          <Collapsible open={facebookOpen} onOpenChange={setFacebookOpen}>
+            <Card className="overflow-hidden">
+              <CollapsibleTrigger className="w-full p-6 flex items-center justify-between hover:bg-muted/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                    <MessageCircle className="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div className="text-right">
+                    <h3 className="text-lg font-bold">فيسبوك مسنجر</h3>
+                    <p className="text-sm text-muted-foreground">Facebook Messenger</p>
+                  </div>
+                </div>
+                <ChevronDown className={`w-5 h-5 transition-transform ${facebookOpen ? 'rotate-180' : ''}`} />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-6 pb-6">
+                  <FacebookSettings />
+                </div>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
           
           <Card className="p-6">
             <h3 className="text-lg font-bold mb-4">قنوات أخرى</h3>
             <div className="space-y-4">
               {[
-                { name: "فيسبوك مسنجر", status: "غير متصل", color: "bg-muted" },
-                { name: "إنستغرام", status: "غير متصل", color: "bg-muted" },
-                { name: "تليجرام", status: "غير متصل", color: "bg-muted" },
-                { name: "البريد الإلكتروني", status: "غير متصل", color: "bg-muted" }
+                { name: "إنستغرام", status: "غير متصل", color: "bg-pink-500/20", iconColor: "text-pink-500" },
+                { name: "تليجرام", status: "غير متصل", color: "bg-blue-400/20", iconColor: "text-blue-400" },
+                { name: "البريد الإلكتروني", status: "غير متصل", color: "bg-gray-500/20", iconColor: "text-gray-500" }
               ].map((channel) => (
                 <div 
                   key={channel.name}
                   className="flex items-center justify-between p-4 border border-border rounded-lg"
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${channel.color}`}></div>
+                    <div className={`w-10 h-10 rounded-full ${channel.color} flex items-center justify-center`}>
+                      <MessageCircle className={`w-5 h-5 ${channel.iconColor}`} />
+                    </div>
                     <div>
                       <p className="font-medium">{channel.name}</p>
                       <p className="text-sm text-muted-foreground">{channel.status}</p>
