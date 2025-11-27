@@ -34,10 +34,10 @@ serve(async (req) => {
     }
 
     const config = integration.config as any;
-    const { page_id, access_token } = config;
+    const { page_id, page_access_token } = config;
 
-    if (!page_id || !access_token) {
-      console.error('Missing page_id or access_token');
+    if (!page_id || !page_access_token) {
+      console.error('Missing page_id or page_access_token', { page_id, hasToken: !!page_access_token });
       return new Response(
         JSON.stringify({ error: 'Invalid Facebook configuration' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
@@ -45,7 +45,7 @@ serve(async (req) => {
     }
 
     // Fetch conversations from Facebook Graph API
-    const conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{message,from,created_time}&access_token=${access_token}`;
+    const conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{message,from,created_time}&access_token=${page_access_token}`;
     console.log('Fetching conversations from Facebook...');
     
     const conversationsResponse = await fetch(conversationsUrl);
@@ -75,7 +75,7 @@ serve(async (req) => {
           const lastMessage = messages[0]; // Messages are ordered by newest first
           
           // Get sender name from Facebook API
-          const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${access_token}`;
+          const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
           const userResponse = await fetch(userUrl);
           const userData = await userResponse.json();
           const customerName = userData.name || `عميل ${senderId.substring(0, 8)}`;
