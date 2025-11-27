@@ -46,6 +46,7 @@ export type Database = {
           assigned_to: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           created_at: string | null
+          customer_avatar: string | null
           customer_email: string | null
           customer_name: string
           customer_phone: string | null
@@ -59,6 +60,7 @@ export type Database = {
           assigned_to?: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           created_at?: string | null
+          customer_avatar?: string | null
           customer_email?: string | null
           customer_name: string
           customer_phone?: string | null
@@ -72,6 +74,7 @@ export type Database = {
           assigned_to?: string | null
           channel?: Database["public"]["Enums"]["channel_type"]
           created_at?: string | null
+          customer_avatar?: string | null
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string | null

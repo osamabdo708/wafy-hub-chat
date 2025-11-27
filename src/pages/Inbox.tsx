@@ -18,6 +18,7 @@ interface Conversation {
   status: string;
   customer_phone?: string;
   customer_email?: string;
+  customer_avatar?: string;
 }
 
 const Inbox = () => {
@@ -52,10 +53,10 @@ const Inbox = () => {
 
   const fetchConversations = async () => {
     try {
-      const { data, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .order('last_message_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags')
+      .order('last_message_at', { ascending: false });
 
       if (error) throw error;
       setConversations(data || []);
@@ -190,6 +191,7 @@ const Inbox = () => {
               customerName={selectedConversation.customer_name}
               customerPhone={selectedConversation.customer_phone}
               customerEmail={selectedConversation.customer_email}
+              customerAvatar={selectedConversation.customer_avatar}
               channel={selectedConversation.channel}
             />
           ) : (
