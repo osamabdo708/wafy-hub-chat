@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
+import ChatView from "@/components/ChatView";
+import facebookIcon from "@/assets/facebook.png";
 
 interface Conversation {
   id: string;
@@ -22,6 +24,7 @@ const Inbox = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   useEffect(() => {
     fetchConversations();
@@ -91,6 +94,13 @@ const Inbox = () => {
     return channelMap[channel] || channel;
   };
 
+  const getChannelIcon = (channel: string) => {
+    if (channel === 'facebook') {
+      return <img src={facebookIcon} alt="Facebook" className="w-4 h-4" />;
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -126,7 +136,10 @@ const Inbox = () => {
             conversations.map((conversation) => (
               <Card 
                 key={conversation.id} 
-                className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+                className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
+                  selectedConversation?.id === conversation.id ? 'border-primary shadow-md' : ''
+                }`}
+                onClick={() => setSelectedConversation(conversation)}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -135,9 +148,12 @@ const Inbox = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold">{conversation.customer_name}</h3>
-                      <Badge variant="secondary" className="text-xs">
-                        {getChannelName(conversation.channel)}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        {getChannelIcon(conversation.channel)}
+                        <Badge variant="secondary" className="text-xs">
+                          {getChannelName(conversation.channel)}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -167,17 +183,29 @@ const Inbox = () => {
           )}
         </div>
 
-        <Card className="lg:col-span-2 p-6">
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-            <MessageSquare className="w-16 h-16 text-muted-foreground" />
-            <div>
-              <h3 className="text-xl font-semibold mb-2">اختر محادثة</h3>
-              <p className="text-muted-foreground">
-                اختر محادثة من القائمة للبدء في الرد على العملاء
-              </p>
-            </div>
-          </div>
-        </Card>
+        <div className="lg:col-span-2">
+          {selectedConversation ? (
+            <ChatView
+              conversationId={selectedConversation.id}
+              customerName={selectedConversation.customer_name}
+              customerPhone={selectedConversation.customer_phone}
+              customerEmail={selectedConversation.customer_email}
+              channel={selectedConversation.channel}
+            />
+          ) : (
+            <Card className="p-6">
+              <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                <MessageSquare className="w-16 h-16 text-muted-foreground" />
+                <div>
+                  <h3 className="text-xl font-semibold mb-2">اختر محادثة</h3>
+                  <p className="text-muted-foreground">
+                    اختر محادثة من القائمة للبدء في الرد على العملاء
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );
