@@ -1,39 +1,77 @@
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Clock, User } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { formatDistanceToNow } from "date-fns";
+import { ar } from "date-fns/locale";
 
-const mockConversations = [
-  {
-    id: 1,
-    customer: "أحمد محمد",
-    channel: "واتساب",
-    lastMessage: "هل يمكنني معرفة السعر؟",
-    time: "منذ 5 دقائق",
-    unread: 2,
-    status: "جديد"
-  },
-  {
-    id: 2,
-    customer: "فاطمة علي",
-    channel: "فيسبوك",
-    lastMessage: "متى يمكنني الحصول على الخدمة؟",
-    time: "منذ 15 دقيقة",
-    unread: 0,
-    status: "مفتوح"
-  },
-  {
-    id: 3,
-    customer: "خالد سعيد",
-    channel: "إنستغرام",
-    lastMessage: "شكراً جزيلاً",
-    time: "منذ ساعة",
-    unread: 0,
-    status: "مغلق"
-  }
-];
+interface Conversation {
+  id: string;
+  customer_name: string;
+  channel: string;
+  last_message_at: string;
+  status: string;
+  customer_phone?: string;
+  customer_email?: string;
+}
 
 const Inbox = () => {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchConversations();
+
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel('conversations-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations'
+        },
+        () => {
+          fetchConversations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const fetchConversations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+      setConversations(data || []);
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getChannelName = (channel: string) => {
+    const channelMap: Record<string, string> = {
+      'whatsapp': 'واتساب',
+      'facebook': 'فيسبوك',
+      'instagram': 'إنستغرام',
+      'telegram': 'تليجرام',
+      'email': 'البريد الإلكتروني'
+    };
+    return channelMap[channel] || channel;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -49,47 +87,57 @@ const Inbox = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
-          {mockConversations.map((conversation) => (
-            <Card 
-              key={conversation.id} 
-              className="p-4 cursor-pointer hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">{conversation.customer}</h3>
-                    <Badge variant="secondary" className="text-xs">
-                      {conversation.channel}
-                    </Badge>
-                  </div>
-                </div>
-                {conversation.unread > 0 && (
-                  <Badge className="bg-primary">{conversation.unread}</Badge>
-                )}
-              </div>
-              
-              <p className="text-sm text-muted-foreground mb-2">
-                {conversation.lastMessage}
-              </p>
-              
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {conversation.time}
-                </div>
-                <Badge variant={
-                  conversation.status === "جديد" ? "default" :
-                  conversation.status === "مفتوح" ? "secondary" :
-                  "outline"
-                }>
-                  {conversation.status}
-                </Badge>
-              </div>
+          {loading ? (
+            <Card className="p-4">
+              <p className="text-center text-muted-foreground">جاري التحميل...</p>
             </Card>
-          ))}
+          ) : conversations.length === 0 ? (
+            <Card className="p-4">
+              <p className="text-center text-muted-foreground">لا توجد محادثات بعد</p>
+            </Card>
+          ) : (
+            conversations.map((conversation) => (
+              <Card 
+                key={conversation.id} 
+                className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <User className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{conversation.customer_name}</h3>
+                      <Badge variant="secondary" className="text-xs">
+                        {getChannelName(conversation.channel)}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-muted-foreground mb-2">
+                  {conversation.customer_phone || conversation.customer_email}
+                </p>
+                
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {formatDistanceToNow(new Date(conversation.last_message_at), { 
+                      addSuffix: true,
+                      locale: ar 
+                    })}
+                  </div>
+                  <Badge variant={
+                    conversation.status === "جديد" ? "default" :
+                    conversation.status === "مفتوح" ? "secondary" :
+                    "outline"
+                  }>
+                    {conversation.status}
+                  </Badge>
+                </div>
+              </Card>
+            ))
+          )}
         </div>
 
         <Card className="lg:col-span-2 p-6">

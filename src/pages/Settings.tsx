@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings as SettingsIcon, Bot, Link, Building } from "lucide-react";
+import { WhatsAppSettings } from "@/components/WhatsAppSettings";
 
 const Settings = () => {
   return (
@@ -82,14 +83,15 @@ const Settings = () => {
         </TabsContent>
 
         <TabsContent value="channels" className="space-y-4">
+          <WhatsAppSettings />
+          
           <Card className="p-6">
-            <h3 className="text-lg font-bold mb-4">تكامل القنوات</h3>
+            <h3 className="text-lg font-bold mb-4">قنوات أخرى</h3>
             <div className="space-y-4">
               {[
-                { name: "واتساب بيزنس", status: "متصل", color: "bg-success" },
-                { name: "فيسبوك مسنجر", status: "متصل", color: "bg-success" },
+                { name: "فيسبوك مسنجر", status: "غير متصل", color: "bg-muted" },
                 { name: "إنستغرام", status: "غير متصل", color: "bg-muted" },
-                { name: "تليجرام", status: "متصل", color: "bg-success" },
+                { name: "تليجرام", status: "غير متصل", color: "bg-muted" },
                 { name: "البريد الإلكتروني", status: "غير متصل", color: "bg-muted" }
               ].map((channel) => (
                 <div 
@@ -103,8 +105,8 @@ const Settings = () => {
                       <p className="text-sm text-muted-foreground">{channel.status}</p>
                     </div>
                   </div>
-                  <Button variant="outline">
-                    {channel.status === "متصل" ? "إدارة" : "ربط"}
+                  <Button variant="outline" disabled>
+                    قريباً
                   </Button>
                 </div>
               ))}
