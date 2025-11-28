@@ -4,16 +4,52 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Bot, Link, Building, MessageCircle } from "lucide-react";
+import { Settings as SettingsIcon, Bot, Link, Building, MessageCircle, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { WhatsAppSettings } from "@/components/WhatsAppSettings";
 import { FacebookSettings } from "@/components/FacebookSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Settings = () => {
   const [whatsappOpen, setWhatsappOpen] = useState(true);
   const [facebookOpen, setFacebookOpen] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const { toast } = useToast();
+
+  const testOpenAIConnection = async () => {
+    setTestingConnection(true);
+    setConnectionStatus('idle');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('test-openai-connection');
+
+      if (error) throw error;
+
+      if (data.success) {
+        setConnectionStatus('success');
+        toast({
+          title: "نجح الاتصال",
+          description: "تم الاتصال بـ OpenAI بنجاح",
+        });
+      } else {
+        throw new Error(data.error || 'فشل الاتصال');
+      }
+    } catch (error) {
+      console.error('Error testing OpenAI connection:', error);
+      setConnectionStatus('error');
+      toast({
+        title: "فشل الاتصال",
+        description: error instanceof Error ? error.message : "تعذر الاتصال بـ OpenAI",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -48,11 +84,29 @@ const Settings = () => {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="openai-key">مفتاح OpenAI API</Label>
-                <Input 
-                  id="openai-key" 
-                  type="password" 
-                  placeholder="sk-..." 
-                />
+                <div className="flex gap-2">
+                  <Input 
+                    id="openai-key" 
+                    type="password" 
+                    placeholder="تم حفظ المفتاح بأمان" 
+                    disabled
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={testOpenAIConnection}
+                    disabled={testingConnection}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    {testingConnection && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {connectionStatus === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                    {connectionStatus === 'error' && <XCircle className="w-4 h-4 text-destructive" />}
+                    {testingConnection ? 'جاري الاختبار...' : 'اختبار الاتصال'}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  تم تكوين مفتاح OpenAI API بشكل آمن. استخدم زر "اختبار الاتصال" للتحقق من صحة المفتاح.
+                </p>
               </div>
               
               <div className="space-y-2">

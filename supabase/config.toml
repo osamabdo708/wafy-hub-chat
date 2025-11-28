@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.facebook-webhook]
 verify_jwt = false
+
+[functions.test-openai-connection]
+verify_jwt = false
