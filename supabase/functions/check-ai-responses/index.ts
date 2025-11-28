@@ -80,6 +80,8 @@ serve(async (req) => {
         .select('*')
         .eq('is_active', true);
 
+      console.log(`Found ${products?.length || 0} products for AI context`);
+
       // Get conversation history
       const { data: messages } = await supabase
         .from('messages')
@@ -87,6 +89,8 @@ serve(async (req) => {
         .eq('conversation_id', conversation.id)
         .order('created_at', { ascending: true })
         .limit(20);
+
+      console.log(`Found ${messages?.length || 0} messages in conversation history`);
 
       const conversationHistory = messages?.map(msg => ({
         role: msg.sender_type === 'customer' ? 'user' : 'assistant',
@@ -150,7 +154,7 @@ ${productsCatalog}
       console.log(`AI Reply for conversation ${conversation.id}:`, aiReply);
 
       // Save AI message
-      await supabase
+      const { error: saveError } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversation.id,
@@ -158,6 +162,12 @@ ${productsCatalog}
           sender_type: 'agent',
           sender_id: null
         });
+
+      if (saveError) {
+        console.error(`Error saving AI message for conversation ${conversation.id}:`, saveError);
+      } else {
+        console.log(`AI message saved successfully for conversation ${conversation.id}`);
+      }
 
       // Update conversation
       await supabase
@@ -168,6 +178,8 @@ ${productsCatalog}
       // Send to channel
       const channel = conversation.channel;
       
+      console.log(`Attempting to send message to ${channel} channel for conversation ${conversation.id}`);
+      
       if (channel === 'facebook') {
         const { data: integration } = await supabase
           .from('channel_integrations')
@@ -175,10 +187,14 @@ ${productsCatalog}
           .eq('channel', 'facebook')
           .maybeSingle();
 
+        console.log(`Facebook integration found:`, !!integration);
+
         if (integration?.config?.page_access_token) {
           const recipientId = conversation.customer_phone;
           
-          await fetch(`https://graph.facebook.com/v18.0/me/messages`, {
+          console.log(`Sending to Facebook recipient: ${recipientId}`);
+          
+          const fbResponse = await fetch(`https://graph.facebook.com/v18.0/me/messages`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${integration.config.page_access_token}`,
@@ -189,6 +205,11 @@ ${productsCatalog}
               message: { text: aiReply }
             })
           });
+
+          const fbResult = await fbResponse.json();
+          console.log(`Facebook send result:`, fbResult);
+        } else {
+          console.log('No Facebook page access token configured');
         }
       } else if (channel === 'whatsapp') {
         const { data: integration } = await supabase
@@ -197,8 +218,12 @@ ${productsCatalog}
           .eq('channel', 'whatsapp')
           .maybeSingle();
 
+        console.log(`WhatsApp integration found:`, !!integration);
+
         if (integration?.config?.phone_number_id && integration?.config?.access_token) {
-          await fetch(`https://graph.facebook.com/v18.0/${integration.config.phone_number_id}/messages`, {
+          console.log(`Sending to WhatsApp: ${conversation.customer_phone}`);
+          
+          const waResponse = await fetch(`https://graph.facebook.com/v18.0/${integration.config.phone_number_id}/messages`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${integration.config.access_token}`,
@@ -211,6 +236,11 @@ ${productsCatalog}
               text: { body: aiReply }
             })
           });
+
+          const waResult = await waResponse.json();
+          console.log(`WhatsApp send result:`, waResult);
+        } else {
+          console.log('No WhatsApp credentials configured');
         }
       }
 
