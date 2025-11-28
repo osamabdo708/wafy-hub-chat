@@ -77,15 +77,17 @@ serve(async (req) => {
       // Find or create conversation
       const { data: existingConversation, error: findError } = await supabase
         .from('conversations')
-        .select('id')
+        .select('id, ai_enabled')
         .eq('customer_phone', customerPhone)
         .eq('channel', 'whatsapp')
         .single();
 
       let conversationId;
+      let conversation;
 
       if (existingConversation) {
         conversationId = existingConversation.id;
+        conversation = existingConversation;
         
         // Update conversation last message time
         await supabase
@@ -108,7 +110,7 @@ serve(async (req) => {
             status: 'جديد',
             last_message_at: new Date().toISOString()
           })
-          .select('id')
+          .select('id, ai_enabled')
           .single();
 
         if (createError) {
@@ -117,6 +119,7 @@ serve(async (req) => {
         }
 
         conversationId = newConversation.id;
+        conversation = newConversation;
         console.log('Created new conversation:', conversationId);
       }
 
@@ -137,6 +140,21 @@ serve(async (req) => {
       }
 
       console.log('Message created successfully');
+
+      // Check if AI is enabled for this conversation
+      if (conversation?.ai_enabled) {
+        console.log('AI enabled, triggering AI response...');
+        try {
+          await supabase.functions.invoke('ai-chat-handler', {
+            body: {
+              conversationId: conversationId,
+              newMessage: messageText
+            }
+          });
+        } catch (aiError) {
+          console.error('Error invoking AI handler:', aiError);
+        }
+      }
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

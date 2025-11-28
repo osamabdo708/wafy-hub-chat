@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.test-openai-connection]
 verify_jwt = false
+
+[functions.ai-chat-handler]
+verify_jwt = false
