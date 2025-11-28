@@ -126,6 +126,14 @@ serve(async (req) => {
           const messagesToImport = messages.slice(0, 10).reverse();
           
           for (const msg of messagesToImport) {
+            if (!msg.message) continue;
+
+            // Determine sender type - if from page_id it's agent, otherwise customer
+            const isFromPage = msg.from?.id === page_id;
+            const senderType = isFromPage ? 'agent' : 'customer';
+
+            console.log(`Message from ${msg.from?.id} (page: ${page_id}) - Type: ${senderType}`);
+
             // Check if message already exists by content AND timestamp
             const { data: existingMsg } = await supabase
               .from('messages')
@@ -135,13 +143,13 @@ serve(async (req) => {
               .eq('created_at', msg.created_time)
               .single();
 
-            if (!existingMsg && msg.message) {
+            if (!existingMsg) {
               await supabase
                 .from('messages')
                 .insert({
                   conversation_id: conversationId,
                   content: msg.message,
-                  sender_type: msg.from?.id === page_id ? 'agent' : 'customer',
+                  sender_type: senderType,
                   created_at: msg.created_time
                 });
             }
