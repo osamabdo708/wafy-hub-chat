@@ -106,7 +106,8 @@ serve(async (req) => {
 2. الإجابة على أسئلة العملاء حول المنتجات من المعلومات المتاحة فقط
 3. إذا سأل العميل عن منتج غير موجود في القائمة، أخبره بأن هذا المنتج غير متوفر في المتجر حالياً
 4. جمع تفاصيل الطلب (الاسم، رقم الهاتف، العنوان) إذا أكد العميل رغبته في الطلب
-5. كن ودوداً ومحترفاً دائماً
+5. عندما يؤكد العميل الطلب ويقدم كل التفاصيل المطلوبة، استخدم أداة create_order لإنشاء الطلب
+6. كن ودوداً ومحترفاً دائماً
 
 المنتجات المتاحة:
 ${productsCatalog}
@@ -118,7 +119,44 @@ ${productsCatalog}
 
 تحدث بالعربية دائماً وكن مختصراً وواضحاً في ردودك.`;
 
-      // Call OpenAI
+      // Prepare tools for order creation
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "create_order",
+            description: "إنشاء طلب جديد عندما يؤكد العميل رغبته في الشراء ويقدم كل التفاصيل المطلوبة",
+            parameters: {
+              type: "object",
+              properties: {
+                customer_name: {
+                  type: "string",
+                  description: "اسم العميل"
+                },
+                customer_phone: {
+                  type: "string",
+                  description: "رقم هاتف العميل"
+                },
+                customer_email: {
+                  type: "string",
+                  description: "البريد الإلكتروني للعميل (اختياري)"
+                },
+                product_name: {
+                  type: "string",
+                  description: "اسم المنتج المطلوب"
+                },
+                notes: {
+                  type: "string",
+                  description: "ملاحظات إضافية مثل العنوان أو تفاصيل التوصيل"
+                }
+              },
+              required: ["customer_name", "customer_phone", "product_name"]
+            }
+          }
+        }
+      ];
+
+      // Call OpenAI with tool calling
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -131,6 +169,8 @@ ${productsCatalog}
             { role: 'system', content: systemPrompt },
             ...conversationHistory
           ],
+          tools: tools,
+          tool_choice: "auto",
           temperature: 0.7,
           max_tokens: 500
         }),
@@ -149,7 +189,59 @@ ${productsCatalog}
         continue;
       }
       
-      const aiReply = aiData.choices[0].message.content;
+      const message = aiData.choices[0].message;
+      let aiReply = message.content || '';
+
+      // Check if AI wants to create an order
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        const toolCall = message.tool_calls[0];
+        
+        if (toolCall.function.name === 'create_order') {
+          try {
+            const orderData = JSON.parse(toolCall.function.arguments);
+            console.log(`Creating order for conversation ${conversation.id}:`, orderData);
+
+            // Find the product
+            const product = products?.find(p => 
+              p.name.toLowerCase().includes(orderData.product_name.toLowerCase()) ||
+              orderData.product_name.toLowerCase().includes(p.name.toLowerCase())
+            );
+
+            if (product) {
+              // Create the order
+              const { data: newOrder, error: orderError } = await supabase
+                .from('orders')
+                .insert({
+                  conversation_id: conversation.id,
+                  customer_name: orderData.customer_name,
+                  customer_phone: orderData.customer_phone,
+                  customer_email: orderData.customer_email || conversation.customer_email,
+                  product_id: product.id,
+                  price: product.price,
+                  status: 'قيد الانتظار',
+                  notes: orderData.notes,
+                  ai_generated: true
+                })
+                .select()
+                .single();
+
+              if (orderError) {
+                console.error(`Error creating order for conversation ${conversation.id}:`, orderError);
+                aiReply = `تم تأكيد طلبك لـ ${product.name} بسعر ${product.price} ريال. سنتواصل معك قريباً لإتمام الطلب.`;
+              } else {
+                console.log(`Order created successfully:`, newOrder);
+                aiReply = `تم إنشاء طلبك بنجاح! 🎉\n\nرقم الطلب: ${newOrder.order_number}\nالمنتج: ${product.name}\nالسعر: ${product.price} ريال\nالحالة: ${newOrder.status}\n\nشكراً لك! سنتواصل معك قريباً.`;
+              }
+            } else {
+              console.log(`Product not found for: ${orderData.product_name}`);
+              aiReply = `عذراً، لم أتمكن من العثور على المنتج المطلوب في قائمة المنتجات المتاحة.`;
+            }
+          } catch (parseError) {
+            console.error(`Error parsing order data:`, parseError);
+            aiReply = `تم تأكيد طلبك. سنتواصل معك قريباً لإتمام الطلب.`;
+          }
+        }
+      }
 
       console.log(`AI Reply for conversation ${conversation.id}:`, aiReply);
 
