@@ -44,6 +44,14 @@ serve(async (req) => {
       );
     }
 
+    // Get the numeric page ID from Facebook
+    const pageInfoUrl = `https://graph.facebook.com/v18.0/${page_id}?fields=id&access_token=${page_access_token}`;
+    const pageInfoResponse = await fetch(pageInfoUrl);
+    const pageInfo = await pageInfoResponse.json();
+    const numericPageId = pageInfo.id;
+    
+    console.log(`Numeric Page ID: ${numericPageId}`);
+
     // Fetch conversations from Facebook Graph API
     const conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{message,from,created_time}&access_token=${page_access_token}`;
     console.log('Fetching conversations from Facebook...');
@@ -128,11 +136,11 @@ serve(async (req) => {
           for (const msg of messagesToImport) {
             if (!msg.message) continue;
 
-            // Determine sender type - if from page_id it's agent, otherwise customer
-            const isFromPage = msg.from?.id === page_id;
+            // Determine sender type - if from numeric page ID it's agent, otherwise customer
+            const isFromPage = msg.from?.id === numericPageId;
             const senderType = isFromPage ? 'agent' : 'customer';
 
-            console.log(`Message from ${msg.from?.id} (page: ${page_id}) - Type: ${senderType}`);
+            console.log(`Message from ${msg.from?.id} (page: ${numericPageId}) - Type: ${senderType}`);
 
             // Check if message already exists by content AND timestamp
             const { data: existingMsg } = await supabase
