@@ -142,13 +142,14 @@ serve(async (req) => {
 
             console.log(`Message from ${msg.from?.id} (page: ${numericPageId}) - Type: ${senderType}`);
 
-            // Check if message already exists by content AND timestamp
+            // Check if message already exists by conversation, content, timestamp, AND sender type
             const { data: existingMsg } = await supabase
               .from('messages')
               .select('id')
               .eq('conversation_id', conversationId)
               .eq('content', msg.message)
               .eq('created_at', msg.created_time)
+              .eq('sender_type', senderType)
               .single();
 
             if (!existingMsg) {
