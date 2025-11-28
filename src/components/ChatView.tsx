@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Send, User, Phone, Mail } from "lucide-react";
+import { Send, User, Phone, Mail, Bot } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -41,6 +41,7 @@ const ChatView = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [checkingAI, setCheckingAI] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -143,6 +144,22 @@ const ChatView = ({
     }
   };
 
+  const handleCheckAIResponse = async () => {
+    setCheckingAI(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('check-ai-responses');
+      
+      if (error) throw error;
+      
+      toast.success('تم فحص المحادثات والرد بالذكاء الاصطناعي');
+    } catch (error) {
+      console.error('Error checking AI responses:', error);
+      toast.error('فشل في تشغيل المساعد الذكي');
+    } finally {
+      setCheckingAI(false);
+    }
+  };
+
   const getChannelIcon = () => {
     if (channel === 'facebook') {
       return <img src={facebookIcon} alt="Facebook" className="w-4 h-4" />;
@@ -171,6 +188,15 @@ const ChatView = ({
             </div>
           </div>
           <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleCheckAIResponse}
+              disabled={checkingAI}
+            >
+              <Bot className="w-4 h-4 ml-1" />
+              {checkingAI ? 'جاري الفحص...' : 'تشغيل الذكاء الاصطناعي'}
+            </Button>
             {customerPhone && (
               <Button variant="ghost" size="sm">
                 <Phone className="w-4 h-4" />
