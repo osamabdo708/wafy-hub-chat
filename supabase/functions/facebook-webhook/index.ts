@@ -75,7 +75,7 @@ serve(async (req) => {
         .select('id, ai_enabled')
         .eq('customer_phone', senderId)
         .eq('channel', 'facebook')
-        .single();
+        .maybeSingle();
 
       let conversationId;
       let conversation;

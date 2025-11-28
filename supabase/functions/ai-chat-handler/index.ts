@@ -28,11 +28,12 @@ serve(async (req) => {
     // Get conversation details
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('*, channel')
+      .select('*')
       .eq('id', conversationId)
-      .single();
+      .maybeSingle();
 
     if (convError || !conversation) {
+      console.error('Conversation not found:', convError);
       throw new Error('Conversation not found');
     }
 
