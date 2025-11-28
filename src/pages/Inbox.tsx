@@ -32,7 +32,6 @@ const Inbox = () => {
   useEffect(() => {
     fetchConversations();
 
-    // Subscribe to real-time updates
     const channel = supabase
       .channel('conversations-changes')
       .on(
@@ -42,9 +41,7 @@ const Inbox = () => {
           schema: 'public',
           table: 'conversations'
         },
-        () => {
-          fetchConversations();
-        }
+        () => fetchConversations()
       )
       .subscribe();
 
@@ -53,12 +50,26 @@ const Inbox = () => {
     };
   }, []);
 
+  // 🔥🔥🔥 AUTO IMPORT — works like a webhook 🔥🔥🔥
+  useEffect(() => {
+    const interval = setInterval(() => {
+      supabase.functions
+        .invoke('import-facebook-conversations')
+        .then(() => fetchConversations())
+        .catch(() => console.log("Auto import failed"));
+    }, 10000); // every 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+  // 🔥🔥🔥 END AUTO IMPORT 🔥🔥🔥
+
+
   const fetchConversations = async () => {
     try {
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled')
-      .order('last_message_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled')
+        .order('last_message_at', { ascending: false });
 
       if (error) throw error;
       setConversations(data || []);
@@ -134,14 +145,14 @@ const Inbox = () => {
           <p className="text-muted-foreground mt-1">جميع محادثاتك من كل القنوات في مكان واحد</p>
         </div>
         <div className="flex gap-2">
-          <Button 
+          {/* <Button 
             variant="outline" 
             onClick={handleImportFacebook}
             disabled={importing}
           >
             <Download className="ml-2 h-4 w-4" />
             {importing ? 'جاري الاستيراد...' : 'استيراد محادثات فيسبوك'}
-          </Button>
+          </Button> */}
           <Button variant="outline">تصفية</Button>
           <Button>محادثة جديدة</Button>
         </div>
