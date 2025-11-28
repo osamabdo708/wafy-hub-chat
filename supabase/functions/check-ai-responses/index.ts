@@ -132,7 +132,19 @@ ${productsCatalog}
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`OpenAI API error for conversation ${conversation.id}:`, response.status, errorText);
+        continue;
+      }
+
       const aiData = await response.json();
+      
+      if (!aiData.choices || !aiData.choices[0] || !aiData.choices[0].message) {
+        console.error(`Invalid OpenAI response for conversation ${conversation.id}:`, aiData);
+        continue;
+      }
+      
       const aiReply = aiData.choices[0].message.content;
 
       console.log(`AI Reply for conversation ${conversation.id}:`, aiReply);
