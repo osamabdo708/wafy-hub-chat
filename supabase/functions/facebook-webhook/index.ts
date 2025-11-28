@@ -53,14 +53,6 @@ serve(async (req) => {
       const senderId = messaging.sender?.id;
       const message = messaging.message;
       
-      // Skip echo messages (messages sent by the page itself)
-      if (message?.is_echo) {
-        console.log('Skipping echo message (sent by page)');
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      
       if (!message || !senderId) {
         console.log('No message or sender ID');
         return new Response(JSON.stringify({ success: true }), {
