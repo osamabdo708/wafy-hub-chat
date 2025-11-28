@@ -80,7 +80,7 @@ serve(async (req) => {
         .select('id, ai_enabled')
         .eq('customer_phone', customerPhone)
         .eq('channel', 'whatsapp')
-        .single();
+        .maybeSingle();
 
       let conversationId;
       let conversation;
