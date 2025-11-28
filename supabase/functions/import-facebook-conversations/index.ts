@@ -126,12 +126,13 @@ serve(async (req) => {
           const messagesToImport = messages.slice(0, 10).reverse();
           
           for (const msg of messagesToImport) {
-            // Check if message already exists
+            // Check if message already exists by content AND timestamp
             const { data: existingMsg } = await supabase
               .from('messages')
               .select('id')
               .eq('conversation_id', conversationId)
               .eq('content', msg.message)
+              .eq('created_at', msg.created_time)
               .single();
 
             if (!existingMsg && msg.message) {
