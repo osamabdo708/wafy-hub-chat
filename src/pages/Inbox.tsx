@@ -9,6 +9,7 @@ import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
 import facebookIcon from "@/assets/facebook.png";
+import { Switch } from "@/components/ui/switch";
 
 interface Conversation {
   id: string;
@@ -19,6 +20,7 @@ interface Conversation {
   customer_phone?: string;
   customer_email?: string;
   customer_avatar?: string;
+  ai_enabled?: boolean;
 }
 
 const Inbox = () => {
@@ -55,7 +57,7 @@ const Inbox = () => {
     try {
     const { data, error } = await supabase
       .from('conversations')
-      .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags')
+      .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled')
       .order('last_message_at', { ascending: false });
 
       if (error) throw error;
@@ -64,6 +66,28 @@ const Inbox = () => {
       console.error('Error fetching conversations:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleAI = async (conversationId: string, currentState: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ ai_enabled: !currentState })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      setConversations(conversations.map(conv => 
+        conv.id === conversationId 
+          ? { ...conv, ai_enabled: !currentState }
+          : conv
+      ));
+
+      toast.success(!currentState ? "تم تفعيل المساعد الذكي" : "تم إيقاف المساعد الذكي");
+    } catch (error) {
+      console.error('Error toggling AI:', error);
+      toast.error("فشل في تحديث إعدادات المساعد الذكي");
     }
   };
 
@@ -157,6 +181,11 @@ const Inbox = () => {
                       </div>
                     </div>
                   </div>
+                  <Switch
+                    checked={conversation.ai_enabled || false}
+                    onCheckedChange={() => toggleAI(conversation.id, conversation.ai_enabled || false)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2">

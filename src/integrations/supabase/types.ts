@@ -43,6 +43,7 @@ export type Database = {
       }
       conversations: {
         Row: {
+          ai_enabled: boolean | null
           assigned_to: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           created_at: string | null
@@ -57,6 +58,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          ai_enabled?: boolean | null
           assigned_to?: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           created_at?: string | null
@@ -71,6 +73,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          ai_enabled?: boolean | null
           assigned_to?: string | null
           channel?: Database["public"]["Enums"]["channel_type"]
           created_at?: string | null
