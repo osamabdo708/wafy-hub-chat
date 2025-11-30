@@ -108,6 +108,15 @@ const Inbox = () => {
     }
   };
 
+  // Auto-trigger AI responses every 10 seconds
+  useEffect(() => {
+    const aiInterval = setInterval(async () => {
+      await supabase.functions.invoke('auto-reply-messages');
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(aiInterval);
+  }, []);
+
   const getChannelName = (channel: string) => {
     const channelMap: Record<string, string> = {
       'whatsapp': 'واتساب',
