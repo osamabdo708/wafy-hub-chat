@@ -189,7 +189,7 @@ const ChatView = ({
         .insert({
           conversation_id: conversationId,
           content: productMessage,
-          sender_type: 'agent'
+          sender_type: 'employee'
         });
 
       if (error) throw error;
@@ -399,21 +399,23 @@ const ChatView = ({
               لا توجد رسائل بعد
             </div>
           ) : (
-            messages.map((message) => (
+            messages.map((message) => {
+              const isFromEmployee = message.sender_type === 'employee' || message.sender_type === 'agent';
+              return (
               <div
                 key={message.id}
-                className={`flex ${message.sender_type === 'agent' ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${isFromEmployee ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`max-w-[70%] rounded-2xl px-4 py-2 ${
-                    message.sender_type === 'agent'
+                    isFromEmployee
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted'
                   }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   <p className={`text-xs mt-1 ${
-                    message.sender_type === 'agent' 
+                    isFromEmployee
                       ? 'text-primary-foreground/70' 
                       : 'text-muted-foreground'
                   }`}>
@@ -424,7 +426,7 @@ const ChatView = ({
                   </p>
                 </div>
               </div>
-            ))
+            )})
           )}
         </div>
       </ScrollArea>
