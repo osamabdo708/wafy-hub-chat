@@ -98,47 +98,63 @@ serve(async (req) => {
                 continue;
               }
 
-              // Get or create conversation using thread_id
+              // Get or create conversation - search by customer_phone first (unique per channel)
               let { data: existingConv } = await supabase
                 .from('conversations')
-                .select('id, ai_enabled, thread_id')
-                .eq('thread_id', threadId)
-                .eq('platform', 'facebook')
+                .select('id, ai_enabled, thread_id, customer_name')
+                .eq('customer_phone', senderId)
+                .eq('channel', 'facebook')
                 .maybeSingle();
 
-              // If not found by thread_id, try by customer_phone (for old conversations)
-              if (!existingConv) {
-                const { data: convByPhone } = await supabase
+              // If conversation exists but thread_id is different, update it
+              if (existingConv && existingConv.thread_id !== threadId) {
+                console.log(`[FACEBOOK] Updating thread_id for conversation ${existingConv.id} from ${existingConv.thread_id} to ${threadId}`);
+                await supabase
                   .from('conversations')
-                  .select('id, ai_enabled, thread_id')
-                  .eq('customer_phone', senderId)
-                  .eq('platform', 'facebook')
-                  .maybeSingle();
-                
-                if (convByPhone) {
-                  // Update the existing conversation's thread_id
-                  await supabase
-                    .from('conversations')
-                    .update({ thread_id: threadId })
-                    .eq('id', convByPhone.id);
-                  
-                  existingConv = { ...convByPhone, thread_id: threadId };
-                  console.log(`[FACEBOOK] Updated conversation ${convByPhone.id} with thread_id ${threadId}`);
-                }
+                  .update({ thread_id: threadId })
+                  .eq('id', existingConv.id);
+                existingConv.thread_id = threadId;
               }
 
               let conversationId;
               if (existingConv) {
                 conversationId = existingConv.id;
-                await supabase
-                  .from('conversations')
-                  .update({ last_message_at: messages[0].created_time })
-                  .eq('id', conversationId);
+                
+                // Refresh customer name if it's a generic placeholder
+                if (existingConv.customer_name && existingConv.customer_name.startsWith('Facebook User')) {
+                  const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
+                  const userResponse = await fetch(userUrl);
+                  const userData = await userResponse.json();
+                  
+                  if (userData.name) {
+                    await supabase
+                      .from('conversations')
+                      .update({ 
+                        customer_name: userData.name,
+                        last_message_at: messages[0].created_time 
+                      })
+                      .eq('id', conversationId);
+                    console.log(`[FACEBOOK] Updated customer name for conversation ${conversationId} to: ${userData.name}`);
+                  } else {
+                    await supabase
+                      .from('conversations')
+                      .update({ last_message_at: messages[0].created_time })
+                      .eq('id', conversationId);
+                  }
+                } else {
+                  await supabase
+                    .from('conversations')
+                    .update({ last_message_at: messages[0].created_time })
+                    .eq('id', conversationId);
+                }
               } else {
+                // Create new conversation - fetch customer name from API
                 const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
                 const userResponse = await fetch(userUrl);
                 const userData = await userResponse.json();
                 const customerName = userData.name || `Facebook User ${senderId.substring(0, 8)}`;
+
+                console.log(`[FACEBOOK] Creating new conversation for ${customerName} (${senderId})`);
 
                 const { data: newConv, error: insertError } = await supabase
                   .from('conversations')
@@ -149,7 +165,7 @@ serve(async (req) => {
                     platform: 'facebook',
                     thread_id: threadId,
                     status: 'جديد',
-                    ai_enabled: false, // Initial import: AI disabled by default
+                    ai_enabled: false,
                     last_message_at: messages[0].created_time
                   })
                   .select()
