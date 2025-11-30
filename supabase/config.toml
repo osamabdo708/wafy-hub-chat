@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.check-ai-responses]
 verify_jwt = false
+
+[functions.auto-import-messages]
+verify_jwt = false
+
+[functions.auto-reply-messages]
+verify_jwt = false
