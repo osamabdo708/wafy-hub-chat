@@ -150,11 +150,11 @@ const Inbox = () => {
     }
   }, []);
 
-  // Auto-import messages every 5 seconds
+  // Auto-import messages every 10 seconds
   useEffect(() => {
     const autoImportInterval = setInterval(() => {
       handleImport();
-    }, 5000); // 5 seconds
+    }, 10000); // 10 seconds
 
     return () => {
       clearInterval(autoImportInterval);
