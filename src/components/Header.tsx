@@ -2,6 +2,7 @@ import { Bell, Search, Moon, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
+import genieLogo from "@/assets/genie-logo.png";
 
 export const Header = () => {
   const { theme, setTheme } = useTheme();
@@ -10,9 +11,12 @@ export const Header = () => {
     <header className="bg-background border-b border-border">
       <div className="px-6 h-20 flex items-center justify-between">
         <div className="flex items-center gap-8">
-          <div>
-            <h1 className="text-2xl font-bold text-primary">OmniChat</h1>
-            <p className="text-xs text-muted-foreground">منصة المحادثات الموحدة</p>
+          <div className="flex items-center gap-3">
+            <img src={genieLogo} alt="Genie Logo" className="w-12 h-12" />
+            <div>
+              <h1 className="text-2xl font-bold text-primary">المارد</h1>
+              <p className="text-xs text-muted-foreground">منصة المحادثات الموحدة</p>
+            </div>
           </div>
           
           <div className="relative w-96">
