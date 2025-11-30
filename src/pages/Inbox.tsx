@@ -250,9 +250,9 @@ const Inbox = () => {
                       e.stopPropagation();
                       toggleAI(conversation.id, conversation.ai_enabled || false);
                     }}
-                    className="gap-2"
+                    className={`gap-2 ${conversation.ai_enabled ? 'animate-pulse' : ''}`}
                   >
-                    <img src={genieIcon} alt="Genie" className="w-5 h-5" />
+                    <img src={genieIcon} alt="Genie" className={`w-5 h-5 ${conversation.ai_enabled ? 'animate-pulse' : ''}`} />
                     {conversation.ai_enabled ? "تعطيل المارد" : "تفعيل المارد"}
                   </Button>
                 </div>
