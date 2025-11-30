@@ -98,38 +98,44 @@ serve(async (req) => {
                 continue;
               }
 
-              // Get or create conversation - search by thread_id FIRST (most reliable)
+              // Get or create conversation - search by customer_phone FIRST (most reliable)
               let { data: existingConv } = await supabase
                 .from('conversations')
                 .select('id, ai_enabled, thread_id, customer_name, customer_phone')
-                .eq('thread_id', threadId)
+                .eq('customer_phone', senderId)
                 .eq('channel', 'facebook')
                 .maybeSingle();
 
-              // If not found by thread_id, try customer_phone
+              // If not found by customer_phone, try thread_id
               if (!existingConv) {
-                const { data: convByPhone } = await supabase
+                const { data: convByThread } = await supabase
                   .from('conversations')
                   .select('id, ai_enabled, thread_id, customer_name, customer_phone')
-                  .eq('customer_phone', senderId)
+                  .eq('thread_id', threadId)
                   .eq('channel', 'facebook')
                   .maybeSingle();
                 
-                if (convByPhone) {
-                  existingConv = convByPhone;
-                  // Update thread_id if different
-                  if (existingConv.thread_id !== threadId) {
-                    console.log(`[FACEBOOK] Updating thread_id for conversation ${existingConv.id} from ${existingConv.thread_id} to ${threadId}`);
-                    await supabase
-                      .from('conversations')
-                      .update({ thread_id: threadId })
-                      .eq('id', existingConv.id);
-                    existingConv.thread_id = threadId;
-                  }
-                }
+                existingConv = convByThread;
+              }
+              
+              // Update thread_id if we found a conversation and thread_id is different
+              if (existingConv && existingConv.thread_id !== threadId) {
+                console.log(`[FACEBOOK] Updating thread_id for conversation ${existingConv.id} from ${existingConv.thread_id} to ${threadId}`);
+                await supabase
+                  .from('conversations')
+                  .update({ thread_id: threadId })
+                  .eq('id', existingConv.id);
+                existingConv.thread_id = threadId;
               }
 
-              console.log(`[FACEBOOK] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'create new'}`);
+              console.log(`[FACEBOOK] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'SKIP - should not create new'}`);
+
+              // CRITICAL: Do NOT create new conversations during import
+              // Only update existing ones
+              if (!existingConv) {
+                console.log(`[FACEBOOK] WARNING: No existing conversation found for senderId ${senderId}. Skipping messages in thread ${threadId}.`);
+                continue;
+              }
 
               let conversationId;
               if (existingConv) {
@@ -162,36 +168,6 @@ serve(async (req) => {
                     .update({ last_message_at: messages[0].created_time })
                     .eq('id', conversationId);
                 }
-              } else {
-                // Create new conversation - fetch customer name from API
-                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
-                const userResponse = await fetch(userUrl);
-                const userData = await userResponse.json();
-                const customerName = userData.name || `Facebook User ${senderId.substring(0, 8)}`;
-
-                console.log(`[FACEBOOK] Creating new conversation for ${customerName} (${senderId})`);
-
-                const { data: newConv, error: insertError } = await supabase
-                  .from('conversations')
-                  .insert({
-                    customer_name: customerName,
-                    customer_phone: senderId,
-                    channel: 'facebook',
-                    platform: 'facebook',
-                    thread_id: threadId,
-                    status: 'جديد',
-                    ai_enabled: false,
-                    last_message_at: messages[0].created_time
-                  })
-                  .select()
-                  .single();
-
-                if (insertError || !newConv) {
-                  console.error(`[FACEBOOK] Failed to create conversation for thread ${threadId}:`, insertError);
-                  continue;
-                }
-
-                conversationId = newConv.id;
               }
 
               // Import messages with deduplication by message_id
