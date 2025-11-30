@@ -150,7 +150,7 @@ serve(async (req) => {
       }
     }
 
-    // Import WhatsApp Messages (similar pattern)
+    // Import WhatsApp Messages
     const { data: waIntegration } = await supabase
       .from('channel_integrations')
       .select('config, last_fetch_timestamp')
@@ -164,12 +164,139 @@ serve(async (req) => {
       const { phone_number_id, access_token } = config;
 
       if (phone_number_id && access_token) {
-        let sinceTimestamp = waIntegration.last_fetch_timestamp 
-          ? new Date(waIntegration.last_fetch_timestamp).getTime() / 1000
+        // WhatsApp Cloud API doesn't support historical message fetching via API
+        // Messages are only available through webhooks in real-time
+        // For polling-based import, we rely on the conversation/message structure
+        // being populated by direct database operations or initial setup
+        console.log('[WHATSAPP] WhatsApp Cloud API only supports real-time webhook delivery');
+        console.log('[WHATSAPP] Existing messages in database will be processed by AI if ai_enabled=true');
+        
+        // Update last_fetch_timestamp
+        await supabase
+          .from('channel_integrations')
+          .update({ last_fetch_timestamp: new Date().toISOString() })
+          .eq('channel', 'whatsapp')
+          .eq('is_connected', true);
+      }
+    }
+
+    // Import Instagram Messages
+    const { data: igIntegration } = await supabase
+      .from('channel_integrations')
+      .select('config, last_fetch_timestamp')
+      .eq('channel', 'instagram')
+      .eq('is_connected', true)
+      .single();
+
+    if (igIntegration?.config) {
+      console.log('[INSTAGRAM] Fetching conversations...');
+      const config = igIntegration.config as any;
+      const { instagram_account_id, page_access_token } = config;
+
+      if (instagram_account_id && page_access_token) {
+        let sinceTimestamp = igIntegration.last_fetch_timestamp 
+          ? new Date(igIntegration.last_fetch_timestamp).getTime() / 1000
           : (Date.now() - 24 * 60 * 60 * 1000) / 1000;
 
-        // WhatsApp API implementation would go here
-        // Similar structure to Facebook with thread_id and message_id deduplication
+        let conversationsUrl = `https://graph.facebook.com/v18.0/${instagram_account_id}/conversations?fields=id,participants,messages{id,message,from,created_time}&platform=instagram&since=${sinceTimestamp}&access_token=${page_access_token}`;
+        
+        // Paginate through all conversations
+        while (conversationsUrl) {
+          const conversationsResponse = await fetch(conversationsUrl);
+          const conversationsData = await conversationsResponse.json();
+
+          if (conversationsData.data) {
+            for (const igConv of conversationsData.data) {
+              const threadId = igConv.id;
+              const senderId = igConv.participants?.data[0]?.id || 'unknown';
+              const messages = igConv.messages?.data || [];
+              
+              if (messages.length === 0) continue;
+
+              // Get or create conversation using thread_id
+              const { data: existingConv } = await supabase
+                .from('conversations')
+                .select('id, ai_enabled')
+                .eq('thread_id', threadId)
+                .eq('platform', 'instagram')
+                .maybeSingle();
+
+              let conversationId;
+              if (existingConv) {
+                conversationId = existingConv.id;
+                await supabase
+                  .from('conversations')
+                  .update({ last_message_at: messages[0].created_time })
+                  .eq('id', conversationId);
+              } else {
+                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
+                const userResponse = await fetch(userUrl);
+                const userData = await userResponse.json();
+                const customerName = userData.username || `Instagram User ${senderId.substring(0, 8)}`;
+
+                const { data: newConv } = await supabase
+                  .from('conversations')
+                  .insert({
+                    customer_name: customerName,
+                    customer_phone: senderId,
+                    channel: 'instagram',
+                    platform: 'instagram',
+                    thread_id: threadId,
+                    status: 'جديد',
+                    ai_enabled: false,
+                    last_message_at: messages[0].created_time
+                  })
+                  .select()
+                  .single();
+
+                conversationId = newConv.id;
+              }
+
+              // Import messages with deduplication by message_id
+              for (const msg of messages.reverse()) {
+                if (!msg.message || !msg.id) continue;
+
+                // Check if message already exists
+                const { data: existingMsg } = await supabase
+                  .from('messages')
+                  .select('id')
+                  .eq('message_id', msg.id)
+                  .maybeSingle();
+
+                if (existingMsg) {
+                  console.log(`[INSTAGRAM] Skipping duplicate message: ${msg.id}`);
+                  continue;
+                }
+
+                const { error } = await supabase
+                  .from('messages')
+                  .insert({
+                    conversation_id: conversationId,
+                    content: msg.message,
+                    sender_type: msg.from?.id === instagram_account_id ? 'employee' : 'customer',
+                    created_at: msg.created_time,
+                    message_id: msg.id,
+                    is_old: isInitialImport,
+                    reply_sent: isInitialImport
+                  });
+
+                if (!error) {
+                  totalImported++;
+                }
+              }
+            }
+          }
+
+          // Check for next page
+          conversationsUrl = conversationsData.paging?.next || null;
+        }
+
+        // Update last_fetch_timestamp
+        await supabase
+          .from('channel_integrations')
+          .update({ last_fetch_timestamp: new Date().toISOString() })
+          .eq('channel', 'instagram')
+          .eq('is_connected', true);
       }
     }
 
