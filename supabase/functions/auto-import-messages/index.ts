@@ -98,23 +98,38 @@ serve(async (req) => {
                 continue;
               }
 
-              // Get or create conversation - search by customer_phone first (unique per channel)
+              // Get or create conversation - search by thread_id FIRST (most reliable)
               let { data: existingConv } = await supabase
                 .from('conversations')
-                .select('id, ai_enabled, thread_id, customer_name')
-                .eq('customer_phone', senderId)
+                .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                .eq('thread_id', threadId)
                 .eq('channel', 'facebook')
                 .maybeSingle();
 
-              // If conversation exists but thread_id is different, update it
-              if (existingConv && existingConv.thread_id !== threadId) {
-                console.log(`[FACEBOOK] Updating thread_id for conversation ${existingConv.id} from ${existingConv.thread_id} to ${threadId}`);
-                await supabase
+              // If not found by thread_id, try customer_phone
+              if (!existingConv) {
+                const { data: convByPhone } = await supabase
                   .from('conversations')
-                  .update({ thread_id: threadId })
-                  .eq('id', existingConv.id);
-                existingConv.thread_id = threadId;
+                  .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                  .eq('customer_phone', senderId)
+                  .eq('channel', 'facebook')
+                  .maybeSingle();
+                
+                if (convByPhone) {
+                  existingConv = convByPhone;
+                  // Update thread_id if different
+                  if (existingConv.thread_id !== threadId) {
+                    console.log(`[FACEBOOK] Updating thread_id for conversation ${existingConv.id} from ${existingConv.thread_id} to ${threadId}`);
+                    await supabase
+                      .from('conversations')
+                      .update({ thread_id: threadId })
+                      .eq('id', existingConv.id);
+                    existingConv.thread_id = threadId;
+                  }
+                }
               }
+
+              console.log(`[FACEBOOK] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'create new'}`);
 
               let conversationId;
               if (existingConv) {
