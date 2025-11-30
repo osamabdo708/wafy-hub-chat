@@ -137,43 +137,20 @@ All colors MUST be HSL.
   }
 }
 
-@keyframes genie-gradient {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
+@keyframes genieGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-.genie-card-gradient {
-  position: relative;
-  border: 2px solid transparent;
-  background-origin: border-box;
-  background-clip: padding-box, border-box;
-}
-
-.genie-card-gradient::before {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: 0.75rem;
-  padding: 2px;
+.genie-card-animated-bg {
   background: linear-gradient(
-    45deg,
-    hsl(280, 80%, 60%),
-    hsl(240, 80%, 65%),
-    hsl(200, 80%, 55%),
-    hsl(45, 90%, 60%),
-    hsl(280, 80%, 60%)
+    135deg,
+    #0ea5e9,
+    #22c55e,
+    #3b82f6,
+    #10b981
   );
-  background-size: 300% 300%;
-  animation: genie-gradient 3s ease infinite;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  z-index: -1;
+  background-size: 400% 400%;
+  animation: genieGradient 8s ease infinite;
 }
