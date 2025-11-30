@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -120,7 +120,7 @@ const Inbox = () => {
     return null;
   };
 
-  const handleImport = async () => {
+  const handleImport = useCallback(async () => {
     setImporting(true);
     try {
       const { data, error } = await supabase.functions.invoke('auto-import-messages');
@@ -135,7 +135,18 @@ const Inbox = () => {
     } finally {
       setImporting(false);
     }
-  };
+  }, []);
+
+  // Auto-import messages every 5 seconds
+  useEffect(() => {
+    const autoImportInterval = setInterval(() => {
+      handleImport();
+    }, 5000); // 5 seconds
+
+    return () => {
+      clearInterval(autoImportInterval);
+    };
+  }, [handleImport]);
 
   const handleDeleteAll = async () => {
     try {
