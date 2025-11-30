@@ -43,6 +43,57 @@ serve(async (req) => {
     let processedCount = 0;
 
     for (const conversation of conversations) {
+      // First, check for any existing unsent AI messages and send them
+      const { data: unsentAIMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .eq('sender_type', 'agent')
+        .eq('reply_sent', false)
+        .order('created_at', { ascending: true });
+
+      if (unsentAIMessages && unsentAIMessages.length > 0) {
+        console.log(`[AI-REPLY] Found ${unsentAIMessages.length} unsent AI messages for conversation ${conversation.id}`);
+        
+        for (const aiMessage of unsentAIMessages) {
+          // Send via Facebook
+          if (conversation.platform === 'facebook' && conversation.customer_phone) {
+            const { data: fbConfig } = await supabase
+              .from('channel_integrations')
+              .select('config')
+              .eq('channel', 'facebook')
+              .single();
+
+            if (fbConfig?.config) {
+              const config = fbConfig.config as any;
+              const sendUrl = `https://graph.facebook.com/v18.0/me/messages?access_token=${config.page_access_token}`;
+              
+              const sendResponse = await fetch(sendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  recipient: { id: conversation.customer_phone },
+                  message: { text: aiMessage.content }
+                })
+              });
+
+              if (!sendResponse.ok) {
+                const errorData = await sendResponse.text();
+                console.error(`[AI-REPLY] Facebook send error: ${errorData}`);
+              } else {
+                console.log(`[AI-REPLY] Resent AI message ${aiMessage.id} to Facebook user ${conversation.customer_phone}`);
+                
+                // Mark as sent
+                await supabase
+                  .from('messages')
+                  .update({ reply_sent: true })
+                  .eq('id', aiMessage.id);
+              }
+            }
+          }
+        }
+      }
+
       // Check for new unreplied messages from last 5 minutes
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: unrepliedMessages } = await supabase
