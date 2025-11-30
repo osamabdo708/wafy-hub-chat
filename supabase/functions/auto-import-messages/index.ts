@@ -287,43 +287,73 @@ serve(async (req) => {
               
               if (messages.length === 0) continue;
 
-              // Get or create conversation using thread_id
-              const { data: existingConv } = await supabase
+              // Get existing conversation - search by customer_phone FIRST
+              let { data: existingConv } = await supabase
                 .from('conversations')
-                .select('id, ai_enabled')
-                .eq('thread_id', threadId)
-                .eq('platform', 'instagram')
+                .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                .eq('customer_phone', senderId)
+                .eq('channel', 'instagram')
                 .maybeSingle();
 
-              let conversationId;
-              if (existingConv) {
-                conversationId = existingConv.id;
+              // If not found by customer_phone, try thread_id
+              if (!existingConv) {
+                const { data: convByThread } = await supabase
+                  .from('conversations')
+                  .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                  .eq('thread_id', threadId)
+                  .eq('channel', 'instagram')
+                  .maybeSingle();
+                
+                existingConv = convByThread;
+              }
+              
+              // Update thread_id if we found a conversation and thread_id is different
+              if (existingConv && existingConv.thread_id !== threadId) {
+                console.log(`[INSTAGRAM] Updating thread_id for conversation ${existingConv.id} from ${existingConv.thread_id} to ${threadId}`);
+                await supabase
+                  .from('conversations')
+                  .update({ thread_id: threadId })
+                  .eq('id', existingConv.id);
+                existingConv.thread_id = threadId;
+              }
+
+              console.log(`[INSTAGRAM] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'SKIP - should not create new'}`);
+
+              // CRITICAL: Do NOT create new conversations during import
+              // Only update existing ones
+              if (!existingConv) {
+                console.log(`[INSTAGRAM] WARNING: No existing conversation found for senderId ${senderId}. Skipping messages in thread ${threadId}.`);
+                continue;
+              }
+
+              const conversationId = existingConv.id;
+              
+              // Refresh customer name if it's a generic placeholder
+              if (existingConv.customer_name && existingConv.customer_name.startsWith('Instagram User')) {
+                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
+                const userResponse = await fetch(userUrl);
+                const userData = await userResponse.json();
+                
+                if (userData.username) {
+                  await supabase
+                    .from('conversations')
+                    .update({ 
+                      customer_name: userData.username,
+                      last_message_at: messages[0].created_time 
+                    })
+                    .eq('id', conversationId);
+                  console.log(`[INSTAGRAM] Updated customer name for conversation ${conversationId} to: ${userData.username}`);
+                } else {
+                  await supabase
+                    .from('conversations')
+                    .update({ last_message_at: messages[0].created_time })
+                    .eq('id', conversationId);
+                }
+              } else {
                 await supabase
                   .from('conversations')
                   .update({ last_message_at: messages[0].created_time })
                   .eq('id', conversationId);
-              } else {
-                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
-                const userResponse = await fetch(userUrl);
-                const userData = await userResponse.json();
-                const customerName = userData.username || `Instagram User ${senderId.substring(0, 8)}`;
-
-                const { data: newConv } = await supabase
-                  .from('conversations')
-                  .insert({
-                    customer_name: customerName,
-                    customer_phone: senderId,
-                    channel: 'instagram',
-                    platform: 'instagram',
-                    thread_id: threadId,
-                    status: 'جديد',
-                    ai_enabled: false,
-                    last_message_at: messages[0].created_time
-                  })
-                  .select()
-                  .single();
-
-                conversationId = newConv.id;
               }
 
               // Import messages with deduplication by message_id
