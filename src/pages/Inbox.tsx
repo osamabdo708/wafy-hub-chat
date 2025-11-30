@@ -9,7 +9,7 @@ import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
 import facebookIcon from "@/assets/facebook.png";
-import { Switch } from "@/components/ui/switch";
+import genieIcon from "@/assets/genie-icon.png";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -237,11 +237,18 @@ const Inbox = () => {
                       </div>
                     </div>
                   </div>
-                  <Switch
-                    checked={conversation.ai_enabled || false}
-                    onCheckedChange={() => toggleAI(conversation.id, conversation.ai_enabled || false)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
+                  <Button
+                    size="sm"
+                    variant={conversation.ai_enabled ? "default" : "outline"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleAI(conversation.id, conversation.ai_enabled || false);
+                    }}
+                    className="gap-2"
+                  >
+                    <img src={genieIcon} alt="Genie" className="w-5 h-5" />
+                    {conversation.ai_enabled ? "تعطيل المارد" : "تفعيل المارد"}
+                  </Button>
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2">
