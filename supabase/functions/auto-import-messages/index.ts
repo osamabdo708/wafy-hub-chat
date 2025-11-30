@@ -62,14 +62,19 @@ serve(async (req) => {
         console.log(`[FACEBOOK] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
         
         // Fetch ALL conversations including unread and unanswered with increased limit
-        // Using folder=inbox to get all inbox conversations regardless of read/unread status
-        let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time},unread_count,message_count&folder=inbox&limit=100&access_token=${page_access_token}`;
+        // We need to fetch from BOTH inbox and other (message requests) folders
+        const folders = ['inbox', 'other']; // 'other' contains message requests
         
-        console.log(`[FACEBOOK] Calling API for ALL inbox conversations (including unread/unanswered)`);
-        
-        // Paginate through all conversations
+        // Paginate through all conversations from both folders
         let conversationCount = 0;
-        while (conversationsUrl) {
+        
+        for (const folder of folders) {
+          console.log(`[FACEBOOK] Fetching conversations from folder: ${folder}`);
+          let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time},unread_count,message_count&folder=${folder}&limit=100&access_token=${page_access_token}`;
+          
+          console.log(`[FACEBOOK] Calling API for ${folder} folder conversations`);
+          
+          while (conversationsUrl) {
           const conversationsResponse = await fetch(conversationsUrl);
           
           if (!conversationsResponse.ok) {
@@ -246,13 +251,16 @@ serve(async (req) => {
           // Check for next page
           conversationsUrl = conversationsData.paging?.next || null;
         }
+        
+        console.log(`[FACEBOOK] Completed fetching from folder: ${folder}`);
+      } // End of folders loop
 
-        // Update last_fetch_timestamp
-        await supabase
-          .from('channel_integrations')
-          .update({ last_fetch_timestamp: new Date().toISOString() })
-          .eq('channel', 'facebook')
-          .eq('is_connected', true);
+      // Update last_fetch_timestamp
+      await supabase
+        .from('channel_integrations')
+        .update({ last_fetch_timestamp: new Date().toISOString() })
+        .eq('channel', 'facebook')
+        .eq('is_connected', true);
       }
     }
 
