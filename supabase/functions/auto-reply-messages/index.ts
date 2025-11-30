@@ -279,15 +279,19 @@ ${productsContext}
         }
       }
 
-      // Save AI message
-      await supabase
+      // Save AI message with reply_sent=true to prevent duplicates
+      const { data: savedMessage } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversation.id,
           content: aiReply,
           sender_type: 'agent',
-          message_id: `ai_${Date.now()}_${conversation.id}`
-        });
+          message_id: `ai_${Date.now()}_${conversation.id}`,
+          reply_sent: true,
+          is_old: false
+        })
+        .select()
+        .single();
 
       // Mark ALL unreplied customer messages in this conversation as replied to prevent duplicates
       await supabase
