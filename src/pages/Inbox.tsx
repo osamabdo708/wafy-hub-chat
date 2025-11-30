@@ -221,9 +221,9 @@ const Inbox = () => {
               <p className="text-center text-muted-foreground">لا توجد محادثات بعد</p>
             </Card>
           ) : (
-            <ScrollArea className="h-[calc(100vh-280px)]">
-              <div className="space-y-4 pl-4">
-                {conversations.slice(0, 4).map((conversation) => (
+            <ScrollArea className="h-[600px]">
+              <div className="space-y-4 pr-4">
+                {conversations.map((conversation) => (
               <Card 
                 key={conversation.id} 
                 className={`p-4 cursor-pointer hover:shadow-md transition-shadow relative ${
