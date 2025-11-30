@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Clock, User } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -10,6 +10,16 @@ import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
 import facebookIcon from "@/assets/facebook.png";
 import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Conversation {
   id: string;
@@ -27,6 +37,7 @@ const Inbox = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   useEffect(() => {
     fetchConversations();
@@ -108,6 +119,26 @@ const Inbox = () => {
     return null;
   };
 
+  const handleDeleteAll = async () => {
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all by using a condition that matches all
+
+      if (error) throw error;
+
+      setConversations([]);
+      setSelectedConversation(null);
+      toast.success("تم حذف جميع المحادثات بنجاح");
+    } catch (error) {
+      console.error('Error deleting conversations:', error);
+      toast.error("فشل في حذف المحادثات");
+    } finally {
+      setShowDeleteDialog(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -117,6 +148,14 @@ const Inbox = () => {
         </div>
         <div className="flex gap-2">
           <Button variant="outline">تصفية</Button>
+          <Button 
+            variant="destructive" 
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={conversations.length === 0}
+          >
+            <Trash2 className="w-4 h-4 ml-2" />
+            حذف الكل
+          </Button>
         </div>
       </div>
 
@@ -211,6 +250,23 @@ const Inbox = () => {
           )}
         </div>
       </div>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>هل أنت متأكد من حذف جميع المحادثات؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيتم حذف جميع المحادث��ت والرسائل نهائياً. لا يمكن التراجع عن هذا الإجراء.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              حذف الكل
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
