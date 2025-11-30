@@ -99,12 +99,33 @@ serve(async (req) => {
               }
 
               // Get or create conversation using thread_id
-              const { data: existingConv } = await supabase
+              let { data: existingConv } = await supabase
                 .from('conversations')
-                .select('id, ai_enabled')
+                .select('id, ai_enabled, thread_id')
                 .eq('thread_id', threadId)
                 .eq('platform', 'facebook')
                 .maybeSingle();
+
+              // If not found by thread_id, try by customer_phone (for old conversations)
+              if (!existingConv) {
+                const { data: convByPhone } = await supabase
+                  .from('conversations')
+                  .select('id, ai_enabled, thread_id')
+                  .eq('customer_phone', senderId)
+                  .eq('platform', 'facebook')
+                  .maybeSingle();
+                
+                if (convByPhone) {
+                  // Update the existing conversation's thread_id
+                  await supabase
+                    .from('conversations')
+                    .update({ thread_id: threadId })
+                    .eq('id', convByPhone.id);
+                  
+                  existingConv = { ...convByPhone, thread_id: threadId };
+                  console.log(`[FACEBOOK] Updated conversation ${convByPhone.id} with thread_id ${threadId}`);
+                }
+              }
 
               let conversationId;
               if (existingConv) {
@@ -119,7 +140,7 @@ serve(async (req) => {
                 const userData = await userResponse.json();
                 const customerName = userData.name || `Facebook User ${senderId.substring(0, 8)}`;
 
-                const { data: newConv } = await supabase
+                const { data: newConv, error: insertError } = await supabase
                   .from('conversations')
                   .insert({
                     customer_name: customerName,
@@ -134,12 +155,20 @@ serve(async (req) => {
                   .select()
                   .single();
 
+                if (insertError || !newConv) {
+                  console.error(`[FACEBOOK] Failed to create conversation for thread ${threadId}:`, insertError);
+                  continue;
+                }
+
                 conversationId = newConv.id;
               }
 
               // Import messages with deduplication by message_id
               for (const msg of messages.reverse()) {
-                if (!msg.message || !msg.id) continue;
+                if (!msg || !msg.message || !msg.id) {
+                  console.log(`[FACEBOOK] Skipping invalid message in thread ${threadId}`);
+                  continue;
+                }
 
                 // Check if message already exists
                 const { data: existingMsg } = await supabase
@@ -167,6 +196,9 @@ serve(async (req) => {
 
                 if (!error) {
                   totalImported++;
+                  console.log(`[FACEBOOK] Imported message ${msg.id} to conversation ${conversationId}`);
+                } else {
+                  console.error(`[FACEBOOK] Failed to import message ${msg.id}:`, error);
                 }
               }
             }
