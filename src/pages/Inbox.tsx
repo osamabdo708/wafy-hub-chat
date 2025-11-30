@@ -183,6 +183,14 @@ const Inbox = () => {
           <p className="text-muted-foreground mt-1">جميع محادثاتك من كل القنوات في مكان واحد</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={handleImport}
+            disabled={importing}
+          >
+            <Download className="w-4 h-4 ml-2" />
+            {importing ? "جاري الاستيراد..." : "استيراد الرسائل"}
+          </Button>
           <Button variant="outline">تصفية</Button>
           <Button 
             variant="destructive" 
