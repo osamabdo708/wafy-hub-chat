@@ -61,10 +61,11 @@ serve(async (req) => {
 
         console.log(`[FACEBOOK] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
         
-        // Fetch conversations WITHOUT since parameter (doesn't work)
-        let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time}&access_token=${page_access_token}`;
+        // Fetch ALL conversations including unread and unanswered with increased limit
+        // Using folder=inbox to get all inbox conversations regardless of read/unread status
+        let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time},unread_count,message_count&folder=inbox&limit=100&access_token=${page_access_token}`;
         
-        console.log(`[FACEBOOK] Calling API (no since parameter due to Facebook API limitation)`);
+        console.log(`[FACEBOOK] Calling API for ALL inbox conversations (including unread/unanswered)`);
         
         // Paginate through all conversations
         let conversationCount = 0;
@@ -87,6 +88,10 @@ serve(async (req) => {
               const threadId = fbConv.id;
               const senderId = fbConv.senders?.data[0]?.id || 'unknown';
               const allMessages = fbConv.messages?.data || [];
+              const unreadCount = fbConv.unread_count || 0;
+              const messageCount = fbConv.message_count || 0;
+              
+              console.log(`[FACEBOOK] Thread ${threadId}: unread=${unreadCount}, total_messages=${messageCount}, sender=${senderId}`);
               
               // Filter messages by timestamp - use >= to include messages at exact time
               const messages = allMessages.filter((msg: any) => {
