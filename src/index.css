@@ -136,3 +136,44 @@ All colors MUST be HSL.
     direction: rtl;
   }
 }
+
+@keyframes genie-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.genie-card-gradient {
+  position: relative;
+  border: 2px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.genie-card-gradient::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 0.75rem;
+  padding: 2px;
+  background: linear-gradient(
+    45deg,
+    hsl(280, 80%, 60%),
+    hsl(240, 80%, 65%),
+    hsl(200, 80%, 55%),
+    hsl(45, 90%, 60%),
+    hsl(280, 80%, 60%)
+  );
+  background-size: 300% 300%;
+  animation: genie-gradient 3s ease infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  z-index: -1;
+}
