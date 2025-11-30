@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageSquare, Clock, User, Trash2, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
@@ -210,7 +211,7 @@ const Inbox = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1">
           {loading ? (
             <Card className="p-4">
               <p className="text-center text-muted-foreground">جاري التحميل...</p>
@@ -220,7 +221,9 @@ const Inbox = () => {
               <p className="text-center text-muted-foreground">لا توجد محادثات بعد</p>
             </Card>
           ) : (
-            conversations.map((conversation) => (
+            <ScrollArea className="h-[calc(100vh-280px)]">
+              <div className="space-y-4 pl-4">
+                {conversations.slice(0, 4).map((conversation) => (
               <Card 
                 key={conversation.id} 
                 className={`p-4 cursor-pointer hover:shadow-md transition-shadow relative ${
@@ -278,7 +281,9 @@ const Inbox = () => {
                   </Badge>
                 </div>
               </Card>
-            ))
+                ))}
+              </div>
+            </ScrollArea>
           )}
         </div>
 
