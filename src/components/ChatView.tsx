@@ -133,20 +133,10 @@ const ChatView = ({
         .eq('id', conversationId)
         .single();
 
-      // Insert message to database (using existing conversation)
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          content: newMessage.trim(),
-          sender_type: 'employee'
-        });
-
-      if (error) throw error;
-
-      // Send message to Facebook using existing thread_id
+      // Send message to Facebook FIRST to get message_id
+      let fbMessageId = null;
       if (channel === 'facebook' && conversation?.thread_id) {
-        const { error: sendError } = await supabase.functions.invoke('send-facebook-message', {
+        const { data: fbResponse, error: sendError } = await supabase.functions.invoke('send-facebook-message', {
           body: {
             recipientId: customerPhone,
             message: newMessage.trim()
@@ -155,11 +145,27 @@ const ChatView = ({
 
         if (sendError) {
           console.error('Error sending to Facebook:', sendError);
-          toast.error('تم حفظ الرسالة لكن فشل إرسالها إلى فيسبوك');
+          toast.error('فشل إرسال الرسالة إلى فيسبوك');
           setSending(false);
           return;
         }
+
+        fbMessageId = fbResponse?.messageId;
       }
+
+      // Insert message to database with Facebook message_id to prevent duplicate imports
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          content: newMessage.trim(),
+          sender_type: 'employee',
+          message_id: fbMessageId, // Save Facebook message_id
+          is_old: false,
+          reply_sent: true // Mark as already sent since employee sent it
+        });
+
+      if (error) throw error;
 
       // Update conversation's last_message_at (do NOT create new conversation)
       await supabase
@@ -184,25 +190,38 @@ const ChatView = ({
     try {
       const productMessage = `📦 *${product.name}*\n\n${product.description}\n\n💰 السعر: ${product.price} ريال`;
       
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          content: productMessage,
-          sender_type: 'employee'
-        });
-
-      if (error) throw error;
-
-      // Send to channel if needed
+      // Send to channel FIRST to get message_id
+      let fbMessageId = null;
       if (channel === 'facebook' && customerPhone) {
-        await supabase.functions.invoke('send-facebook-message', {
+        const { data: fbResponse, error: sendError } = await supabase.functions.invoke('send-facebook-message', {
           body: {
             recipientId: customerPhone,
             message: productMessage
           }
         });
+
+        if (sendError) {
+          console.error('Error sending to Facebook:', sendError);
+          toast.error('فشل إرسال المنتج إلى فيسبوك');
+          return;
+        }
+
+        fbMessageId = fbResponse?.messageId;
       }
+
+      // Save to database with message_id to prevent duplicate imports
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          content: productMessage,
+          sender_type: 'employee',
+          message_id: fbMessageId,
+          is_old: false,
+          reply_sent: true
+        });
+
+      if (error) throw error;
 
       setShowProductDialog(false);
       toast.success('تم إرسال المنتج للعميل');

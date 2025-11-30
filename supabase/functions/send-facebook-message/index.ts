@@ -80,6 +80,7 @@ serve(async (req) => {
 
     console.log('Message sent successfully:', fbData);
 
+    // Return message_id so frontend can save it to prevent duplicate imports
     return new Response(
       JSON.stringify({ success: true, messageId: fbData.message_id }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
