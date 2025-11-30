@@ -131,14 +131,7 @@ serve(async (req) => {
                 existingConv.thread_id = threadId;
               }
 
-              console.log(`[FACEBOOK] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'SKIP - should not create new'}`);
-
-              // CRITICAL: Do NOT create new conversations during import
-              // Only update existing ones
-              if (!existingConv) {
-                console.log(`[FACEBOOK] WARNING: No existing conversation found for senderId ${senderId}. Skipping messages in thread ${threadId}.`);
-                continue;
-              }
+              console.log(`[FACEBOOK] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'create new'}`);
 
               let conversationId;
               if (existingConv) {
@@ -171,6 +164,37 @@ serve(async (req) => {
                     .update({ last_message_at: messages[0].created_time })
                     .eq('id', conversationId);
                 }
+              } else {
+                // Create new conversation for new Facebook thread
+                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
+                const userResponse = await fetch(userUrl);
+                const userData = await userResponse.json();
+                const customerName = userData.name || `Facebook User ${senderId.slice(0, 8)}`;
+                
+                console.log(`[FACEBOOK] Creating new conversation for sender ${senderId} (${customerName})`);
+                
+                const { data: newConv, error: createError } = await supabase
+                  .from('conversations')
+                  .insert({
+                    customer_name: customerName,
+                    customer_phone: senderId,
+                    channel: 'facebook',
+                    thread_id: threadId,
+                    platform: 'facebook',
+                    status: 'جديد',
+                    last_message_at: messages[0].created_time,
+                    ai_enabled: false
+                  })
+                  .select()
+                  .single();
+                
+                if (createError) {
+                  console.error(`[FACEBOOK] Failed to create conversation:`, createError);
+                  continue;
+                }
+                
+                conversationId = newConv.id;
+                console.log(`[FACEBOOK] Created new conversation ${conversationId} for ${customerName}`);
               }
 
               // Import messages with deduplication by message_id
@@ -320,32 +344,33 @@ serve(async (req) => {
                 existingConv.thread_id = threadId;
               }
 
-              console.log(`[INSTAGRAM] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'SKIP - should not create new'}`);
+              console.log(`[INSTAGRAM] Thread ${threadId}: Existing conversation: ${existingConv ? existingConv.id : 'none'}, will ${existingConv ? 'update' : 'create new'}`);
 
-              // CRITICAL: Do NOT create new conversations during import
-              // Only update existing ones
-              if (!existingConv) {
-                console.log(`[INSTAGRAM] WARNING: No existing conversation found for senderId ${senderId}. Skipping messages in thread ${threadId}.`);
-                continue;
-              }
-
-              const conversationId = existingConv.id;
-              
-              // Refresh customer name if it's a generic placeholder
-              if (existingConv.customer_name && existingConv.customer_name.startsWith('Instagram User')) {
-                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
-                const userResponse = await fetch(userUrl);
-                const userData = await userResponse.json();
+              let conversationId;
+              if (existingConv) {
+                conversationId = existingConv.id;
                 
-                if (userData.username) {
-                  await supabase
-                    .from('conversations')
-                    .update({ 
-                      customer_name: userData.username,
-                      last_message_at: messages[0].created_time 
-                    })
-                    .eq('id', conversationId);
-                  console.log(`[INSTAGRAM] Updated customer name for conversation ${conversationId} to: ${userData.username}`);
+                // Refresh customer name if it's a generic placeholder
+                if (existingConv.customer_name && existingConv.customer_name.startsWith('Instagram User')) {
+                  const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
+                  const userResponse = await fetch(userUrl);
+                  const userData = await userResponse.json();
+                  
+                  if (userData.username) {
+                    await supabase
+                      .from('conversations')
+                      .update({ 
+                        customer_name: userData.username,
+                        last_message_at: messages[0].created_time 
+                      })
+                      .eq('id', conversationId);
+                    console.log(`[INSTAGRAM] Updated customer name for conversation ${conversationId} to: ${userData.username}`);
+                  } else {
+                    await supabase
+                      .from('conversations')
+                      .update({ last_message_at: messages[0].created_time })
+                      .eq('id', conversationId);
+                  }
                 } else {
                   await supabase
                     .from('conversations')
@@ -353,10 +378,36 @@ serve(async (req) => {
                     .eq('id', conversationId);
                 }
               } else {
-                await supabase
+                // Create new conversation for new Instagram thread
+                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
+                const userResponse = await fetch(userUrl);
+                const userData = await userResponse.json();
+                const customerName = userData.username || `Instagram User ${senderId.slice(0, 8)}`;
+                
+                console.log(`[INSTAGRAM] Creating new conversation for sender ${senderId} (${customerName})`);
+                
+                const { data: newConv, error: createError } = await supabase
                   .from('conversations')
-                  .update({ last_message_at: messages[0].created_time })
-                  .eq('id', conversationId);
+                  .insert({
+                    customer_name: customerName,
+                    customer_phone: senderId,
+                    channel: 'instagram',
+                    thread_id: threadId,
+                    platform: 'instagram',
+                    status: 'جديد',
+                    last_message_at: messages[0].created_time,
+                    ai_enabled: false
+                  })
+                  .select()
+                  .single();
+                
+                if (createError) {
+                  console.error(`[INSTAGRAM] Failed to create conversation:`, createError);
+                  continue;
+                }
+                
+                conversationId = newConv.id;
+                console.log(`[INSTAGRAM] Created new conversation ${conversationId} for ${customerName}`);
               }
 
               // Import messages with deduplication by message_id
