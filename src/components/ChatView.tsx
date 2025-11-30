@@ -126,19 +126,26 @@ const ChatView = ({
 
     setSending(true);
     try {
-      // Insert message to database
+      // Get current conversation to check thread_id
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('thread_id, platform')
+        .eq('id', conversationId)
+        .single();
+
+      // Insert message to database (using existing conversation)
       const { error } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversationId,
           content: newMessage.trim(),
-          sender_type: 'agent'
+          sender_type: 'employee'
         });
 
       if (error) throw error;
 
-      // Send message to Facebook if it's a Facebook conversation
-      if (channel === 'facebook' && customerPhone) {
+      // Send message to Facebook using existing thread_id
+      if (channel === 'facebook' && conversation?.thread_id) {
         const { error: sendError } = await supabase.functions.invoke('send-facebook-message', {
           body: {
             recipientId: customerPhone,
@@ -154,7 +161,7 @@ const ChatView = ({
         }
       }
 
-      // Update conversation's last_message_at
+      // Update conversation's last_message_at (do NOT create new conversation)
       await supabase
         .from('conversations')
         .update({ 

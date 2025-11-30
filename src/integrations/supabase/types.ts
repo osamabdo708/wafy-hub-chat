@@ -21,6 +21,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_connected: boolean | null
+          last_fetch_timestamp: string | null
           updated_at: string | null
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_connected?: boolean | null
+          last_fetch_timestamp?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -37,6 +39,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_connected?: boolean | null
+          last_fetch_timestamp?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -53,8 +56,10 @@ export type Database = {
           customer_phone: string | null
           id: string
           last_message_at: string | null
+          platform: string | null
           status: Database["public"]["Enums"]["conversation_status"] | null
           tags: string[] | null
+          thread_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -68,8 +73,10 @@ export type Database = {
           customer_phone?: string | null
           id?: string
           last_message_at?: string | null
+          platform?: string | null
           status?: Database["public"]["Enums"]["conversation_status"] | null
           tags?: string[] | null
+          thread_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -83,8 +90,10 @@ export type Database = {
           customer_phone?: string | null
           id?: string
           last_message_at?: string | null
+          platform?: string | null
           status?: Database["public"]["Enums"]["conversation_status"] | null
           tags?: string[] | null
+          thread_id?: string | null
           updated_at?: string | null
         }
         Relationships: [

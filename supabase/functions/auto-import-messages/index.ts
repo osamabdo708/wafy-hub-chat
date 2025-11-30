@@ -19,18 +19,19 @@ serve(async (req) => {
     console.log('[AUTO-IMPORT] Starting automated message import...');
 
     let totalImported = 0;
-    const { data: isFirstRun } = await supabase
+
+    // Determine if this is initial import (no messages exist yet)
+    const { data: existingMessages } = await supabase
       .from('messages')
       .select('id')
-      .limit(1)
-      .single();
+      .limit(1);
     
-    const isInitialImport = !isFirstRun;
+    const isInitialImport = !existingMessages || existingMessages.length === 0;
 
     // Import Facebook Messages
     const { data: fbIntegration } = await supabase
       .from('channel_integrations')
-      .select('config')
+      .select('config, last_fetch_timestamp')
       .eq('channel', 'facebook')
       .eq('is_connected', true)
       .single();
@@ -41,96 +42,141 @@ serve(async (req) => {
 
       if (page_id && page_access_token) {
         console.log('[FACEBOOK] Fetching conversations...');
-        const conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time}&access_token=${page_access_token}`;
-        const conversationsResponse = await fetch(conversationsUrl);
-        const conversationsData = await conversationsResponse.json();
+        
+        // Calculate since timestamp (last fetch or 24 hours ago for initial)
+        let sinceTimestamp = fbIntegration.last_fetch_timestamp 
+          ? new Date(fbIntegration.last_fetch_timestamp).getTime() / 1000
+          : (Date.now() - 24 * 60 * 60 * 1000) / 1000;
 
-        if (conversationsData.data) {
-          for (const fbConv of conversationsData.data) {
-            const senderId = fbConv.senders?.data[0]?.id || 'unknown';
-            const messages = fbConv.messages?.data || [];
-            
-            if (messages.length === 0) continue;
+        let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time}&since=${sinceTimestamp}&access_token=${page_access_token}`;
+        
+        // Paginate through all conversations
+        while (conversationsUrl) {
+          const conversationsResponse = await fetch(conversationsUrl);
+          const conversationsData = await conversationsResponse.json();
 
-            // Get or create conversation
-            const { data: existingConv } = await supabase
-              .from('conversations')
-              .select('id, ai_enabled')
-              .eq('customer_phone', senderId)
-              .eq('channel', 'facebook')
-              .maybeSingle();
+          if (conversationsData.data) {
+            for (const fbConv of conversationsData.data) {
+              const threadId = fbConv.id;
+              const senderId = fbConv.senders?.data[0]?.id || 'unknown';
+              const messages = fbConv.messages?.data || [];
+              
+              if (messages.length === 0) continue;
 
-            let conversationId;
-            if (existingConv) {
-              conversationId = existingConv.id;
-              await supabase
+              // Get or create conversation using thread_id
+              const { data: existingConv } = await supabase
                 .from('conversations')
-                .update({ last_message_at: messages[0].created_time })
-                .eq('id', conversationId);
-            } else {
-              const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
-              const userResponse = await fetch(userUrl);
-              const userData = await userResponse.json();
-              const customerName = userData.name || `Facebook User ${senderId.substring(0, 8)}`;
+                .select('id, ai_enabled')
+                .eq('thread_id', threadId)
+                .eq('platform', 'facebook')
+                .maybeSingle();
 
-              const { data: newConv } = await supabase
-                .from('conversations')
-                .insert({
-                  customer_name: customerName,
-                  customer_phone: senderId,
-                  channel: 'facebook',
-                  status: 'جديد',
-                  last_message_at: messages[0].created_time
-                })
-                .select()
-                .single();
+              let conversationId;
+              if (existingConv) {
+                conversationId = existingConv.id;
+                await supabase
+                  .from('conversations')
+                  .update({ last_message_at: messages[0].created_time })
+                  .eq('id', conversationId);
+              } else {
+                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
+                const userResponse = await fetch(userUrl);
+                const userData = await userResponse.json();
+                const customerName = userData.name || `Facebook User ${senderId.substring(0, 8)}`;
 
-              conversationId = newConv.id;
-            }
+                const { data: newConv } = await supabase
+                  .from('conversations')
+                  .insert({
+                    customer_name: customerName,
+                    customer_phone: senderId,
+                    channel: 'facebook',
+                    platform: 'facebook',
+                    thread_id: threadId,
+                    status: 'جديد',
+                    ai_enabled: false, // Initial import: AI disabled by default
+                    last_message_at: messages[0].created_time
+                  })
+                  .select()
+                  .single();
 
-            // Import messages with deduplication
-            for (const msg of messages.reverse()) {
-              if (!msg.message || !msg.id) continue;
+                conversationId = newConv.id;
+              }
 
-              const { error } = await supabase
-                .from('messages')
-                .insert({
-                  conversation_id: conversationId,
-                  content: msg.message,
-                  sender_type: msg.from?.id === page_id ? 'agent' : 'customer',
-                  created_at: msg.created_time,
-                  message_id: msg.id,
-                  is_old: isInitialImport,
-                  reply_sent: isInitialImport
-                })
-                .select();
+              // Import messages with deduplication by message_id
+              for (const msg of messages.reverse()) {
+                if (!msg.message || !msg.id) continue;
 
-              if (!error) {
-                totalImported++;
+                // Check if message already exists
+                const { data: existingMsg } = await supabase
+                  .from('messages')
+                  .select('id')
+                  .eq('message_id', msg.id)
+                  .maybeSingle();
+
+                if (existingMsg) {
+                  console.log(`[FACEBOOK] Skipping duplicate message: ${msg.id}`);
+                  continue;
+                }
+
+                const { error } = await supabase
+                  .from('messages')
+                  .insert({
+                    conversation_id: conversationId,
+                    content: msg.message,
+                    sender_type: msg.from?.id === page_id ? 'employee' : 'customer',
+                    created_at: msg.created_time,
+                    message_id: msg.id,
+                    is_old: isInitialImport,
+                    reply_sent: isInitialImport
+                  });
+
+                if (!error) {
+                  totalImported++;
+                }
               }
             }
           }
+
+          // Check for next page
+          conversationsUrl = conversationsData.paging?.next || null;
         }
+
+        // Update last_fetch_timestamp
+        await supabase
+          .from('channel_integrations')
+          .update({ last_fetch_timestamp: new Date().toISOString() })
+          .eq('channel', 'facebook')
+          .eq('is_connected', true);
       }
     }
 
     // Import WhatsApp Messages (similar pattern)
     const { data: waIntegration } = await supabase
       .from('channel_integrations')
-      .select('config')
+      .select('config, last_fetch_timestamp')
       .eq('channel', 'whatsapp')
       .eq('is_connected', true)
       .single();
 
     if (waIntegration?.config) {
       console.log('[WHATSAPP] Fetching messages...');
-      // WhatsApp import logic here (similar to Facebook)
+      const config = waIntegration.config as any;
+      const { phone_number_id, access_token } = config;
+
+      if (phone_number_id && access_token) {
+        let sinceTimestamp = waIntegration.last_fetch_timestamp 
+          ? new Date(waIntegration.last_fetch_timestamp).getTime() / 1000
+          : (Date.now() - 24 * 60 * 60 * 1000) / 1000;
+
+        // WhatsApp API implementation would go here
+        // Similar structure to Facebook with thread_id and message_id deduplication
+      }
     }
 
     console.log(`[AUTO-IMPORT] Completed. Imported ${totalImported} new messages.`);
 
-    // Trigger auto-reply
-    if (totalImported > 0) {
+    // Trigger auto-reply only for new non-old messages
+    if (totalImported > 0 && !isInitialImport) {
       console.log('[AUTO-IMPORT] Triggering auto-reply...');
       await supabase.functions.invoke('auto-reply-messages');
     }
