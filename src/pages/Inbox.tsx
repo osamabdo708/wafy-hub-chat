@@ -121,16 +121,25 @@ const Inbox = () => {
 
   const handleDeleteAll = async () => {
     try {
-      const { error } = await supabase
+      // First delete all messages associated with conversations
+      const { error: messagesError } = await supabase
+        .from('messages')
+        .delete()
+        .gte('created_at', '1970-01-01'); // Match all rows
+
+      if (messagesError) throw messagesError;
+
+      // Then delete all conversations
+      const { error: conversationsError } = await supabase
         .from('conversations')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all by using a condition that matches all
+        .gte('created_at', '1970-01-01'); // Match all rows
 
-      if (error) throw error;
+      if (conversationsError) throw conversationsError;
 
       setConversations([]);
       setSelectedConversation(null);
-      toast.success("تم حذف جميع المحادثات بنجاح");
+      toast.success("تم حذف جميع المحادثات والرسائل بنجاح");
     } catch (error) {
       console.error('Error deleting conversations:', error);
       toast.error("فشل في حذف المحادثات");
