@@ -223,9 +223,9 @@ const Inbox = () => {
             conversations.map((conversation) => (
               <Card 
                 key={conversation.id} 
-                className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
+                className={`p-4 cursor-pointer hover:shadow-md transition-shadow relative ${
                   selectedConversation?.id === conversation.id ? 'border-primary shadow-md' : ''
-                }`}
+                } ${conversation.ai_enabled ? 'genie-card-gradient' : ''}`}
                 onClick={() => setSelectedConversation(conversation)}
               >
                 <div className="flex items-start justify-between mb-2">
@@ -250,7 +250,7 @@ const Inbox = () => {
                       e.stopPropagation();
                       toggleAI(conversation.id, conversation.ai_enabled || false);
                     }}
-                    className={`gap-2 ${conversation.ai_enabled ? 'animate-pulse' : ''}`}
+                    className={`gap-2 ${conversation.ai_enabled ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse' : ''}`}
                   >
                     <img src={genieIcon} alt="Genie" className={`w-5 h-5 ${conversation.ai_enabled ? 'animate-pulse' : ''}`} />
                     {conversation.ai_enabled ? "تعطيل المارد" : "تفعيل المارد"}
