@@ -74,12 +74,28 @@ serve(async (req) => {
         messageId
       });
 
-      // Find or create conversation
-      const { data: existingConversation, error: findError } = await supabase
+      // Check if message already exists (deduplication)
+      const { data: existingMessage } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('message_id', messageId)
+        .maybeSingle();
+
+      if (existingMessage) {
+        console.log('Message already exists, skipping');
+        return new Response(JSON.stringify({ status: 'duplicate' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Find or create conversation using thread_id
+      const threadId = `whatsapp_${customerPhone}`;
+      
+      const { data: existingConversation } = await supabase
         .from('conversations')
         .select('id, ai_enabled')
-        .eq('customer_phone', customerPhone)
-        .eq('channel', 'whatsapp')
+        .eq('thread_id', threadId)
+        .eq('platform', 'whatsapp')
         .maybeSingle();
 
       let conversationId;
@@ -94,7 +110,7 @@ serve(async (req) => {
           .from('conversations')
           .update({ 
             last_message_at: new Date().toISOString(),
-            status: 'جديد'
+            status: 'مفتوح'
           })
           .eq('id', conversationId);
           
@@ -107,7 +123,10 @@ serve(async (req) => {
             customer_name: customerName,
             customer_phone: customerPhone,
             channel: 'whatsapp',
+            platform: 'whatsapp',
+            thread_id: threadId,
             status: 'جديد',
+            ai_enabled: false,
             last_message_at: new Date().toISOString()
           })
           .select('id, ai_enabled')

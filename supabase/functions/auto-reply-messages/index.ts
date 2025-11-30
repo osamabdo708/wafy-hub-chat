@@ -29,7 +29,7 @@ serve(async (req) => {
     // Find conversations with AI enabled that have unreplied messages
     const { data: conversations } = await supabase
       .from('conversations')
-      .select('id, customer_name, customer_phone, channel, ai_enabled')
+      .select('id, customer_name, customer_phone, thread_id, platform, channel, ai_enabled')
       .eq('ai_enabled', true);
 
     if (!conversations || conversations.length === 0) {
@@ -43,7 +43,8 @@ serve(async (req) => {
     let processedCount = 0;
 
     for (const conversation of conversations) {
-      // Check for new unreplied messages
+      // Check for new unreplied messages from last 5 minutes
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: unrepliedMessages } = await supabase
         .from('messages')
         .select('*')
@@ -51,7 +52,9 @@ serve(async (req) => {
         .eq('sender_type', 'customer')
         .eq('reply_sent', false)
         .eq('is_old', false)
-        .order('created_at', { ascending: false });
+        .gte('created_at', fiveMinutesAgo)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
       if (!unrepliedMessages || unrepliedMessages.length === 0) continue;
 
@@ -195,8 +198,8 @@ ${productsContext}
           .eq('id', msg.id);
       }
 
-      // Send message via channel API
-      if (conversation.channel === 'facebook') {
+      // Send message via channel API using thread_id
+      if (conversation.platform === 'facebook' && conversation.thread_id) {
         const { data: fbConfig } = await supabase
           .from('channel_integrations')
           .select('config')
@@ -207,11 +210,16 @@ ${productsContext}
           const config = fbConfig.config as any;
           const sendUrl = `https://graph.facebook.com/v18.0/me/messages?access_token=${config.page_access_token}`;
           
+          // Extract recipient ID from thread_id (format: pageId_userId)
+          const recipientId = conversation.thread_id.includes('_') 
+            ? conversation.thread_id.split('_')[1] 
+            : conversation.customer_phone;
+          
           await fetch(sendUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              recipient: { id: conversation.customer_phone },
+              recipient: { id: recipientId },
               message: { text: aiReply }
             })
           });
