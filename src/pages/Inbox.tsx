@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Clock, User, Trash2 } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -38,6 +38,7 @@ const Inbox = () => {
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     fetchConversations();
@@ -119,6 +120,23 @@ const Inbox = () => {
     return null;
   };
 
+  const handleImport = async () => {
+    setImporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-import-messages');
+      
+      if (error) throw error;
+      
+      toast.success(`تم استيراد ${data?.imported || 0} رسالة جديدة`);
+      fetchConversations();
+    } catch (error) {
+      console.error('Error importing messages:', error);
+      toast.error("فشل في استيراد الرسائل");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleDeleteAll = async () => {
     try {
       // First delete all messages associated with conversations
@@ -157,6 +175,14 @@ const Inbox = () => {
         </div>
         <div className="flex gap-2">
           <Button variant="outline">تصفية</Button>
+          <Button 
+            variant="secondary"
+            onClick={handleImport}
+            disabled={importing}
+          >
+            <Download className="w-4 h-4 ml-2" />
+            {importing ? "جاري الاستيراد..." : "استيراد الرسائل"}
+          </Button>
           <Button 
             variant="destructive" 
             onClick={() => setShowDeleteDialog(true)}
