@@ -86,7 +86,7 @@ serve(async (req) => {
             .select('id')
             .eq('customer_phone', senderId)
             .eq('channel', 'facebook')
-            .single();
+            .maybeSingle();
 
           let conversationId;
 
