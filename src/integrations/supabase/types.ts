@@ -143,7 +143,10 @@ export type Database = {
           conversation_id: string
           created_at: string | null
           id: string
+          is_old: boolean | null
           is_read: boolean | null
+          message_id: string | null
+          reply_sent: boolean | null
           sender_id: string | null
           sender_type: string
         }
@@ -153,7 +156,10 @@ export type Database = {
           conversation_id: string
           created_at?: string | null
           id?: string
+          is_old?: boolean | null
           is_read?: boolean | null
+          message_id?: string | null
+          reply_sent?: boolean | null
           sender_id?: string | null
           sender_type: string
         }
@@ -163,7 +169,10 @@ export type Database = {
           conversation_id?: string
           created_at?: string | null
           id?: string
+          is_old?: boolean | null
           is_read?: boolean | null
+          message_id?: string | null
+          reply_sent?: boolean | null
           sender_id?: string | null
           sender_type?: string
         }
@@ -190,6 +199,7 @@ export type Database = {
           assigned_to: string | null
           conversation_id: string | null
           created_at: string | null
+          created_by: string | null
           customer_email: string | null
           customer_name: string
           customer_phone: string | null
@@ -199,6 +209,7 @@ export type Database = {
           price: number
           product_id: string | null
           service_id: string | null
+          source_platform: string | null
           status: Database["public"]["Enums"]["order_status"] | null
           updated_at: string | null
         }
@@ -207,6 +218,7 @@ export type Database = {
           assigned_to?: string | null
           conversation_id?: string | null
           created_at?: string | null
+          created_by?: string | null
           customer_email?: string | null
           customer_name: string
           customer_phone?: string | null
@@ -216,6 +228,7 @@ export type Database = {
           price: number
           product_id?: string | null
           service_id?: string | null
+          source_platform?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
           updated_at?: string | null
         }
@@ -224,6 +237,7 @@ export type Database = {
           assigned_to?: string | null
           conversation_id?: string | null
           created_at?: string | null
+          created_by?: string | null
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string | null
@@ -233,6 +247,7 @@ export type Database = {
           price?: number
           product_id?: string | null
           service_id?: string | null
+          source_platform?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
           updated_at?: string | null
         }

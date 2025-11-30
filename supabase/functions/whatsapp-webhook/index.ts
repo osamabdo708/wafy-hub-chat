@@ -131,7 +131,10 @@ serve(async (req) => {
           content: messageText,
           sender_type: 'customer',
           is_read: false,
-          attachments: messageType !== 'text' ? { type: messageType } : null
+          attachments: messageType !== 'text' ? { type: messageType } : null,
+          message_id: messageId,
+          is_old: false,
+          reply_sent: false
         });
 
       if (messageError) {
@@ -141,18 +144,13 @@ serve(async (req) => {
 
       console.log('Message created successfully');
 
-      // Check if AI is enabled for this conversation
+      // Trigger auto-reply for AI-enabled conversations
       if (conversation?.ai_enabled) {
-        console.log('AI enabled, triggering AI response...');
+        console.log('AI enabled, triggering auto-reply...');
         try {
-          await supabase.functions.invoke('ai-chat-handler', {
-            body: {
-              conversationId: conversationId,
-              newMessage: messageText
-            }
-          });
+          await supabase.functions.invoke('auto-reply-messages');
         } catch (aiError) {
-          console.error('Error invoking AI handler:', aiError);
+          console.error('Error invoking auto-reply:', aiError);
         }
       }
 
