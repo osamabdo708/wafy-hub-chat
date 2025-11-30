@@ -129,23 +129,27 @@ serve(async (req) => {
         `- ${p.name}: ${p.description} (السعر: ${p.price} ريال)`
       ).join('\n') || 'لا توجد منتجات متاحة';
 
-      const systemPrompt = `أنت مندوب مبيعات محترف وودود في متجر إلكتروني. 
-      
-مهمتك:
-1. التحدث بشكل طبيعي وبشري دون تكرار الأسئلة
-2. استخراج احتياجات العميل من المحادثة تلقائياً
-3. اقتراح المنتجات المناسبة من الكتالوج أدناه
-4. عند تأكيد العميل رغبته في الشراء، قم بإنشاء الطلب باستخدام الأداة create_order
+      const systemPrompt = `أنت مندوب مبيعات ذكي ومحترف. مهمتك مساعدة العملاء بشكل طبيعي وفعّال.
 
-المنتجات المتاحة:
+📋 المنتجات المتاحة:
 ${productsContext}
 
-قواعد هامة:
-- لا تطلب بيانات العميل إلا عند تأكيد الطلب فقط
-- اكتشف اسم المنتج والكمية من سياق المحادثة
-- تحدث بأسلوب بشري طبيعي
-- يمكن للعميل طلب أكثر من منتج في نفس المحادثة
-- عند التأكيد النهائي للطلب، استخدم أداة create_order`;
+✅ قواعد المحادثة:
+1. افهم السياق: اقرأ كل المحادثة وافهم ما يريده العميل
+2. رد مرة واحدة فقط: لا تكرر نفس المعلومات
+3. كن مختصراً: ردود قصيرة ومباشرة (2-3 جمل كحد أقصى)
+4. استخرج البيانات: إذا أرسل العميل اسم ورقم وعنوان، افهم أنه يريد الطلب
+
+📦 إنشاء الطلب:
+- عندما يؤكد العميل الشراء ويرسل: الاسم + رقم الهاتف + العنوان
+- استخدم أداة create_order فوراً
+- البيانات المطلوبة: اسم المنتج، الكمية، اسم العميل، رقم الهاتف، العنوان (إلزامي)
+- إذا نقص أي بيان، اطلبه بوضوح
+
+⚠️ ممنوع:
+- تكرار نفس السؤال
+- إرسال أكثر من رسالة للرد الواحد
+- طلب بيانات العميل قبل أن يبدي رغبته بالشراء`;
 
       // Call OpenAI with tool calling for order creation
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -164,17 +168,18 @@ ${productsContext}
             type: 'function',
             function: {
               name: 'create_order',
-              description: 'إنشاء طلب جديد عندما يؤكد العميل رغبته في الشراء',
+              description: 'إنشاء طلب جديد فقط عندما يوفر العميل: الاسم + رقم الهاتف + العنوان',
               parameters: {
                 type: 'object',
                 properties: {
-                  product_name: { type: 'string', description: 'اسم المنتج' },
-                  quantity: { type: 'number', description: 'الكمية' },
-                  customer_name: { type: 'string', description: 'اسم العميل' },
+                  product_name: { type: 'string', description: 'اسم المنتج المطلوب' },
+                  quantity: { type: 'number', description: 'عدد القطع', default: 1 },
+                  customer_name: { type: 'string', description: 'اسم العميل الكامل' },
                   customer_phone: { type: 'string', description: 'رقم هاتف العميل' },
-                  notes: { type: 'string', description: 'ملاحظات إضافية' }
+                  customer_address: { type: 'string', description: 'عنوان التوصيل (إلزامي)' },
+                  notes: { type: 'string', description: 'ملاحظات إضافية من العميل' }
                 },
-                required: ['product_name', 'quantity']
+                required: ['product_name', 'quantity', 'customer_name', 'customer_phone', 'customer_address']
               }
             }
           }],
@@ -204,6 +209,11 @@ ${productsContext}
             );
 
             if (product) {
+              // Build detailed notes with address
+              const orderNotes = `${orderData.notes || ''}
+📍 العنوان: ${orderData.customer_address}
+📞 رقم الهاتف: ${orderData.customer_phone}`.trim();
+
               const { error: orderError } = await supabase
                 .from('orders')
                 .insert({
@@ -212,7 +222,7 @@ ${productsContext}
                   product_id: product.id,
                   price: product.price * (orderData.quantity || 1),
                   status: 'قيد الانتظار',
-                  notes: orderData.notes || '',
+                  notes: orderNotes,
                   conversation_id: conversation.id,
                   source_platform: conversation.channel,
                   created_by: 'AI',
@@ -221,7 +231,9 @@ ${productsContext}
                 });
 
               if (!orderError) {
-                console.log(`[AI-REPLY] Order created for conversation ${conversation.id}`);
+                console.log(`[AI-REPLY] Order created successfully for ${orderData.customer_name} - ${product.name}`);
+              } else {
+                console.error(`[AI-REPLY] Order creation failed:`, orderError);
               }
             }
           }
@@ -241,13 +253,13 @@ ${productsContext}
           message_id: `ai_${Date.now()}_${conversation.id}`
         });
 
-      // Mark customer messages as replied
-      for (const msg of unrepliedMessages) {
-        await supabase
-          .from('messages')
-          .update({ reply_sent: true })
-          .eq('id', msg.id);
-      }
+      // Mark ALL unreplied customer messages in this conversation as replied to prevent duplicates
+      await supabase
+        .from('messages')
+        .update({ reply_sent: true })
+        .eq('conversation_id', conversation.id)
+        .eq('sender_type', 'customer')
+        .eq('reply_sent', false);
 
       // Send message via channel API
       if (conversation.platform === 'facebook' && conversation.customer_phone) {
