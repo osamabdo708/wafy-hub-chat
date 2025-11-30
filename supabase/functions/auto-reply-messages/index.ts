@@ -129,27 +129,36 @@ serve(async (req) => {
         `- ${p.name}: ${p.description} (السعر: ${p.price} ريال)`
       ).join('\n') || 'لا توجد منتجات متاحة';
 
-      const systemPrompt = `أنت مندوب مبيعات ذكي ومحترف. مهمتك مساعدة العملاء بشكل طبيعي وفعّال.
+      const systemPrompt = `أنت مندوب مبيعات ذكي ومحترف تعمل لدى شركة تبيع المنتجات التالية.
 
 📋 المنتجات المتاحة:
 ${productsContext}
 
-✅ قواعد المحادثة:
-1. افهم السياق: اقرأ كل المحادثة وافهم ما يريده العميل
-2. رد مرة واحدة فقط: لا تكرر نفس المعلومات
-3. كن مختصراً: ردود قصيرة ومباشرة (2-3 جمل كحد أقصى)
-4. استخرج البيانات: إذا أرسل العميل اسم ورقم وعنوان، افهم أنه يريد الطلب
+✅ أسلوب المحادثة:
+1. فهم السياق: اقرأ المحادثة كاملة لفهم نية العميل
+2. رد واحد قصير: 1-2 جملة فقط، لا تكرر المعلومات
+3. استخراج البيانات الذكي: عندما يرسل العميل رسالة تحتوي على:
+   - اسم (مثال: أسامة عبدو)
+   - رقم هاتف (مثال: 0567900601)
+   - عنوان (مثال: طولكرم - شويكة)
+   فهذا يعني أنه يريد تأكيد الطلب ويجب إنشاؤه فوراً
 
-📦 إنشاء الطلب:
-- عندما يؤكد العميل الشراء ويرسل: الاسم + رقم الهاتف + العنوان
-- استخدم أداة create_order فوراً
-- البيانات المطلوبة: اسم المنتج، الكمية، اسم العميل، رقم الهاتف، العنوان (إلزامي)
-- إذا نقص أي بيان، اطلبه بوضوح
+📦 إنشاء الطلب التلقائي:
+- إذا وجدت: اسم + رقم + عنوان في رسالة العميل → استخدم create_order فوراً
+- المنتج: خذه من سياق المحادثة السابقة (آخر منتج تم ذكره)
+- الكمية: افتراضياً 1 إلا إذا حدد العميل غير ذلك
+- بعد إنشاء الطلب: أرسل رسالة تأكيد قصيرة ومهنية
 
-⚠️ ممنوع:
-- تكرار نفس السؤال
-- إرسال أكثر من رسالة للرد الواحد
-- طلب بيانات العميل قبل أن يبدي رغبته بالشراء`;
+⚠️ ممنوع منعاً باتاً:
+- طلب بيانات العميل قبل أن يظهر اهتمامه بالشراء
+- تكرار السؤال عن نفس البيانات
+- إرسال رسائل طويلة أو متعددة
+- تجاهل البيانات التي أرسلها العميل بالفعل
+
+💬 أمثلة:
+- عميل: "أسامة عبدو 0567900601 طولكرم" → أنشئ الطلب فوراً + أرسل: "تم استلام طلبك! سنتواصل معك قريباً 🎉"
+- عميل: "كم سعر المنتج؟" → أجب بالسعر فقط
+- عميل: "أريد الشراء" → اسأل عن المنتج المحدد فقط`;
 
       // Call OpenAI with tool calling for order creation
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -168,22 +177,37 @@ ${productsContext}
             type: 'function',
             function: {
               name: 'create_order',
-              description: 'إنشاء طلب جديد فقط عندما يوفر العميل: الاسم + رقم الهاتف + العنوان',
+              description: 'Use this when customer provides name + phone + address in their message to create an order',
               parameters: {
                 type: 'object',
                 properties: {
-                  product_name: { type: 'string', description: 'اسم المنتج المطلوب' },
-                  quantity: { type: 'number', description: 'عدد القطع', default: 1 },
-                  customer_name: { type: 'string', description: 'اسم العميل الكامل' },
-                  customer_phone: { type: 'string', description: 'رقم هاتف العميل' },
-                  customer_address: { type: 'string', description: 'عنوان التوصيل (إلزامي)' },
-                  notes: { type: 'string', description: 'ملاحظات إضافية من العميل' }
+                  product_name: { 
+                    type: 'string', 
+                    description: 'Product name from conversation context (last mentioned product)' 
+                  },
+                  quantity: { 
+                    type: 'number', 
+                    description: 'Quantity (default 1 unless specified)',
+                    default: 1
+                  },
+                  customer_name: { 
+                    type: 'string', 
+                    description: 'Full customer name from their message' 
+                  },
+                  customer_phone: { 
+                    type: 'string', 
+                    description: 'Phone number from their message' 
+                  },
+                  customer_address: { 
+                    type: 'string', 
+                    description: 'Delivery address from their message (REQUIRED)' 
+                  }
                 },
-                required: ['product_name', 'quantity', 'customer_name', 'customer_phone', 'customer_address']
+                required: ['product_name', 'customer_name', 'customer_phone', 'customer_address']
               }
             }
           }],
-          temperature: 0.7
+          tool_choice: 'auto'
         }),
       });
 
@@ -197,6 +221,9 @@ ${productsContext}
 
       if (!aiMessage) continue;
 
+      let orderCreated = false;
+      let createdProductName = '';
+
       // Check if AI wants to create an order
       if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
         for (const toolCall of aiMessage.tool_calls) {
@@ -209,16 +236,17 @@ ${productsContext}
             );
 
             if (product) {
+              createdProductName = product.name;
+              
               // Build detailed notes with address
-              const orderNotes = `${orderData.notes || ''}
-📍 العنوان: ${orderData.customer_address}
-📞 رقم الهاتف: ${orderData.customer_phone}`.trim();
+              const orderNotes = `📍 العنوان: ${orderData.customer_address}
+📞 رقم الهاتف: ${orderData.customer_phone}`;
 
               const { error: orderError } = await supabase
                 .from('orders')
                 .insert({
-                  customer_name: orderData.customer_name || conversation.customer_name,
-                  customer_phone: orderData.customer_phone || conversation.customer_phone,
+                  customer_name: orderData.customer_name,
+                  customer_phone: orderData.customer_phone,
                   product_id: product.id,
                   price: product.price * (orderData.quantity || 1),
                   status: 'قيد الانتظار',
@@ -231,6 +259,7 @@ ${productsContext}
                 });
 
               if (!orderError) {
+                orderCreated = true;
                 console.log(`[AI-REPLY] Order created successfully for ${orderData.customer_name} - ${product.name}`);
               } else {
                 console.error(`[AI-REPLY] Order creation failed:`, orderError);
@@ -240,8 +269,16 @@ ${productsContext}
         }
       }
 
-      // Send AI reply
-      const aiReply = aiMessage.content || 'عذراً، لم أتمكن من الرد.';
+      // Generate AI reply - if order was created and no content, create success message
+      let aiReply = aiMessage.content;
+      
+      if (!aiReply || aiReply.trim() === '') {
+        if (orderCreated) {
+          aiReply = `تم استلام طلبك بنجاح! سنتواصل معك قريباً لتأكيد التوصيل 🎉`;
+        } else {
+          aiReply = 'شكراً لتواصلك معنا. كيف يمكنني مساعدتك؟';
+        }
+      }
 
       // Save AI message
       await supabase
