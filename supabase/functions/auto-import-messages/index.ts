@@ -52,11 +52,14 @@ serve(async (req) => {
         
         // NOTE: Facebook API does NOT support 'since' parameter on conversations endpoint
         // We must fetch all conversations and filter messages by timestamp locally
-        const lastFetchTime = fbIntegration.last_fetch_timestamp 
+        let lastFetchTime = fbIntegration.last_fetch_timestamp 
           ? new Date(fbIntegration.last_fetch_timestamp)
           : new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago for initial
 
-        console.log(`[FACEBOOK] Last fetch: ${lastFetchTime.toISOString()}`);
+        // Subtract 30 seconds buffer to avoid missing messages due to timing issues
+        lastFetchTime = new Date(lastFetchTime.getTime() - 30000);
+
+        console.log(`[FACEBOOK] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
         
         // Fetch conversations WITHOUT since parameter (doesn't work)
         let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time}&access_token=${page_access_token}`;
@@ -85,10 +88,10 @@ serve(async (req) => {
               const senderId = fbConv.senders?.data[0]?.id || 'unknown';
               const allMessages = fbConv.messages?.data || [];
               
-              // Filter messages by timestamp (only new messages since last fetch)
+              // Filter messages by timestamp - use >= to include messages at exact time
               const messages = allMessages.filter((msg: any) => {
                 const msgTime = new Date(msg.created_time);
-                return msgTime > lastFetchTime;
+                return msgTime >= lastFetchTime;
               });
               
               console.log(`[FACEBOOK] Thread ${threadId}: ${messages.length} new messages (${allMessages.length} total)`);
