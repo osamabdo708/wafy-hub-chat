@@ -96,6 +96,12 @@ const Inbox = () => {
       ));
 
       toast.success(!currentState ? "تم تفعيل المساعد الذكي" : "تم إيقاف المساعد الذكي");
+
+      // If AI is being enabled, immediately trigger auto-reply to check for unreplied messages
+      if (!currentState) {
+        console.log('[TOGGLE-AI] AI enabled, triggering auto-reply check...');
+        await supabase.functions.invoke('auto-reply-messages');
+      }
     } catch (error) {
       console.error('Error toggling AI:', error);
       toast.error("فشل في تحديث إعدادات المساعد الذكي");
