@@ -127,11 +127,9 @@ const Inbox = () => {
       
       if (error) throw error;
       
-      toast.success(`تم استيراد ${data?.imported || 0} رسالة جديدة`);
       fetchConversations();
     } catch (error) {
       console.error('Error importing messages:', error);
-      toast.error("فشل في استيراد الرسائل");
     } finally {
       setImporting(false);
     }
@@ -186,14 +184,6 @@ const Inbox = () => {
         </div>
         <div className="flex gap-2">
           <Button variant="outline">تصفية</Button>
-          <Button 
-            variant="secondary"
-            onClick={handleImport}
-            disabled={importing}
-          >
-            <Download className="w-4 h-4 ml-2" />
-            {importing ? "جاري الاستيراد..." : "استيراد الرسائل"}
-          </Button>
           <Button 
             variant="destructive" 
             onClick={() => setShowDeleteDialog(true)}
