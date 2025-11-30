@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Clock, User, Download } from "lucide-react";
+import { MessageSquare, Clock, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -26,7 +26,6 @@ interface Conversation {
 const Inbox = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   useEffect(() => {
@@ -91,23 +90,6 @@ const Inbox = () => {
     }
   };
 
-  const handleImportFacebook = async () => {
-    setImporting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('import-facebook-conversations');
-      
-      if (error) throw error;
-      
-      toast.success(data.message || 'تم استيراد المحادثات بنجاح');
-      fetchConversations();
-    } catch (error) {
-      console.error('Error importing conversations:', error);
-      toast.error('فشل استيراد المحادثات. تأكد من إعدادات فيسبوك');
-    } finally {
-      setImporting(false);
-    }
-  };
-
   const getChannelName = (channel: string) => {
     const channelMap: Record<string, string> = {
       'whatsapp': 'واتساب',
@@ -134,16 +116,7 @@ const Inbox = () => {
           <p className="text-muted-foreground mt-1">جميع محادثاتك من كل القنوات في مكان واحد</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleImportFacebook}
-            disabled={importing}
-          >
-            <Download className="ml-2 h-4 w-4" />
-            {importing ? 'جاري الاستيراد...' : 'استيراد محادثات فيسبوك'}
-          </Button>
           <Button variant="outline">تصفية</Button>
-          <Button>محادثة جديدة</Button>
         </div>
       </div>
 
