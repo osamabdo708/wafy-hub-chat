@@ -36,43 +36,27 @@ serve(async (req) => {
 
     console.log(`Found ${conversations?.length || 0} AI-enabled conversations`);
 
-    const responses = [];
+    let processedCount = 0;
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
     for (const conversation of conversations || []) {
-      // Get the latest message
-      const { data: latestMessage, error: msgError } = await supabase
+      // Get ALL unreplied customer messages (not just the latest)
+      const { data: unrepliedMessages } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversation.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .eq('sender_type', 'customer')
+        .eq('reply_sent', false)
+        .eq('is_old', false)
+        .gte('created_at', fiveMinutesAgo)
+        .order('created_at', { ascending: true });
 
-      if (msgError) {
-        console.error(`Error fetching message for conversation ${conversation.id}:`, msgError);
+      if (!unrepliedMessages || unrepliedMessages.length === 0) {
+        console.log(`No unreplied messages in conversation ${conversation.id}`);
         continue;
       }
 
-      // Check if there's a recent customer message that needs a response
-      if (!latestMessage) {
-        console.log(`No messages in conversation ${conversation.id}`);
-        continue;
-      }
-
-      // Skip if message is older than 5 minutes
-      if (latestMessage.created_at < fiveMinutesAgo) {
-        console.log(`Message too old in conversation ${conversation.id}`);
-        continue;
-      }
-
-      // Skip if last message was from agent
-      if (latestMessage.sender_type === 'agent') {
-        console.log(`Last message was from agent in conversation ${conversation.id}`);
-        continue;
-      }
-
-      console.log(`Processing conversation ${conversation.id} with recent customer message`);
+      console.log(`Processing conversation ${conversation.id} with ${unrepliedMessages.length} unreplied messages - will send ONE response`);
 
       // Get all products
       const { data: products } = await supabase
@@ -153,21 +137,33 @@ ${productsCatalog}
 
       console.log(`AI Reply for conversation ${conversation.id}:`, aiReply);
 
-      // Save AI message
+      // Save AI message with reply_sent=true to prevent duplicates
       const { error: saveError } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversation.id,
           content: aiReply,
           sender_type: 'agent',
-          sender_id: null
+          sender_id: null,
+          message_id: `ai_${Date.now()}_${conversation.id}`,
+          reply_sent: true,
+          is_old: false
         });
 
       if (saveError) {
         console.error(`Error saving AI message for conversation ${conversation.id}:`, saveError);
-      } else {
-        console.log(`AI message saved successfully for conversation ${conversation.id}`);
+        continue;
       }
+
+      console.log(`AI message saved successfully for conversation ${conversation.id}`);
+
+      // Mark ALL unreplied customer messages as replied to prevent duplicate responses
+      await supabase
+        .from('messages')
+        .update({ reply_sent: true })
+        .eq('conversation_id', conversation.id)
+        .eq('sender_type', 'customer')
+        .eq('reply_sent', false);
 
       // Update conversation
       await supabase
@@ -244,16 +240,12 @@ ${productsCatalog}
         }
       }
 
-      responses.push({
-        conversation_id: conversation.id,
-        success: true
-      });
+      processedCount++;
     }
 
     return new Response(JSON.stringify({ 
       success: true,
-      processed: responses.length,
-      responses
+      processed: processedCount
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
