@@ -21,47 +21,82 @@ serve(async (req) => {
     let totalImported = 0;
 
     // Determine if this is initial import (no messages exist yet)
-    const { data: existingMessages } = await supabase
+    const { data: existingMessages, error: existingError } = await supabase
       .from('messages')
       .select('id')
       .limit(1);
     
+    console.log(`[AUTO-IMPORT] Existing messages check: ${existingMessages?.length || 0} messages, error: ${existingError?.message || 'none'}`);
+    
     const isInitialImport = !existingMessages || existingMessages.length === 0;
+    console.log(`[AUTO-IMPORT] Is initial import: ${isInitialImport}`);
 
     // Import Facebook Messages
-    const { data: fbIntegration } = await supabase
+    const { data: fbIntegration, error: fbError } = await supabase
       .from('channel_integrations')
       .select('config, last_fetch_timestamp')
       .eq('channel', 'facebook')
       .eq('is_connected', true)
       .single();
 
+    console.log(`[FACEBOOK] Integration check - Found: ${!!fbIntegration}, Error: ${fbError?.message || 'none'}`);
+    
     if (fbIntegration?.config) {
       const config = fbIntegration.config as any;
       const { page_id, page_access_token } = config;
+      
+      console.log(`[FACEBOOK] Config - page_id: ${page_id}, has_token: ${!!page_access_token}`);
 
       if (page_id && page_access_token) {
         console.log('[FACEBOOK] Fetching conversations...');
         
-        // Calculate since timestamp (last fetch or 24 hours ago for initial)
-        let sinceTimestamp = fbIntegration.last_fetch_timestamp 
-          ? new Date(fbIntegration.last_fetch_timestamp).getTime() / 1000
-          : (Date.now() - 24 * 60 * 60 * 1000) / 1000;
+        // NOTE: Facebook API does NOT support 'since' parameter on conversations endpoint
+        // We must fetch all conversations and filter messages by timestamp locally
+        const lastFetchTime = fbIntegration.last_fetch_timestamp 
+          ? new Date(fbIntegration.last_fetch_timestamp)
+          : new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago for initial
 
-        let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time}&since=${sinceTimestamp}&access_token=${page_access_token}`;
+        console.log(`[FACEBOOK] Last fetch: ${lastFetchTime.toISOString()}`);
+        
+        // Fetch conversations WITHOUT since parameter (doesn't work)
+        let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time}&access_token=${page_access_token}`;
+        
+        console.log(`[FACEBOOK] Calling API (no since parameter due to Facebook API limitation)`);
         
         // Paginate through all conversations
+        let conversationCount = 0;
         while (conversationsUrl) {
           const conversationsResponse = await fetch(conversationsUrl);
+          
+          if (!conversationsResponse.ok) {
+            console.error(`[FACEBOOK] API error: ${conversationsResponse.status} ${conversationsResponse.statusText}`);
+            const errorText = await conversationsResponse.text();
+            console.error(`[FACEBOOK] Error details: ${errorText}`);
+            break;
+          }
+          
           const conversationsData = await conversationsResponse.json();
+          conversationCount += conversationsData.data?.length || 0;
+          console.log(`[FACEBOOK] Received ${conversationsData.data?.length || 0} conversations (total so far: ${conversationCount})`);
 
           if (conversationsData.data) {
             for (const fbConv of conversationsData.data) {
               const threadId = fbConv.id;
               const senderId = fbConv.senders?.data[0]?.id || 'unknown';
-              const messages = fbConv.messages?.data || [];
+              const allMessages = fbConv.messages?.data || [];
               
-              if (messages.length === 0) continue;
+              // Filter messages by timestamp (only new messages since last fetch)
+              const messages = allMessages.filter((msg: any) => {
+                const msgTime = new Date(msg.created_time);
+                return msgTime > lastFetchTime;
+              });
+              
+              console.log(`[FACEBOOK] Thread ${threadId}: ${messages.length} new messages (${allMessages.length} total)`);
+              
+              if (messages.length === 0) {
+                console.log(`[FACEBOOK] Skipping thread ${threadId} - no new messages`);
+                continue;
+              }
 
               // Get or create conversation using thread_id
               const { data: existingConv } = await supabase
