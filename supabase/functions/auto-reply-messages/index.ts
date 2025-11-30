@@ -94,7 +94,7 @@ serve(async (req) => {
         }
       }
 
-      // Check for new unreplied messages from last 5 minutes
+      // Get ALL unreplied messages from last 5 minutes (not just one)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: unrepliedMessages } = await supabase
         .from('messages')
@@ -104,12 +104,11 @@ serve(async (req) => {
         .eq('reply_sent', false)
         .eq('is_old', false)
         .gte('created_at', fiveMinutesAgo)
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .order('created_at', { ascending: true }); // Get all, oldest first
 
       if (!unrepliedMessages || unrepliedMessages.length === 0) continue;
 
-      console.log(`[AI-REPLY] Processing conversation ${conversation.id} with ${unrepliedMessages.length} unreplied messages`);
+      console.log(`[AI-REPLY] Processing conversation ${conversation.id} with ${unrepliedMessages.length} unreplied messages - will send ONE response`);
 
       // Get last 10 messages for context
       const { data: contextMessages } = await supabase
