@@ -5,12 +5,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Send, User, Phone, Mail, Bot } from "lucide-react";
+import { Send, User, Phone, Mail, Bot, Package, ShoppingCart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import facebookIcon from "@/assets/facebook.png";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface Message {
   id: string;
@@ -41,11 +51,16 @@ const ChatView = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [checkingAI, setCheckingAI] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
+  const [showProductDialog, setShowProductDialog] = useState(false);
+  const [showOrderDialog, setShowOrderDialog] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [orderQuantity, setOrderQuantity] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchMessages();
+    fetchProducts();
 
     // Subscribe to new messages
     const channel = supabase
@@ -89,6 +104,20 @@ const ChatView = ({
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast.error('فشل تحميل الرسائل');
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error) {
+      console.error('Error fetching products:', error);
     }
   };
 
@@ -144,19 +173,68 @@ const ChatView = ({
     }
   };
 
-  const handleCheckAIResponse = async () => {
-    setCheckingAI(true);
+  const handleSendProduct = async (product: any) => {
     try {
-      const { data, error } = await supabase.functions.invoke('check-ai-responses');
+      const productMessage = `📦 *${product.name}*\n\n${product.description}\n\n💰 السعر: ${product.price} ريال`;
       
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          content: productMessage,
+          sender_type: 'agent'
+        });
+
       if (error) throw error;
-      
-      toast.success('تم فحص المحادثات والرد بالذكاء الاصطناعي');
+
+      // Send to channel if needed
+      if (channel === 'facebook' && customerPhone) {
+        await supabase.functions.invoke('send-facebook-message', {
+          body: {
+            recipientId: customerPhone,
+            message: productMessage
+          }
+        });
+      }
+
+      setShowProductDialog(false);
+      toast.success('تم إرسال المنتج للعميل');
     } catch (error) {
-      console.error('Error checking AI responses:', error);
-      toast.error('فشل في تشغيل المساعد الذكي');
-    } finally {
-      setCheckingAI(false);
+      console.error('Error sending product:', error);
+      toast.error('فشل إرسال المنتج');
+    }
+  };
+
+  const handleCreateOrder = async () => {
+    if (!selectedProduct) {
+      toast.error('يرجى اختيار منتج');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .insert({
+          customer_name: customerName,
+          customer_phone: customerPhone || '',
+          product_id: selectedProduct.id,
+          price: selectedProduct.price * orderQuantity,
+          status: 'قيد الانتظار',
+          conversation_id: conversationId,
+          source_platform: channel,
+          created_by: 'employee',
+          order_number: `ORD-${Date.now()}`
+        });
+
+      if (error) throw error;
+
+      setShowOrderDialog(false);
+      setSelectedProduct(null);
+      setOrderQuantity(1);
+      toast.success('تم إنشاء الطلب بنجاح');
+    } catch (error) {
+      console.error('Error creating order:', error);
+      toast.error('فشل إنشاء الطلب');
     }
   };
 
@@ -188,15 +266,110 @@ const ChatView = ({
             </div>
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleCheckAIResponse}
-              disabled={checkingAI}
-            >
-              <Bot className="w-4 h-4 ml-1" />
-              {checkingAI ? 'جاري الفحص...' : 'تشغيل الذكاء الاصطناعي'}
-            </Button>
+            <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Package className="w-4 h-4 ml-1" />
+                  إرسال منتج
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>اختر منتج لإرساله للعميل</DialogTitle>
+                  <DialogDescription>
+                    اختر المنتج الذي تريد إرساله في المحادثة
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                  {products.map((product) => (
+                    <Card 
+                      key={product.id} 
+                      className="p-4 cursor-pointer hover:border-primary transition-colors"
+                      onClick={() => handleSendProduct(product)}
+                    >
+                      {product.image_url && (
+                        <img src={product.image_url} alt={product.name} className="w-full h-32 object-cover rounded-md mb-2" />
+                      )}
+                      <h4 className="font-semibold">{product.name}</h4>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
+                      <p className="text-primary font-bold mt-2">{product.price} ريال</p>
+                    </Card>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={showOrderDialog} onOpenChange={setShowOrderDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <ShoppingCart className="w-4 h-4 ml-1" />
+                  إنشاء طلب
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>إنشاء طلب جديد</DialogTitle>
+                  <DialogDescription>
+                    أنشئ طلباً من هذه المحادثة
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label>اختر المنتج</Label>
+                    <select
+                      className="w-full mt-1 p-2 border rounded-md"
+                      value={selectedProduct?.id || ''}
+                      onChange={(e) => {
+                        const product = products.find(p => p.id === e.target.value);
+                        setSelectedProduct(product);
+                      }}
+                    >
+                      <option value="">-- اختر منتج --</option>
+                      {products.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} - {product.price} ريال
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label>الكمية</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={orderQuantity}
+                      onChange={(e) => setOrderQuantity(parseInt(e.target.value) || 1)}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label>اسم العميل</Label>
+                    <Input value={customerName} disabled className="mt-1" />
+                  </div>
+
+                  <div>
+                    <Label>رقم الهاتف</Label>
+                    <Input value={customerPhone || ''} disabled className="mt-1" />
+                  </div>
+
+                  {selectedProduct && (
+                    <div className="bg-muted p-3 rounded-md">
+                      <p className="text-sm font-semibold">الإجمالي</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {(selectedProduct.price * orderQuantity).toFixed(2)} ريال
+                      </p>
+                    </div>
+                  )}
+
+                  <Button onClick={handleCreateOrder} className="w-full" disabled={!selectedProduct}>
+                    إنشاء الطلب
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             {customerPhone && (
               <Button variant="ghost" size="sm">
                 <Phone className="w-4 h-4" />
