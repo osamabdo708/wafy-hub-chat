@@ -198,8 +198,8 @@ ${productsContext}
           .eq('id', msg.id);
       }
 
-      // Send message via channel API using thread_id
-      if (conversation.platform === 'facebook' && conversation.thread_id) {
+      // Send message via channel API
+      if (conversation.platform === 'facebook' && conversation.customer_phone) {
         const { data: fbConfig } = await supabase
           .from('channel_integrations')
           .select('config')
@@ -210,19 +210,21 @@ ${productsContext}
           const config = fbConfig.config as any;
           const sendUrl = `https://graph.facebook.com/v18.0/me/messages?access_token=${config.page_access_token}`;
           
-          // Extract recipient ID from thread_id (format: pageId_userId)
-          const recipientId = conversation.thread_id.includes('_') 
-            ? conversation.thread_id.split('_')[1] 
-            : conversation.customer_phone;
-          
-          await fetch(sendUrl, {
+          const sendResponse = await fetch(sendUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              recipient: { id: recipientId },
+              recipient: { id: conversation.customer_phone },
               message: { text: aiReply }
             })
           });
+
+          if (!sendResponse.ok) {
+            const errorData = await sendResponse.text();
+            console.error(`[AI-REPLY] Facebook send error: ${errorData}`);
+          } else {
+            console.log(`[AI-REPLY] Message sent to Facebook user ${conversation.customer_phone}`);
+          }
         }
       }
 
