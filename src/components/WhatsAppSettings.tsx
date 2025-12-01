@@ -137,7 +137,7 @@ export const WhatsAppSettings = () => {
             <Label htmlFor="access-token">Access Token</Label>
             <Input
               id="access-token"
-              type="password"
+              type="text"
               placeholder="EAAxxxxxxxxxx"
               value={config.access_token}
               onChange={(e) => setConfig({ ...config, access_token: e.target.value })}

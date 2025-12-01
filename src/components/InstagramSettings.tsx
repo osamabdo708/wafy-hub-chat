@@ -170,7 +170,7 @@ export const InstagramSettings = () => {
             <Label htmlFor="instagram-token">Instagram User Access Token</Label>
             <Input
               id="instagram-token"
-              type="password"
+              type="text"
               placeholder="IGQVJxxxxxxxxxx"
               value={config.access_token}
               onChange={(e) => setConfig({ ...config, access_token: e.target.value })}
