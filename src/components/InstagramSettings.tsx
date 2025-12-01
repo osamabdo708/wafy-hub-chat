@@ -115,16 +115,16 @@ export const InstagramSettings = () => {
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="instagram-token">Access Token</Label>
+            <Label htmlFor="instagram-token">Instagram User Access Token</Label>
             <Input
               id="instagram-token"
               type="password"
-              placeholder="EAAxxxxxxxxxx"
+              placeholder="IGQVJxxxxxxxxxx"
               value={config.access_token}
               onChange={(e) => setConfig({ ...config, access_token: e.target.value })}
             />
             <p className="text-xs text-muted-foreground">
-              احصل عليه من Meta Developers → App → Instagram → Settings
+              يجب الحصول على Instagram User Access Token (وليس Page Access Token) مع صلاحيات: instagram_business_basic و instagram_business_manage_messages
             </p>
           </div>
 
@@ -176,14 +176,21 @@ export const InstagramSettings = () => {
         <div className="border-t pt-4">
           <h4 className="font-semibold mb-2">خطوات التفعيل:</h4>
           <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-            <li>تأكد من أن لديك Instagram Business Account مرتبط بصفحة Facebook</li>
+            <li>تأكد من أن لديك Instagram Business أو Creator Account</li>
             <li>انتقل إلى Meta Developers Console</li>
-            <li>اختر App الخاص بك → Instagram → Settings</li>
-            <li>احصل على Access Token و Instagram Account ID</li>
-            <li>قم بإعداد Webhook باستخدام الرابط أعلاه</li>
-            <li>اشترك في أحداث "messages" و "messaging_postbacks"</li>
+            <li>اختر App الخاص بك → Add Product → Instagram</li>
+            <li>في Instagram Settings، فعّل Instagram API with Instagram Login</li>
+            <li>اطلب الصلاحيات: instagram_business_basic و instagram_business_manage_messages</li>
+            <li>استخدم Instagram Login لإنشاء Instagram User Access Token</li>
+            <li>انسخ الـ Instagram Account ID من الـ API Response</li>
+            <li>قم بإعداد Webhook باستخدام الرابط أعلاه واشترك في "messages"</li>
             <li>احفظ الإعدادات واختبر الاتصال</li>
           </ol>
+          <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-md">
+            <p className="text-xs text-yellow-800 dark:text-yellow-200">
+              <strong>ملاحظة:</strong> يجب استخدام Instagram User Access Token (يبدأ بـ IGQVJxxx) وليس Facebook Page Access Token (يبدأ بـ EAAxxx)
+            </p>
+          </div>
         </div>
       </div>
     </Card>
