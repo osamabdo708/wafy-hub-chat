@@ -72,14 +72,21 @@ export const InstagramSettings = () => {
         `https://graph.facebook.com/v18.0/${config.instagram_account_id}?fields=id,username&access_token=${config.access_token}`
       );
 
+      const data = await response.json();
+
       if (response.ok) {
-        const data = await response.json();
         toast({
           title: "الاتصال ناجح",
           description: `تم الاتصال بحساب @${data.username} بنجاح`,
         });
       } else {
-        throw new Error('Failed to connect');
+        const errorMessage = data.error?.message || 'فشل الاتصال';
+        console.error('Instagram API error:', data);
+        toast({
+          title: "فشل الاتصال",
+          description: errorMessage,
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('Error testing Instagram connection:', error);
