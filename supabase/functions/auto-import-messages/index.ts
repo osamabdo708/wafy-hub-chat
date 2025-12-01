@@ -80,14 +80,16 @@ serve(async (req) => {
         lastFetchTime = new Date(lastFetchTime.getTime() - 30000);
         console.log(`[${channelName}] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
         
-        let conversationsUrl = `https://graph.facebook.com/v18.0/${page_id}/conversations?fields=id,senders,messages{id,message,from,created_time},unread_count,message_count&platform=messenger&limit=100&access_token=${page_access_token}`;
+        // Use the exact endpoint format from the working Python code
+        let conversationsUrl = `https://graph.facebook.com/v17.0/${page_id}/conversations?fields=id,participants,updated_time,messages{id,message,from,created_time}&limit=100&access_token=${page_access_token}`;
         
         let conversationCount = 0;
         while (conversationsUrl) {
           const conversationsResponse = await fetch(conversationsUrl);
           
           if (!conversationsResponse.ok) {
-            console.error(`[${channelName}] API error: ${conversationsResponse.status}`);
+            const errorText = await conversationsResponse.text();
+            console.error(`[${channelName}] API error: ${conversationsResponse.status} - ${errorText}`);
             break;
           }
           
@@ -98,7 +100,8 @@ serve(async (req) => {
           if (conversationsData.data) {
             for (const fbConv of conversationsData.data) {
               const threadId = fbConv.id;
-              const senderId = fbConv.senders?.data[0]?.id || 'unknown';
+              const participants = fbConv.participants?.data || [];
+              const senderId = participants.find((p: any) => p.id !== page_id)?.id || 'unknown';
               const allMessages = fbConv.messages?.data || [];
               
               const messages = allMessages.filter((msg: any) => {
@@ -141,33 +144,15 @@ serve(async (req) => {
               if (existingConv) {
                 conversationId = existingConv.id;
                 
-                if (existingConv.customer_name && existingConv.customer_name.startsWith('Facebook User')) {
-                  const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
-                  const userResponse = await fetch(userUrl);
-                  const userData = await userResponse.json();
-                  
-                  if (userData.name) {
-                    await supabase
-                      .from('conversations')
-                      .update({ 
-                        customer_name: userData.name,
-                        last_message_at: messages[0].created_time 
-                      })
-                      .eq('id', conversationId);
-                  } else {
-                    await supabase
-                      .from('conversations')
-                      .update({ last_message_at: messages[0].created_time })
-                      .eq('id', conversationId);
-                  }
-                } else {
-                  await supabase
-                    .from('conversations')
-                    .update({ last_message_at: messages[0].created_time })
-                    .eq('id', conversationId);
-                }
+                await supabase
+                  .from('conversations')
+                  .update({ 
+                    last_message_at: messages[0].created_time,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', conversationId);
               } else {
-                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=name&access_token=${page_access_token}`;
+                const userUrl = `https://graph.facebook.com/v17.0/${senderId}?fields=name&access_token=${page_access_token}`;
                 const userResponse = await fetch(userUrl);
                 const userData = await userResponse.json();
                 const customerName = userData.name || `Facebook User ${senderId.slice(0, 8)}`;
