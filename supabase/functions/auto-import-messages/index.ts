@@ -235,14 +235,14 @@ serve(async (req) => {
           .eq('id', integration.id);
 
       } else if (integration.channel === 'instagram') {
-        const { instagram_account_id, access_token } = config;
+        const { instagram_account_id, access_token, page_id } = config;
         
-        if (!instagram_account_id || !access_token) {
-          console.log(`[${channelName}] Skipping - missing credentials`);
+        if (!access_token) {
+          console.log(`[${channelName}] Skipping - missing access token`);
           continue;
         }
 
-        console.log(`[${channelName}] Config - account_id: ${instagram_account_id}`);
+        console.log(`[${channelName}] Config - account_id: ${instagram_account_id}, page_id: ${page_id}`);
         
         let lastFetchTime = integration.last_fetch_timestamp 
           ? new Date(integration.last_fetch_timestamp)
@@ -251,25 +251,10 @@ serve(async (req) => {
         lastFetchTime = new Date(lastFetchTime.getTime() - 30000);
         console.log(`[${channelName}] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
 
-        // Get verified Instagram Business Account ID
-        const accountUrl = `https://graph.instagram.com/${instagram_account_id}?fields=id,username,name&access_token=${access_token}`;
-        const accountResponse = await fetch(accountUrl);
-        
-        let actualInstagramId = instagram_account_id;
-        
-        if (!accountResponse.ok) {
-          const errorText = await accountResponse.text();
-          console.error(`[${channelName}] Account fetch failed: ${errorText}`);
-        } else {
-          const accountData = await accountResponse.json();
-          console.log(`[${channelName}] ✓ Account: @${accountData.username || accountData.name}`);
-          
-          if (accountData.id) {
-            actualInstagramId = accountData.id;
-          }
-        }
-
-        let conversationsUrl = `https://graph.instagram.com/${actualInstagramId}/conversations?fields=id,participants,messages{id,message,from,created_time}&platform=instagram&access_token=${access_token}`;
+        // Use Facebook Page inbox to fetch Instagram messages (more reliable)
+        let conversationsUrl = page_id 
+          ? `https://graph.facebook.com/v21.0/${page_id}/conversations?platform=instagram&fields=id,participants,messages{id,message,from,created_time}&access_token=${access_token}`
+          : `https://graph.instagram.com/${instagram_account_id}/conversations?fields=id,participants,messages{id,message,from,created_time}&platform=instagram&access_token=${access_token}`;
         
         let conversationCount = 0;
         while (conversationsUrl) {
