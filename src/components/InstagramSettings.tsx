@@ -1,0 +1,184 @@
+import { useState, useEffect } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2 } from "lucide-react";
+
+export const InstagramSettings = () => {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [config, setConfig] = useState({
+    access_token: "",
+    instagram_account_id: "",
+    verify_token: "omnichat_instagram_verify_2024"
+  });
+
+  // Load saved settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data, error } = await supabase
+        .from('channel_integrations')
+        .select('config')
+        .eq('channel', 'instagram')
+        .single();
+
+      if (data?.config) {
+        setConfig(data.config as typeof config);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('channel_integrations')
+        .upsert({
+          channel: 'instagram',
+          config: config,
+          is_connected: true
+        }, {
+          onConflict: 'channel'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "تم الحفظ",
+        description: "تم حفظ إعدادات إنستغرام بنجاح",
+      });
+    } catch (error) {
+      console.error('Error saving Instagram config:', error);
+      toast({
+        title: "خطأ",
+        description: "فشل حفظ الإعدادات",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/v18.0/${config.instagram_account_id}?fields=id,username&access_token=${config.access_token}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        toast({
+          title: "الاتصال ناجح",
+          description: `تم الاتصال بحساب @${data.username} بنجاح`,
+        });
+      } else {
+        throw new Error('Failed to connect');
+      }
+    } catch (error) {
+      console.error('Error testing Instagram connection:', error);
+      toast({
+        title: "فشل الاتصال",
+        description: "تحقق من البيانات وحاول مرة أخرى",
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const supabaseProjectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  const webhookUrl = `https://${supabaseProjectId}.supabase.co/functions/v1/instagram-webhook`;
+
+  return (
+    <Card className="p-6">
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-bold mb-2">إعدادات إنستغرام</h3>
+          <p className="text-sm text-muted-foreground">
+            قم بإعداد تكامل Instagram Direct Messages
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="instagram-token">Access Token</Label>
+            <Input
+              id="instagram-token"
+              type="password"
+              placeholder="EAAxxxxxxxxxx"
+              value={config.access_token}
+              onChange={(e) => setConfig({ ...config, access_token: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              احصل عليه من Meta Developers → App → Instagram → Settings
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="instagram-id">Instagram Account ID</Label>
+            <Input
+              id="instagram-id"
+              placeholder="17841400000000000"
+              value={config.instagram_account_id}
+              onChange={(e) => setConfig({ ...config, instagram_account_id: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              معرف حساب Instagram Business Account
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Webhook URL</Label>
+            <div className="p-3 bg-muted rounded-md">
+              <code className="text-xs break-all">{webhookUrl}</code>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              استخدم هذا الرابط في إعدادات Webhook في Meta Developers
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Verify Token</Label>
+            <div className="p-3 bg-muted rounded-md">
+              <code className="text-xs">{config.verify_token}</code>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              استخدم هذا Token عند تفعيل Webhook
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Button onClick={handleSave} disabled={loading}>
+            {loading && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+            حفظ الإعدادات
+          </Button>
+          <Button onClick={handleTest} disabled={testing || !config.access_token} variant="outline">
+            {testing && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+            اختبار الاتصال
+          </Button>
+        </div>
+
+        <div className="border-t pt-4">
+          <h4 className="font-semibold mb-2">خطوات التفعيل:</h4>
+          <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+            <li>تأكد من أن لديك Instagram Business Account مرتبط بصفحة Facebook</li>
+            <li>انتقل إلى Meta Developers Console</li>
+            <li>اختر App الخاص بك → Instagram → Settings</li>
+            <li>احصل على Access Token و Instagram Account ID</li>
+            <li>قم بإعداد Webhook باستخدام الرابط أعلاه</li>
+            <li>اشترك في أحداث "messages" و "messaging_postbacks"</li>
+            <li>احفظ الإعدادات واختبر الاتصال</li>
+          </ol>
+        </div>
+      </div>
+    </Card>
+  );
+};
