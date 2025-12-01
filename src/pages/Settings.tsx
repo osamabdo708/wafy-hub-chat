@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings as SettingsIcon, Bot, Link, Building, MessageCircle, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { WhatsAppSettings } from "@/components/WhatsAppSettings";
 import { FacebookSettings } from "@/components/FacebookSettings";
+import { InstagramSettings } from "@/components/InstagramSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
@@ -16,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 const Settings = () => {
   const [whatsappOpen, setWhatsappOpen] = useState(true);
   const [facebookOpen, setFacebookOpen] = useState(false);
+  const [instagramOpen, setInstagramOpen] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const { toast } = useToast();
@@ -187,12 +189,33 @@ const Settings = () => {
               </CollapsibleContent>
             </Card>
           </Collapsible>
+
+          <Collapsible open={instagramOpen} onOpenChange={setInstagramOpen}>
+            <Card className="overflow-hidden">
+              <CollapsibleTrigger className="w-full p-6 flex items-center justify-between hover:bg-muted/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-pink-500/10 flex items-center justify-center">
+                    <MessageCircle className="w-5 h-5 text-pink-500" />
+                  </div>
+                  <div className="text-right">
+                    <h3 className="text-lg font-bold">إنستغرام</h3>
+                    <p className="text-sm text-muted-foreground">Instagram Direct Messages</p>
+                  </div>
+                </div>
+                <ChevronDown className={`w-5 h-5 transition-transform ${instagramOpen ? 'rotate-180' : ''}`} />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-6 pb-6">
+                  <InstagramSettings />
+                </div>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
           
           <Card className="p-6">
             <h3 className="text-lg font-bold mb-4">قنوات أخرى</h3>
             <div className="space-y-4">
               {[
-                { name: "إنستغرام", status: "غير متصل", color: "bg-pink-500/20", iconColor: "text-pink-500" },
                 { name: "تليجرام", status: "غير متصل", color: "bg-blue-400/20", iconColor: "text-blue-400" },
                 { name: "البريد الإلكتروني", status: "غير متصل", color: "bg-gray-500/20", iconColor: "text-gray-500" }
               ].map((channel) => (
