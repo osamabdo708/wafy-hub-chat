@@ -297,27 +297,60 @@ serve(async (req) => {
     if (igIntegration?.config) {
       console.log('[INSTAGRAM] Fetching conversations...');
       const config = igIntegration.config as any;
-      const { instagram_account_id, page_access_token } = config;
+      const { instagram_account_id, access_token } = config;
 
-      if (instagram_account_id && page_access_token) {
-        let sinceTimestamp = igIntegration.last_fetch_timestamp 
-          ? new Date(igIntegration.last_fetch_timestamp).getTime() / 1000
-          : (Date.now() - 24 * 60 * 60 * 1000) / 1000;
+      if (instagram_account_id && access_token) {
+        console.log(`[INSTAGRAM] Config - instagram_account_id: ${instagram_account_id}, has_token: ${!!access_token}`);
+        
+        let lastFetchTime = igIntegration.last_fetch_timestamp 
+          ? new Date(igIntegration.last_fetch_timestamp)
+          : new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago for initial
 
-        let conversationsUrl = `https://graph.facebook.com/v18.0/${instagram_account_id}/conversations?fields=id,participants,messages{id,message,from,created_time}&platform=instagram&since=${sinceTimestamp}&access_token=${page_access_token}`;
+        // Subtract 30 seconds buffer
+        lastFetchTime = new Date(lastFetchTime.getTime() - 30000);
+
+        console.log(`[INSTAGRAM] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
+
+        let conversationsUrl = `https://graph.instagram.com/${instagram_account_id}/conversations?fields=id,participants,messages{id,message,from,created_time}&platform=instagram&access_token=${access_token}`;
+        
+        console.log(`[INSTAGRAM] Calling API for Instagram conversations`);
         
         // Paginate through all conversations
+        let conversationCount = 0;
         while (conversationsUrl) {
           const conversationsResponse = await fetch(conversationsUrl);
+          
+          if (!conversationsResponse.ok) {
+            console.error(`[INSTAGRAM] API error: ${conversationsResponse.status} ${conversationsResponse.statusText}`);
+            const errorText = await conversationsResponse.text();
+            console.error(`[INSTAGRAM] Error details: ${errorText}`);
+            break;
+          }
+          
           const conversationsData = await conversationsResponse.json();
+          conversationCount += conversationsData.data?.length || 0;
+          console.log(`[INSTAGRAM] Received ${conversationsData.data?.length || 0} conversations (total so far: ${conversationCount})`);
 
           if (conversationsData.data) {
             for (const igConv of conversationsData.data) {
               const threadId = igConv.id;
               const senderId = igConv.participants?.data[0]?.id || 'unknown';
-              const messages = igConv.messages?.data || [];
+              const allMessages = igConv.messages?.data || [];
               
-              if (messages.length === 0) continue;
+              console.log(`[INSTAGRAM] Thread ${threadId}: total_messages=${allMessages.length}, sender=${senderId}`);
+              
+              // Filter messages by timestamp - use >= to include messages at exact time
+              const messages = allMessages.filter((msg: any) => {
+                const msgTime = new Date(msg.created_time);
+                return msgTime >= lastFetchTime;
+              });
+              
+              console.log(`[INSTAGRAM] Thread ${threadId}: ${messages.length} new messages (${allMessages.length} total)`);
+              
+              if (messages.length === 0) {
+                console.log(`[INSTAGRAM] Skipping thread ${threadId} - no new messages`);
+                continue;
+              }
 
               // Get existing conversation - search by customer_phone FIRST
               let { data: existingConv } = await supabase
@@ -357,7 +390,7 @@ serve(async (req) => {
                 
                 // Refresh customer name if it's a generic placeholder
                 if (existingConv.customer_name && existingConv.customer_name.startsWith('Instagram User')) {
-                  const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
+                  const userUrl = `https://graph.instagram.com/${senderId}?fields=username&access_token=${access_token}`;
                   const userResponse = await fetch(userUrl);
                   const userData = await userResponse.json();
                   
@@ -384,7 +417,7 @@ serve(async (req) => {
                 }
               } else {
                 // Create new conversation for new Instagram thread
-                const userUrl = `https://graph.facebook.com/v18.0/${senderId}?fields=username&access_token=${page_access_token}`;
+                const userUrl = `https://graph.instagram.com/${senderId}?fields=username&access_token=${access_token}`;
                 const userResponse = await fetch(userUrl);
                 const userData = await userResponse.json();
                 const customerName = userData.username || `Instagram User ${senderId.slice(0, 8)}`;
@@ -417,7 +450,10 @@ serve(async (req) => {
 
               // Import messages with deduplication by message_id
               for (const msg of messages.reverse()) {
-                if (!msg.message || !msg.id) continue;
+                if (!msg || !msg.message || !msg.id) {
+                  console.log(`[INSTAGRAM] Skipping invalid message in thread ${threadId}`);
+                  continue;
+                }
 
                 // Check if message already exists
                 const { data: existingMsg } = await supabase
@@ -445,6 +481,9 @@ serve(async (req) => {
 
                 if (!error) {
                   totalImported++;
+                  console.log(`[INSTAGRAM] Imported message ${msg.id} to conversation ${conversationId}`);
+                } else {
+                  console.error(`[INSTAGRAM] Failed to import message ${msg.id}:`, error);
                 }
               }
             }
