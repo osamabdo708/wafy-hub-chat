@@ -313,21 +313,24 @@ serve(async (req) => {
 
         let conversationsUrl = `https://graph.instagram.com/${instagram_account_id}/conversations?fields=id,participants,messages{id,message,from,created_time}&platform=instagram&access_token=${access_token}`;
         
-        console.log(`[INSTAGRAM] Calling API for Instagram conversations`);
+        console.log(`[INSTAGRAM] Calling API URL: ${conversationsUrl.replace(access_token, 'TOKEN_HIDDEN')}`);
         
         // Paginate through all conversations
         let conversationCount = 0;
         while (conversationsUrl) {
           const conversationsResponse = await fetch(conversationsUrl);
           
+          console.log(`[INSTAGRAM] API Response Status: ${conversationsResponse.status} ${conversationsResponse.statusText}`);
+          
           if (!conversationsResponse.ok) {
-            console.error(`[INSTAGRAM] API error: ${conversationsResponse.status} ${conversationsResponse.statusText}`);
             const errorText = await conversationsResponse.text();
-            console.error(`[INSTAGRAM] Error details: ${errorText}`);
+            console.error(`[INSTAGRAM] API error response: ${errorText}`);
             break;
           }
           
           const conversationsData = await conversationsResponse.json();
+          console.log(`[INSTAGRAM] API Response Data:`, JSON.stringify(conversationsData, null, 2));
+          
           conversationCount += conversationsData.data?.length || 0;
           console.log(`[INSTAGRAM] Received ${conversationsData.data?.length || 0} conversations (total so far: ${conversationCount})`);
 
