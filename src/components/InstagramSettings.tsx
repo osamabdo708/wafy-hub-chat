@@ -68,31 +68,43 @@ export const InstagramSettings = () => {
   const handleTest = async () => {
     setTesting(true);
     try {
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${config.instagram_account_id}?fields=id,username&access_token=${config.access_token}`
-      );
+      // Call test edge function
+      const { data, error } = await supabase.functions.invoke('test-instagram-connection', {
+        body: {
+          access_token: config.access_token,
+          instagram_account_id: config.instagram_account_id
+        }
+      });
 
-      const data = await response.json();
-
-      if (response.ok) {
+      if (error) {
+        console.error('Edge function error:', error);
         toast({
-          title: "الاتصال ناجح",
-          description: `تم الاتصال بحساب @${data.username} بنجاح`,
+          title: "خطأ",
+          description: error.message || "فشل الاتصال",
+          variant: "destructive",
         });
-      } else {
-        const errorMessage = data.error?.message || 'فشل الاتصال';
+        return;
+      }
+
+      if (!data.success) {
         console.error('Instagram API error:', data);
         toast({
           title: "فشل الاتصال",
-          description: errorMessage,
+          description: data.error || "تحقق من البيانات",
           variant: "destructive",
         });
+        return;
       }
+
+      toast({
+        title: "الاتصال ناجح",
+        description: `تم الاتصال بحساب @${data.account.username} بنجاح`,
+      });
     } catch (error) {
       console.error('Error testing Instagram connection:', error);
       toast({
         title: "فشل الاتصال",
-        description: "تحقق من البيانات وحاول مرة أخرى",
+        description: "حدث خطأ أثناء الاختبار",
         variant: "destructive",
       });
     } finally {
