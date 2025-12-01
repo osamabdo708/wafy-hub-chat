@@ -130,7 +130,7 @@ export const FacebookSettings = () => {
             <Label htmlFor="page-token">Page Access Token</Label>
             <Input
               id="page-token"
-              type="password"
+              type="text"
               placeholder="EAAxxxxxxxxxx"
               value={config.page_access_token}
               onChange={(e) => setConfig({ ...config, page_access_token: e.target.value })}
@@ -154,7 +154,7 @@ export const FacebookSettings = () => {
             <Label htmlFor="app-secret">App Secret</Label>
             <Input
               id="app-secret"
-              type="password"
+              type="text"
               placeholder="xxxxxxxxxxxxxxxxxxxx"
               value={config.app_secret}
               onChange={(e) => setConfig({ ...config, app_secret: e.target.value })}
