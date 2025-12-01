@@ -311,6 +311,19 @@ serve(async (req) => {
 
         console.log(`[INSTAGRAM] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
 
+        // First, verify the account and token
+        console.log('[INSTAGRAM] Verifying account and token...');
+        const accountUrl = `https://graph.instagram.com/${instagram_account_id}?fields=id,username,name&access_token=${access_token}`;
+        const accountResponse = await fetch(accountUrl);
+        
+        if (!accountResponse.ok) {
+          const errorText = await accountResponse.text();
+          console.error(`[INSTAGRAM] Account verification failed: ${errorText}`);
+        } else {
+          const accountData = await accountResponse.json();
+          console.log(`[INSTAGRAM] Account verified: @${accountData.username || accountData.name} (ID: ${accountData.id})`);
+        }
+
         let conversationsUrl = `https://graph.instagram.com/${instagram_account_id}/conversations?fields=id,participants,messages{id,message,from,created_time}&platform=instagram&access_token=${access_token}`;
         
         console.log(`[INSTAGRAM] Calling API URL: ${conversationsUrl.replace(access_token, 'TOKEN_HIDDEN')}`);
@@ -325,6 +338,13 @@ serve(async (req) => {
           if (!conversationsResponse.ok) {
             const errorText = await conversationsResponse.text();
             console.error(`[INSTAGRAM] API error response: ${errorText}`);
+            
+            // Check for common errors
+            if (conversationsResponse.status === 400) {
+              console.error('[INSTAGRAM] Bad request - check if instagram_account_id is correct and token has instagram_manage_messages permission');
+            } else if (conversationsResponse.status === 403) {
+              console.error('[INSTAGRAM] Forbidden - token likely lacks instagram_manage_messages permission or account not connected to Facebook Page');
+            }
             break;
           }
           
@@ -333,6 +353,16 @@ serve(async (req) => {
           
           conversationCount += conversationsData.data?.length || 0;
           console.log(`[INSTAGRAM] Received ${conversationsData.data?.length || 0} conversations (total so far: ${conversationCount})`);
+
+          // If no conversations found, provide diagnostic info
+          if (!conversationsData.data || conversationsData.data.length === 0) {
+            console.log('[INSTAGRAM] ⚠️ No conversations found. Possible reasons:');
+            console.log('  1. No Instagram Direct messages exist for this account yet');
+            console.log('  2. Access token lacks "instagram_manage_messages" permission');
+            console.log('  3. Instagram Business Account not properly linked to a Facebook Page');
+            console.log('  4. Messages may be in "Message Requests" and not accepted yet');
+            console.log(`  5. Account ID (${instagram_account_id}) may be incorrect - verify it's the Instagram Business Account ID`);
+          }
 
           if (conversationsData.data) {
             for (const igConv of conversationsData.data) {
