@@ -40,9 +40,7 @@ serve(async (req) => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
     for (const conversation of conversations || []) {
-      // Get ALL unreplied customer messages that are at least 10 seconds old
-      const tenSecondsAgo = new Date(Date.now() - 10 * 1000).toISOString();
-      
+      // Get ALL unreplied customer messages
       const { data: unrepliedMessages } = await supabase
         .from('messages')
         .select('*')
@@ -51,11 +49,20 @@ serve(async (req) => {
         .eq('reply_sent', false)
         .eq('is_old', false)
         .gte('created_at', fiveMinutesAgo)
-        .lte('created_at', tenSecondsAgo) // Only messages at least 10 seconds old
         .order('created_at', { ascending: true });
 
       if (!unrepliedMessages || unrepliedMessages.length === 0) {
         console.log(`No unreplied messages in conversation ${conversation.id}`);
+        continue;
+      }
+
+      // Check if the most recent unreplied message is at least 10 seconds old
+      const mostRecentMessage = unrepliedMessages[unrepliedMessages.length - 1];
+      const messageAge = Date.now() - new Date(mostRecentMessage.created_at).getTime();
+      const TEN_SECONDS = 10 * 1000;
+
+      if (messageAge < TEN_SECONDS) {
+        console.log(`Skipping conversation ${conversation.id} - most recent message is only ${Math.floor(messageAge / 1000)} seconds old`);
         continue;
       }
 
