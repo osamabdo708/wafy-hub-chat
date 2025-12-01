@@ -69,11 +69,14 @@ export const FacebookSettings = () => {
   const handleTest = async () => {
     setTesting(true);
     try {
+      // Test using the /conversations endpoint like the Python code does
       const response = await fetch(
-        `https://graph.facebook.com/v18.0/${config.page_id}?access_token=${config.page_access_token}`
+        `https://graph.facebook.com/v17.0/${config.page_id}/conversations?fields=id,participants,updated_time&limit=1&access_token=${config.page_access_token}`
       );
 
       if (response.ok) {
+        const data = await response.json();
+        
         // Mark as connected on success
         await supabase
           .from('channel_integrations')
@@ -88,7 +91,9 @@ export const FacebookSettings = () => {
           description: "تم الاتصال بفيسبوك بنجاح وتم تفعيل الاستيراد",
         });
       } else {
-        throw new Error('Failed to connect');
+        const errorData = await response.json();
+        console.error('Facebook API error:', errorData);
+        throw new Error(errorData.error?.message || 'Failed to connect');
       }
     } catch (error) {
       console.error('Error testing Facebook connection:', error);
@@ -104,7 +109,7 @@ export const FacebookSettings = () => {
       
       toast({
         title: "فشل الاتصال",
-        description: "تحقق من البيانات وحاول مرة أخرى",
+        description: error instanceof Error ? error.message : "تحقق من البيانات وحاول مرة أخرى",
         variant: "destructive",
       });
     } finally {
