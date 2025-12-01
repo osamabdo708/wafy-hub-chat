@@ -15,8 +15,8 @@ async function fetchAllPages(url: string) {
   let nextUrl: string | null = url;
 
   while (nextUrl) {
-    const res = await fetch(nextUrl);
-    const json = await res.json();
+    const res: Response = await fetch(nextUrl);
+    const json: any = await res.json();
 
     if (json.error) {
       console.error("Facebook API error:", json.error);
