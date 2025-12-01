@@ -43,7 +43,7 @@ export const WhatsAppSettings = () => {
         .upsert({
           channel: 'whatsapp',
           config: config,
-          is_connected: true
+          is_connected: false // Don't mark as connected until test succeeds
         }, {
           onConflict: 'channel'
         });
@@ -52,7 +52,7 @@ export const WhatsAppSettings = () => {
 
       toast({
         title: "تم الحفظ",
-        description: "تم حفظ إعدادات واتساب بنجاح",
+        description: "تم حفظ إعدادات واتساب بنجاح. اضغط 'اختبار الاتصال' للتفعيل",
       });
     } catch (error) {
       console.error('Error saving WhatsApp config:', error);
@@ -80,15 +80,34 @@ export const WhatsAppSettings = () => {
       );
 
       if (response.ok) {
+        // Mark as connected on success
+        await supabase
+          .from('channel_integrations')
+          .upsert({
+            channel: 'whatsapp',
+            config: config,
+            is_connected: true
+          }, { onConflict: 'channel' });
+        
         toast({
           title: "الاتصال ناجح",
-          description: "تم الاتصال بواتساب بنجاح",
+          description: "تم الاتصال بواتساب بنجاح وتم تفعيل الاستيراد",
         });
       } else {
         throw new Error('Failed to connect');
       }
     } catch (error) {
       console.error('Error testing WhatsApp connection:', error);
+      
+      // Mark as disconnected on failure
+      await supabase
+        .from('channel_integrations')
+        .upsert({
+          channel: 'whatsapp',
+          config: config,
+          is_connected: false
+        }, { onConflict: 'channel' });
+      
       toast({
         title: "فشل الاتصال",
         description: "تحقق من البيانات وحاول مرة أخرى",
