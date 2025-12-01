@@ -153,6 +153,21 @@ const Inbox = () => {
     };
   }, [handleImport]);
 
+  // Auto-reply check every 15 seconds
+  useEffect(() => {
+    const autoReplyInterval = setInterval(async () => {
+      try {
+        await supabase.functions.invoke('auto-reply-messages');
+      } catch (error) {
+        console.error('Auto-reply error:', error);
+      }
+    }, 15000); // 15 seconds
+
+    return () => {
+      clearInterval(autoReplyInterval);
+    };
+  }, []);
+
   const handleDeleteAll = async () => {
     try {
       // First delete all messages associated with conversations
