@@ -43,7 +43,7 @@ export const FacebookSettings = () => {
         .upsert({
           channel: 'facebook',
           config: config,
-          is_connected: true
+          is_connected: false // Don't mark as connected until test succeeds
         }, {
           onConflict: 'channel'
         });
@@ -52,7 +52,7 @@ export const FacebookSettings = () => {
 
       toast({
         title: "تم الحفظ",
-        description: "تم حفظ إعدادات فيسبوك بنجاح",
+        description: "تم حفظ إعدادات فيسبوك بنجاح. اضغط 'اختبار الاتصال' للتفعيل",
       });
     } catch (error) {
       console.error('Error saving Facebook config:', error);
@@ -74,15 +74,34 @@ export const FacebookSettings = () => {
       );
 
       if (response.ok) {
+        // Mark as connected on success
+        await supabase
+          .from('channel_integrations')
+          .upsert({
+            channel: 'facebook',
+            config: config,
+            is_connected: true
+          }, { onConflict: 'channel' });
+        
         toast({
           title: "الاتصال ناجح",
-          description: "تم الاتصال بفيسبوك بنجاح",
+          description: "تم الاتصال بفيسبوك بنجاح وتم تفعيل الاستيراد",
         });
       } else {
         throw new Error('Failed to connect');
       }
     } catch (error) {
       console.error('Error testing Facebook connection:', error);
+      
+      // Mark as disconnected on failure
+      await supabase
+        .from('channel_integrations')
+        .upsert({
+          channel: 'facebook',
+          config: config,
+          is_connected: false
+        }, { onConflict: 'channel' });
+      
       toast({
         title: "فشل الاتصال",
         description: "تحقق من البيانات وحاول مرة أخرى",

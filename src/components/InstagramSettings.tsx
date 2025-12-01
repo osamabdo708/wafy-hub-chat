@@ -42,7 +42,7 @@ export const InstagramSettings = () => {
         .upsert({
           channel: 'instagram',
           config: config,
-          is_connected: true
+          is_connected: false // Don't mark as connected until test succeeds
         }, {
           onConflict: 'channel'
         });
@@ -51,7 +51,7 @@ export const InstagramSettings = () => {
 
       toast({
         title: "تم الحفظ",
-        description: "تم حفظ إعدادات إنستغرام بنجاح",
+        description: "تم حفظ إعدادات إنستغرام بنجاح. اضغط 'اختبار الاتصال' للتفعيل",
       });
     } catch (error) {
       console.error('Error saving Instagram config:', error);
@@ -78,6 +78,16 @@ export const InstagramSettings = () => {
 
       if (error) {
         console.error('Edge function error:', error);
+        
+        // Mark as disconnected on failure
+        await supabase
+          .from('channel_integrations')
+          .upsert({
+            channel: 'instagram',
+            config: config,
+            is_connected: false
+          }, { onConflict: 'channel' });
+        
         toast({
           title: "خطأ",
           description: error.message || "فشل الاتصال",
@@ -88,6 +98,16 @@ export const InstagramSettings = () => {
 
       if (!data.success) {
         console.error('Instagram API error:', data);
+        
+        // Mark as disconnected on failure
+        await supabase
+          .from('channel_integrations')
+          .upsert({
+            channel: 'instagram',
+            config: config,
+            is_connected: false
+          }, { onConflict: 'channel' });
+        
         toast({
           title: "فشل الاتصال",
           description: data.error || "تحقق من البيانات",
@@ -96,12 +116,31 @@ export const InstagramSettings = () => {
         return;
       }
 
+      // Mark as connected on success
+      await supabase
+        .from('channel_integrations')
+        .upsert({
+          channel: 'instagram',
+          config: config,
+          is_connected: true
+        }, { onConflict: 'channel' });
+
       toast({
         title: "الاتصال ناجح",
-        description: `تم الاتصال بحساب @${data.account.username} بنجاح`,
+        description: `تم الاتصال بحساب @${data.account.username} بنجاح وتم تفعيل الاستيراد`,
       });
     } catch (error) {
       console.error('Error testing Instagram connection:', error);
+      
+      // Mark as disconnected on error
+      await supabase
+        .from('channel_integrations')
+        .upsert({
+          channel: 'instagram',
+          config: config,
+          is_connected: false
+        }, { onConflict: 'channel' });
+      
       toast({
         title: "فشل الاتصال",
         description: "حدث خطأ أثناء الاختبار",
