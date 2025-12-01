@@ -14,6 +14,7 @@ export const InstagramSettings = () => {
   const [config, setConfig] = useState({
     access_token: "",
     instagram_account_id: "",
+    page_id: "",
     verify_token: "omnichat_instagram_verify_2024"
   });
 
@@ -193,6 +194,19 @@ export const InstagramSettings = () => {
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="page-id">Facebook Page ID (اختياري)</Label>
+            <Input
+              id="page-id"
+              placeholder="123456789012345"
+              value={config.page_id}
+              onChange={(e) => setConfig({ ...config, page_id: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              معرف صفحة Facebook المرتبطة بحساب Instagram (يُفضل إضافته لاستيراد أفضل)
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label>Webhook URL</Label>
             <div className="p-3 bg-muted rounded-md">
               <code className="text-xs break-all">{webhookUrl}</code>
@@ -234,12 +248,13 @@ export const InstagramSettings = () => {
             <li>اطلب الصلاحيات: instagram_business_basic و instagram_business_manage_messages</li>
             <li>استخدم Instagram Login لإنشاء Instagram User Access Token</li>
             <li>انسخ الـ Instagram Account ID من الـ API Response</li>
+            <li>(اختياري) انسخ معرف Facebook Page المرتبط بحسابك لاستيراد أفضل</li>
             <li>قم بإعداد Webhook باستخدام الرابط أعلاه واشترك في "messages"</li>
             <li>احفظ الإعدادات واختبر الاتصال</li>
           </ol>
           <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-md">
             <p className="text-xs text-yellow-800 dark:text-yellow-200">
-              <strong>ملاحظة:</strong> يجب استخدام Instagram User Access Token (يبدأ بـ IGQVJxxx) وليس Facebook Page Access Token (يبدأ بـ EAAxxx)
+              <strong>ملاحظة:</strong> يجب استخدام Instagram User Access Token (يبدأ بـ IGQVJxxx) وليس Facebook Page Access Token (يبدأ بـ EAAxxx). إذا كان حساب Instagram مرتبطاً بصفحة Facebook، أضف معرف الصفحة للحصول على استيراد أفضل للرسائل.
             </p>
           </div>
         </div>
