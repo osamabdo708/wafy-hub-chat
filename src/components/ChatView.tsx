@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Send, User, Phone, Mail, Bot, Package, ShoppingCart } from "lucide-react";
+import { Send, User, Phone, Mail, Bot, Package, ShoppingCart, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -19,6 +19,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -53,9 +60,17 @@ const ChatView = ({
   const [sending, setSending] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [showProductDialog, setShowProductDialog] = useState(false);
-  const [showOrderDialog, setShowOrderDialog] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [orderQuantity, setOrderQuantity] = useState(1);
+  const [showOrderForm, setShowOrderForm] = useState(false);
+  const [orderForm, setOrderForm] = useState({
+    customer_name: customerName,
+    customer_phone: customerPhone || '',
+    customer_email: customerEmail || '',
+    address: '',
+    payment_method: '',
+    product_id: '',
+    quantity: 1,
+    notes: ''
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -231,32 +246,55 @@ const ChatView = ({
     }
   };
 
-  const handleCreateOrder = async () => {
-    if (!selectedProduct) {
+  const handleCreateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!orderForm.customer_name || !orderForm.customer_phone || !orderForm.address || !orderForm.payment_method) {
+      toast.error('يرجى ملء جميع الحقول المطلوبة');
+      return;
+    }
+
+    if (!orderForm.product_id) {
       toast.error('يرجى اختيار منتج');
       return;
     }
 
     try {
+      const selectedProduct = products.find(p => p.id === orderForm.product_id);
+      const totalPrice = selectedProduct ? selectedProduct.price * orderForm.quantity : 0;
+
+      // Generate order number
+      const { data: orderNumber } = await supabase.rpc('generate_order_number');
+
       const { error } = await supabase
         .from('orders')
         .insert({
-          customer_name: customerName,
-          customer_phone: customerPhone || '',
-          product_id: selectedProduct.id,
-          price: selectedProduct.price * orderQuantity,
+          customer_name: orderForm.customer_name,
+          customer_phone: orderForm.customer_phone,
+          customer_email: orderForm.customer_email || null,
+          product_id: orderForm.product_id,
+          price: totalPrice,
+          order_number: orderNumber || `ORD-${Date.now()}`,
           status: 'قيد الانتظار',
           conversation_id: conversationId,
           source_platform: channel,
           created_by: 'employee',
-          order_number: `ORD-${Date.now()}`
+          notes: `العنوان: ${orderForm.address}\nطريقة الدفع: ${orderForm.payment_method}${orderForm.notes ? `\n${orderForm.notes}` : ''}`
         });
 
       if (error) throw error;
 
-      setShowOrderDialog(false);
-      setSelectedProduct(null);
-      setOrderQuantity(1);
+      setShowOrderForm(false);
+      setOrderForm({
+        customer_name: customerName,
+        customer_phone: customerPhone || '',
+        customer_email: customerEmail || '',
+        address: '',
+        payment_method: '',
+        product_id: '',
+        quantity: 1,
+        notes: ''
+      });
       toast.success('تم إنشاء الطلب بنجاح');
     } catch (error) {
       console.error('Error creating order:', error);
@@ -325,76 +363,14 @@ const ChatView = ({
               </DialogContent>
             </Dialog>
 
-            <Dialog open={showOrderDialog} onOpenChange={setShowOrderDialog}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <ShoppingCart className="w-4 h-4 ml-1" />
-                  إنشاء طلب
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>إنشاء طلب جديد</DialogTitle>
-                  <DialogDescription>
-                    أنشئ طلباً من هذه المحادثة
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label>اختر المنتج</Label>
-                    <select
-                      className="w-full mt-1 p-2 border rounded-md"
-                      value={selectedProduct?.id || ''}
-                      onChange={(e) => {
-                        const product = products.find(p => p.id === e.target.value);
-                        setSelectedProduct(product);
-                      }}
-                    >
-                      <option value="">-- اختر منتج --</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name} - {product.price} ريال
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <Label>الكمية</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={orderQuantity}
-                      onChange={(e) => setOrderQuantity(parseInt(e.target.value) || 1)}
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>اسم العميل</Label>
-                    <Input value={customerName} disabled className="mt-1" />
-                  </div>
-
-                  <div>
-                    <Label>رقم الهاتف</Label>
-                    <Input value={customerPhone || ''} disabled className="mt-1" />
-                  </div>
-
-                  {selectedProduct && (
-                    <div className="bg-muted p-3 rounded-md">
-                      <p className="text-sm font-semibold">الإجمالي</p>
-                      <p className="text-2xl font-bold text-primary">
-                        {(selectedProduct.price * orderQuantity).toFixed(2)} ريال
-                      </p>
-                    </div>
-                  )}
-
-                  <Button onClick={handleCreateOrder} className="w-full" disabled={!selectedProduct}>
-                    إنشاء الطلب
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowOrderForm(!showOrderForm)}
+            >
+              {showOrderForm ? <X className="w-4 h-4 ml-1" /> : <ShoppingCart className="w-4 h-4 ml-1" />}
+              {showOrderForm ? 'إلغاء' : 'إنشاء طلب'}
+            </Button>
 
             {customerPhone && (
               <Button variant="ghost" size="sm">
@@ -409,6 +385,118 @@ const ChatView = ({
           </div>
         </div>
       </div>
+
+      {/* Order Form */}
+      {showOrderForm && (
+        <div className="p-4 border-b bg-muted/20">
+          <h3 className="font-semibold text-lg mb-4">إنشاء طلب جديد</h3>
+          <form onSubmit={handleCreateOrder} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="order_customer_name">اسم العميل *</Label>
+                <Input
+                  id="order_customer_name"
+                  value={orderForm.customer_name}
+                  onChange={(e) => setOrderForm({ ...orderForm, customer_name: e.target.value })}
+                  placeholder="أدخل اسم العميل"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="order_customer_phone">رقم الهاتف *</Label>
+                <Input
+                  id="order_customer_phone"
+                  value={orderForm.customer_phone}
+                  onChange={(e) => setOrderForm({ ...orderForm, customer_phone: e.target.value })}
+                  placeholder="أدخل رقم الهاتف"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1 col-span-2">
+                <Label htmlFor="order_address">العنوان *</Label>
+                <Textarea
+                  id="order_address"
+                  value={orderForm.address}
+                  onChange={(e) => setOrderForm({ ...orderForm, address: e.target.value })}
+                  placeholder="أدخل العنوان الكامل"
+                  required
+                  rows={2}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="order_product">المنتج *</Label>
+                <Select
+                  value={orderForm.product_id}
+                  onValueChange={(value) => setOrderForm({ ...orderForm, product_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر منتج" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name} - {product.price} ريال
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="order_payment">طريقة الدفع *</Label>
+                <Select
+                  value={orderForm.payment_method}
+                  onValueChange={(value) => setOrderForm({ ...orderForm, payment_method: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر طريقة الدفع" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="نقدي">نقدي</SelectItem>
+                    <SelectItem value="بطاقة ائتمان">بطاقة ائتمان</SelectItem>
+                    <SelectItem value="تحويل بنكي">تحويل بنكي</SelectItem>
+                    <SelectItem value="محفظة إلكترونية">محفظة إلكترونية</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="order_quantity">الكمية</Label>
+                <Input
+                  id="order_quantity"
+                  type="number"
+                  min="1"
+                  value={orderForm.quantity}
+                  onChange={(e) => setOrderForm({ ...orderForm, quantity: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+
+              <div className="space-y-1 col-span-2">
+                <Label htmlFor="order_notes">ملاحظات إضافية</Label>
+                <Textarea
+                  id="order_notes"
+                  value={orderForm.notes}
+                  onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })}
+                  placeholder="أضف أي ملاحظات إضافية"
+                  rows={2}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowOrderForm(false)}>
+                إلغاء
+              </Button>
+              <Button type="submit">
+                إنشاء الطلب
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-4 max-h-[400px]" ref={scrollRef}>
