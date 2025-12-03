@@ -25,7 +25,7 @@ export const InstagramSettings = () => {
   useEffect(() => {
     loadSettings();
     const params = new URLSearchParams(window.location.search);
-    if (params.get('success') === 'instagram_connected'') {
+    if (params.get('success') === 'facebook_connected') {
       toast({
         title: 'تم الربط بنجاح',
         description: `تم ربط إنستغرام بنجاح`,
