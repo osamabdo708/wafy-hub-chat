@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Clock, User, Trash2, Download } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -39,7 +39,6 @@ const Inbox = () => {
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     fetchConversations();
@@ -127,32 +126,6 @@ const Inbox = () => {
     return null;
   };
 
-  const handleImport = useCallback(async () => {
-    setImporting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('auto-import-messages');
-      
-      if (error) throw error;
-      
-      fetchConversations();
-    } catch (error) {
-      console.error('Error importing messages:', error);
-    } finally {
-      setImporting(false);
-    }
-  }, []);
-
-  // Auto-import messages every 10 seconds
-  useEffect(() => {
-    const autoImportInterval = setInterval(() => {
-      handleImport();
-    }, 10000); // 10 seconds
-
-    return () => {
-      clearInterval(autoImportInterval);
-    };
-  }, [handleImport]);
-
   // Auto-reply check every 15 seconds
   useEffect(() => {
     const autoReplyInterval = setInterval(async () => {
@@ -205,14 +178,6 @@ const Inbox = () => {
           <p className="text-muted-foreground mt-1">جميع محادثاتك من كل القنوات في مكان واحد</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline"
-            onClick={handleImport}
-            disabled={importing}
-          >
-            <Download className="w-4 h-4 ml-2" />
-            {importing ? "جاري الاستيراد..." : "استيراد الرسائل"}
-          </Button>
           <Button variant="outline">تصفية</Button>
           <Button 
             variant="destructive" 
