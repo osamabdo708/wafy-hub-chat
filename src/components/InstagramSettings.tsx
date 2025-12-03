@@ -19,7 +19,8 @@ export const InstagramSettings = () => {
   const { toast } = useToast();
 
   const webhookUrl = `${SUPABASE_URL}/functions/v1/instagram-webhook`;
-  const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/instagram-oauth-callback`;
+  // const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/instagram-oauth-callback`;
+  const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
 
   useEffect(() => {
     loadSettings();
