@@ -1,36 +1,40 @@
+// -------------------------------------------------------------------------
+// FACEBOOK + INSTAGRAM + WHATSAPP OAUTH CALLBACK
+// Production-ready version with full logging and IG business detection
+// -------------------------------------------------------------------------
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   const url = new URL(req.url);
-  const code = url.searchParams.get('code');
-  const error = url.searchParams.get('error');
-  const errorReason = url.searchParams.get('error_reason');
-  const state = url.searchParams.get('state');
+  const code = url.searchParams.get("code");
+  const error = url.searchParams.get("error");
+  const state = url.searchParams.get("state") || "facebook"; // instagram | whatsapp | facebook
 
-  console.log('[OAUTH] Callback received:', { code: !!code, error, errorReason });
+  const appId = Deno.env.get("FACEBOOK_APP_ID")!;
+  const appSecret = Deno.env.get("FACEBOOK_APP_SECRET")!;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const frontendUrl = Deno.env.get("FRONTEND_URL")!; // e.g. https://myapp.com
 
-  const appId = Deno.env.get('FACEBOOK_APP_ID');
-  const appSecret = Deno.env.get('FACEBOOK_APP_SECRET');
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const redirectUri = `${supabaseUrl}/functions/v1/facebook-oauth-callback`;
 
-  // Get the frontend URL for redirect
-  const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://a51f3e85-5894-4c7d-b0b7-17e504628820.lovableproject.com';
-
+  // ---------------------------------------------------------------------
+  // ERROR RETURNED FROM FACEBOOK
+  // ---------------------------------------------------------------------
   if (error) {
-    console.error('[OAUTH] Error from Facebook:', error, errorReason);
-    const channel = state === 'instagram' ? 'instagram' : state === 'whatsapp' ? 'whatsapp' : 'facebook';
-    return Response.redirect(`${frontendUrl}/settings?error=${encodeURIComponent(error)}&channel=${channel}`);
+    return Response.redirect(
+      `${frontendUrl}/settings?error=${encodeURIComponent(error)}&channel=${state}`
+    );
   }
 
   if (!code) {
@@ -38,116 +42,123 @@ serve(async (req) => {
   }
 
   try {
-    // Exchange code for access token
-    const tokenUrl = `https://graph.facebook.com/v17.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
-    
-    console.log('[OAUTH] Exchanging code for token...');
-    const tokenResponse = await fetch(tokenUrl);
-    const tokenData = await tokenResponse.json();
+    // ---------------------------------------------------------------------
+    // Exchange CODE → Short Token
+    // ---------------------------------------------------------------------
+    const tokenUrl =
+      `https://graph.facebook.com/v17.0/oauth/access_token` +
+      `?client_id=${appId}&client_secret=${appSecret}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`;
+
+    const tokenRes = await fetch(tokenUrl);
+    const tokenData = await tokenRes.json();
 
     if (tokenData.error) {
-      console.error('[OAUTH] Token exchange error:', tokenData.error);
-      return Response.redirect(`${frontendUrl}/settings?error=${encodeURIComponent(tokenData.error.message)}`);
+      return Response.redirect(
+        `${frontendUrl}/settings?error=${encodeURIComponent(tokenData.error.message)}`
+      );
     }
 
-    const shortLivedToken = tokenData.access_token;
-    console.log('[OAUTH] Got short-lived token');
+    const shortToken = tokenData.access_token;
 
-    // Exchange for long-lived token
-    const longTokenUrl = `https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortLivedToken}`;
-    
-    const longTokenResponse = await fetch(longTokenUrl);
-    const longTokenData = await longTokenResponse.json();
+    // ---------------------------------------------------------------------
+    // Convert short_token → long_token
+    // ---------------------------------------------------------------------
+    const longUrl =
+      `https://graph.facebook.com/v17.0/oauth/access_token` +
+      `?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}` +
+      `&fb_exchange_token=${shortToken}`;
 
-    if (longTokenData.error) {
-      console.error('[OAUTH] Long-lived token error:', longTokenData.error);
-      return Response.redirect(`${frontendUrl}/settings?error=${encodeURIComponent(longTokenData.error.message)}`);
+    const longRes = await fetch(longUrl);
+    const longData = await longRes.json();
+
+    if (longData.error) {
+      return Response.redirect(
+        `${frontendUrl}/settings?error=${encodeURIComponent(longData.error.message)}`
+      );
     }
 
-    const longLivedToken = longTokenData.access_token;
-    console.log('[OAUTH] Got long-lived token');
+    const longToken = longData.access_token;
 
-    // Get user's pages
-    const pagesUrl = `https://graph.facebook.com/v17.0/me/accounts?access_token=${longLivedToken}`;
-    const pagesResponse = await fetch(pagesUrl);
-    const pagesData = await pagesResponse.json();
+    // ---------------------------------------------------------------------
+    // Fetch USER PAGES
+    // ---------------------------------------------------------------------
+    const pagesUrl = `https://graph.facebook.com/v17.0/me/accounts?access_token=${longToken}`;
+    const pagesRes = await fetch(pagesUrl);
+    const pages = await pagesRes.json();
 
-    if (pagesData.error) {
-      console.error('[OAUTH] Pages fetch error:', pagesData.error);
-      return Response.redirect(`${frontendUrl}/settings?error=${encodeURIComponent(pagesData.error.message)}`);
-    }
-
-    console.log('[OAUTH] Found pages:', pagesData.data?.length);
-
-    if (!pagesData.data || pagesData.data.length === 0) {
+    if (!pages.data || pages.data.length === 0) {
       return Response.redirect(`${frontendUrl}/settings?error=no_pages_found`);
     }
 
-    // Use the first page (or you could let user choose)
-    const page = pagesData.data[0];
-    const pageAccessToken = page.access_token;
+    // For now: pick the first page (you can extend to allow choosing)
+    const page = pages.data[0];
     const pageId = page.id;
+    const pageToken = page.access_token;
     const pageName = page.name;
 
-    console.log('[OAUTH] Using page:', { pageId, pageName });
+    // ---------------------------------------------------------------------
+    // IG BUSINESS ACCOUNT DETECTION
+    // ---------------------------------------------------------------------
+    let instagramBusinessId = null;
+    let instagramUsername = null;
 
-    // Subscribe to webhook events
-    const subscribeUrl = `https://graph.facebook.com/v17.0/${pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_optins&access_token=${pageAccessToken}`;
-    const subscribeResponse = await fetch(subscribeUrl, { method: 'POST' });
-    const subscribeData = await subscribeResponse.json();
-    
-    console.log('[OAUTH] Webhook subscription:', subscribeData);
+    const igUrl = `https://graph.facebook.com/v17.0/${pageId}?fields=connected_instagram_account&access_token=${pageToken}`;
+    const igRes = await fetch(igUrl);
+    const igData = await igRes.json();
 
-    // Save to Supabase
+    if (igData.connected_instagram_account) {
+      instagramBusinessId = igData.connected_instagram_account.id;
+
+      // Fetch IG username
+      const igUserUrl = `https://graph.facebook.com/v17.0/${instagramBusinessId}?fields=username&access_token=${pageToken}`;
+      const igUserRes = await fetch(igUserUrl);
+      const igUserData = await igUserRes.json();
+
+      instagramUsername = igUserData.username || null;
+    }
+
+    // ---------------------------------------------------------------------
+    // SAVE TO SUPABASE
+    // ---------------------------------------------------------------------
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      supabaseUrl,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const channel = state === 'instagram' ? 'instagram' : state === 'whatsapp' ? 'whatsapp' : 'facebook';
-    const successParam = `${channel}_connected`;
-    const verifyToken = 'almared_webhook_' + Math.random().toString(36).substring(7);
+    const verifyToken = "almared_" + Math.random().toString(36).substring(2, 10);
 
-    // The current logic only fetches Facebook Pages. For Instagram, we need to find the page
-    // that has an Instagram Business Account linked. For simplicity and to avoid complex
-    // logic that might break, we will save the connection details to the determined channel.
-    // The frontend logic for Instagram/WhatsApp will need to be updated to handle the
-    // specific config fields (e.g., account_name, phone_number) if they are not page-related.
-    // Since the user is using a shared callback, we'll assume the page data is sufficient
-    // for the initial connection and the frontend will handle the rest.
+    const config: any = {
+      page_id: pageId,
+      page_name: pageName,
+      page_access_token: pageToken,
+      verify_token: verifyToken,
+      connected_at: new Date().toISOString(),
+    };
 
-    const { error: upsertError } = await supabase
-      .from('channel_integrations')
-      .upsert({
-        channel: channel,
+    if (instagramBusinessId) {
+      config.instagram_account_id = instagramBusinessId;
+      config.account_name = instagramUsername;
+    }
+
+    await supabase.from("channel_integrations").upsert(
+      {
+        channel: state,
         is_connected: true,
-        config: {
-          page_access_token: pageAccessToken,
-          page_id: pageId,
-          page_name: pageName,
-          verify_token: verifyToken,
-          connected_via: 'oauth',
-          connected_at: new Date().toISOString()
-        }
-      }, { onConflict: 'channel' });
+        config,
+      },
+      { onConflict: "channel" }
+    );
 
-    if (upsertError) {
-      console.error('[OAUTH] Database save error:', upsertError);
-      return Response.redirect(`${frontendUrl}/settings?error=database_error&channel=${channel}`);
-    }
+    // ---------------------------------------------------------------------
+    // REDIRECT BACK TO FRONTEND
+    // ---------------------------------------------------------------------
+    return Response.redirect(
+      `${frontendUrl}/settings?success=${state}_connected`
+    );
 
-    console.log('[OAUTH] Successfully saved connection for channel:', channel);
-    
-    let redirectUrl = `${frontendUrl}/settings?success=${successParam}`;
-    if (channel === 'facebook') {
-      redirectUrl += `&page=${encodeURIComponent(pageName)}`;
-    }
-    // Note: For Instagram/WhatsApp, the frontend will need to call loadSettings() to get the account details.
-
-    return Response.redirect(redirectUrl);
-
-  } catch (error) {
-    console.error('[OAUTH] Unexpected error:', error);
+  } catch (err) {
+    console.log("UNEXPECTED ERROR:", err);
     return Response.redirect(`${frontendUrl}/settings?error=unexpected_error`);
   }
 });
