@@ -19,7 +19,6 @@ export const InstagramSettings = () => {
   const { toast } = useToast();
 
   const webhookUrl = `${SUPABASE_URL}/functions/v1/instagram-webhook`;
-  // const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/instagram-oauth-callback`;
   const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
 
   useEffect(() => {
@@ -61,7 +60,7 @@ export const InstagramSettings = () => {
   const handleLogin = () => {
     setIsLoading(true);
     const scope = 'instagram_basic,instagram_manage_messages,pages_show_list,pages_messaging';
-    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code`;
+    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=instagram`;
     
     window.location.href = authUrl;
   };
@@ -106,121 +105,55 @@ export const InstagramSettings = () => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Instagram className="h-5 w-5 text-pink-600" />
-          Instagram Direct
-          {isConnected ? (
-            <CheckCircle className="h-5 w-5 text-green-500" />
-          ) : (
-            <XCircle className="h-5 w-5 text-gray-400" />
-          )}
-        </CardTitle>
-        <CardDescription>
-          {isConnected 
-            ? `متصل: @${accountName}` 
-            : 'قم بتسجيل الدخول لربط حساب إنستغرام بيزنس'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {isConnected ? (
-          <>
-            <div className="p-4 bg-pink-50 dark:bg-pink-900/20 rounded-lg border border-pink-200 dark:border-pink-800">
-              <div className="flex items-center gap-2 text-pink-700 dark:text-pink-400 font-medium">
-                <CheckCircle className="h-5 w-5" />
-                متصل بنجاح
-              </div>
-              <p className="text-sm text-pink-600 dark:text-pink-500 mt-1">
-                @{accountName} (ID: {accountId})
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Webhook URL</Label>
-                <div className="flex gap-2">
-                  <Input value={webhookUrl} readOnly className="font-mono text-xs" />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => copyToClipboard(webhookUrl, 'Webhook URL')}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Verify Token</Label>
-                <div className="flex gap-2">
-                  <Input value={verifyToken} readOnly className="font-mono text-xs" />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => copyToClipboard(verifyToken, 'Verify Token')}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <Button
-              onClick={handleDisconnect}
-              variant="destructive"
-              disabled={isLoading}
-              className="w-full"
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
-              ) : (
-                <LogOut className="h-4 w-4 ml-2" />
-              )}
-              فصل الاتصال
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="p-4 bg-pink-50 dark:bg-pink-900/20 rounded-lg border border-pink-200 dark:border-pink-800">
-              <p className="text-sm text-pink-700 dark:text-pink-400">
-                سيتم توجيهك إلى فيسبوك لتسجيل الدخول وربط حساب إنستغرام بيزنس.
-              </p>
-            </div>
-
-            <Button
-              onClick={handleLogin}
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
-              ) : (
-                <LogIn className="h-4 w-4 ml-2" />
-              )}
-              تسجيل الدخول بإنستغرام
-            </Button>
-          </>
-        )}
-
-        <div className="mt-6 p-4 bg-muted rounded-lg">
-          <h4 className="font-medium mb-3">إعداد Webhook في Meta Developer</h4>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>اذهب إلى <a href="https://developers.facebook.com" target="_blank" className="text-primary underline">Meta for Developers</a></li>
-            <li>اختر تطبيقك ثم اذهب إلى Instagram {'>'} Settings</li>
-            <li>في قسم Webhooks، اضغط Add Callback URL</li>
-            <li>أدخل Webhook URL و Verify Token المعروضين أعلاه</li>
-            <li>اشترك في الأحداث: messages</li>
-          </ol>
-          
-          <div className="mt-4 p-3 bg-background rounded border">
-            <p className="text-xs font-mono break-all">
-              <strong>Webhook URL:</strong><br />
-              {webhookUrl}
-            </p>
-          </div>
+    <Card className="flex items-center justify-between p-4">
+      <div className="flex items-center gap-4">
+        <Instagram className="h-8 w-8 text-pink-600" />
+        <div>
+          <CardTitle className="text-lg">إنستغرام</CardTitle>
+          <CardDescription className="flex items-center gap-2">
+            {isConnected ? (
+              <>
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                متصل: @{accountName}
+              </>
+            ) : (
+              <>
+                <XCircle className="h-4 w-4 text-gray-400" />
+                غير متصل
+              </>
+            )}
+          </CardDescription>
         </div>
-      </CardContent>
+      </div>
+      
+      {isConnected ? (
+        <Button
+          onClick={handleDisconnect}
+          variant="destructive"
+          disabled={isLoading}
+          className="shrink-0"
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin ml-2" />
+          ) : (
+            <LogOut className="h-4 w-4 ml-2" />
+          )}
+          فصل الاتصال
+        </Button>
+      ) : (
+        <Button
+          onClick={handleLogin}
+          disabled={isLoading}
+          className="shrink-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin ml-2" />
+          ) : (
+            <LogIn className="h-4 w-4 ml-2" />
+          )}
+          ربط الحساب
+        </Button>
+      )}
     </Card>
   );
 };
