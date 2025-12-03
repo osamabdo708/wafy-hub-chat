@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.facebook-oauth-callback]
 verify_jwt = false
 
+[functions.instagram-webhook]
+verify_jwt = false
+
 [functions.test-openai-connection]
 verify_jwt = false
 

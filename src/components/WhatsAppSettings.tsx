@@ -1,216 +1,225 @@
-import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { MessageSquare, CheckCircle, XCircle, Loader2, LogIn, LogOut, Copy } from 'lucide-react';
+
+const FACEBOOK_APP_ID = '1749195285754662';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 export const WhatsAppSettings = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [verifyToken, setVerifyToken] = useState('');
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [config, setConfig] = useState({
-    access_token: "",
-    phone_number_id: "",
-    business_account_id: "",
-    verify_token: "omnichat_webhook_verify_2024"
-  });
 
-  // Load saved settings on mount
+  const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
+  const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/whatsapp-oauth-callback`;
+
   useEffect(() => {
-    const loadSettings = async () => {
-      const { data, error } = await supabase
-        .from('channel_integrations')
-        .select('config')
-        .eq('channel', 'whatsapp')
-        .single();
-
-      if (data?.config) {
-        setConfig(data.config as typeof config);
-      }
-    };
-
     loadSettings();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'whatsapp_connected') {
+      toast({
+        title: 'تم الربط بنجاح',
+        description: `تم ربط واتساب بنجاح`,
+      });
+      window.history.replaceState({}, '', '/settings');
+      loadSettings();
+    } else if (params.get('error') && params.get('error').includes('whatsapp')) {
+      toast({
+        title: 'خطأ في الربط',
+        description: params.get('error'),
+        variant: 'destructive',
+      });
+      window.history.replaceState({}, '', '/settings');
+    }
   }, []);
 
-  const handleSave = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from('channel_integrations')
-        .upsert({
-          channel: 'whatsapp',
-          config: config,
-          is_connected: false // Don't mark as connected until test succeeds
-        }, {
-          onConflict: 'channel'
-        });
+  const loadSettings = async () => {
+    const { data } = await supabase
+      .from('channel_integrations')
+      .select('*')
+      .eq('channel', 'whatsapp')
+      .single();
 
-      if (error) throw error;
-
-      toast({
-        title: "تم الحفظ",
-        description: "تم حفظ إعدادات واتساب بنجاح. اضغط 'اختبار الاتصال' للتفعيل",
-      });
-    } catch (error) {
-      console.error('Error saving WhatsApp config:', error);
-      toast({
-        title: "خطأ",
-        description: "فشل حفظ الإعدادات",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+    if (data) {
+      const config = data.config as any;
+      setIsConnected(data.is_connected || false);
+      setPhoneNumber(config?.phone_number || '');
+      setBusinessName(config?.business_name || '');
+      setVerifyToken(config?.verify_token || 'almared_whatsapp_webhook');
     }
   };
 
-  const handleTest = async () => {
-    setTesting(true);
-    try {
-      // Test the connection by calling WhatsApp API
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${config.phone_number_id}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${config.access_token}`
-          }
-        }
-      );
+  const handleLogin = () => {
+    setIsLoading(true);
+    const scope = 'whatsapp_business_management,whatsapp_business_messaging';
+    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code`;
+    
+    window.location.href = authUrl;
+  };
 
-      if (response.ok) {
-        // Mark as connected on success
-        await supabase
-          .from('channel_integrations')
-          .upsert({
-            channel: 'whatsapp',
-            config: config,
-            is_connected: true
-          }, { onConflict: 'channel' });
-        
-        toast({
-          title: "الاتصال ناجح",
-          description: "تم الاتصال بواتساب بنجاح وتم تفعيل الاستيراد",
-        });
-      } else {
-        throw new Error('Failed to connect');
-      }
-    } catch (error) {
-      console.error('Error testing WhatsApp connection:', error);
-      
-      // Mark as disconnected on failure
+  const handleDisconnect = async () => {
+    setIsLoading(true);
+    try {
       await supabase
         .from('channel_integrations')
-        .upsert({
-          channel: 'whatsapp',
-          config: config,
-          is_connected: false
-        }, { onConflict: 'channel' });
-      
+        .update({
+          is_connected: false,
+          config: {}
+        })
+        .eq('channel', 'whatsapp');
+
+      setIsConnected(false);
+      setPhoneNumber('');
+      setBusinessName('');
+      setVerifyToken('');
+
       toast({
-        title: "فشل الاتصال",
-        description: "تحقق من البيانات وحاول مرة أخرى",
-        variant: "destructive",
+        title: 'تم فصل الاتصال',
+        description: 'تم فصل حساب واتساب بنجاح',
+      });
+    } catch (error) {
+      toast({
+        title: 'خطأ',
+        description: 'حدث خطأ أثناء فصل الاتصال',
+        variant: 'destructive',
       });
     } finally {
-      setTesting(false);
+      setIsLoading(false);
     }
   };
 
-  const webhookUrl = `${window.location.origin.replace('http://', 'https://')}/whatsapp-webhook`;
-  const supabaseProjectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const actualWebhookUrl = `https://${supabaseProjectId}.supabase.co/functions/v1/whatsapp-webhook`;
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: 'تم النسخ',
+      description: `تم نسخ ${label}`,
+    });
+  };
 
   return (
-    <Card className="p-6">
-      <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-bold mb-2">إعدادات واتساب بيزنس</h3>
-          <p className="text-sm text-muted-foreground">
-            قم بإعداد تكامل واتساب بيزنس Cloud API
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="access-token">Access Token</Label>
-            <Input
-              id="access-token"
-              type="text"
-              placeholder="EAAxxxxxxxxxx"
-              value={config.access_token}
-              onChange={(e) => setConfig({ ...config, access_token: e.target.value })}
-            />
-            <p className="text-xs text-muted-foreground">
-              احصل عليه من Meta Business Suite → WhatsApp → API Setup
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone-id">Phone Number ID</Label>
-            <Input
-              id="phone-id"
-              placeholder="123456789012345"
-              value={config.phone_number_id}
-              onChange={(e) => setConfig({ ...config, phone_number_id: e.target.value })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="business-id">Business Account ID</Label>
-            <Input
-              id="business-id"
-              placeholder="123456789012345"
-              value={config.business_account_id}
-              onChange={(e) => setConfig({ ...config, business_account_id: e.target.value })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Webhook URL</Label>
-            <div className="p-3 bg-muted rounded-md">
-              <code className="text-xs break-all">{actualWebhookUrl}</code>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5 text-green-600" />
+          WhatsApp Business
+          {isConnected ? (
+            <CheckCircle className="h-5 w-5 text-green-500" />
+          ) : (
+            <XCircle className="h-5 w-5 text-gray-400" />
+          )}
+        </CardTitle>
+        <CardDescription>
+          {isConnected 
+            ? `متصل: ${businessName || phoneNumber}` 
+            : 'قم بتسجيل الدخول لربط حساب واتساب بيزنس'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {isConnected ? (
+          <>
+            <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-medium">
+                <CheckCircle className="h-5 w-5" />
+                متصل بنجاح
+              </div>
+              <p className="text-sm text-green-600 dark:text-green-500 mt-1">
+                {businessName && `${businessName} - `}{phoneNumber}
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              استخدم هذا الرابط في إعدادات Webhook في Meta
-            </p>
-          </div>
 
-          <div className="space-y-2">
-            <Label>Verify Token</Label>
-            <div className="p-3 bg-muted rounded-md">
-              <code className="text-xs">{config.verify_token}</code>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Webhook URL</Label>
+                <div className="flex gap-2">
+                  <Input value={webhookUrl} readOnly className="font-mono text-xs" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => copyToClipboard(webhookUrl, 'Webhook URL')}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Verify Token</Label>
+                <div className="flex gap-2">
+                  <Input value={verifyToken} readOnly className="font-mono text-xs" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => copyToClipboard(verifyToken, 'Verify Token')}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              استخدم هذا Token عند تفعيل Webhook
-            </p>
-          </div>
-        </div>
 
-        <div className="flex gap-2">
-          <Button onClick={handleSave} disabled={loading}>
-            {loading && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-            حفظ الإعدادات
-          </Button>
-          <Button onClick={handleTest} disabled={testing || !config.access_token} variant="outline">
-            {testing && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-            اختبار الاتصال
-          </Button>
-        </div>
+            <Button
+              onClick={handleDisconnect}
+              variant="destructive"
+              disabled={isLoading}
+              className="w-full"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+              ) : (
+                <LogOut className="h-4 w-4 ml-2" />
+              )}
+              فصل الاتصال
+            </Button>
+          </>
+        ) : (
+          <>
+            <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+              <p className="text-sm text-green-700 dark:text-green-400">
+                سيتم توجيهك إلى فيسبوك لتسجيل الدخول وربط حساب واتساب بيزنس.
+              </p>
+            </div>
 
-        <div className="border-t pt-4">
-          <h4 className="font-semibold mb-2">خطوات التفعيل:</h4>
-          <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-            <li>انتقل إلى Meta Business Suite</li>
-            <li>اختر WhatsApp → API Setup</li>
-            <li>انسخ Access Token و Phone Number ID</li>
-            <li>قم بإعداد Webhook باستخدام الرابط أعلاه</li>
-            <li>اشترك في حدث "messages"</li>
-            <li>احفظ الإعدادات واختبر الاتصال</li>
+            <Button
+              onClick={handleLogin}
+              disabled={isLoading}
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+              ) : (
+                <LogIn className="h-4 w-4 ml-2" />
+              )}
+              تسجيل الدخول بواتساب
+            </Button>
+          </>
+        )}
+
+        <div className="mt-6 p-4 bg-muted rounded-lg">
+          <h4 className="font-medium mb-3">إعداد Webhook في Meta Developer</h4>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+            <li>اذهب إلى <a href="https://developers.facebook.com" target="_blank" className="text-primary underline">Meta for Developers</a></li>
+            <li>اختر تطبيقك ثم اذهب إلى WhatsApp {'>'} Configuration</li>
+            <li>في قسم Webhooks، اضغط Edit</li>
+            <li>أدخل Webhook URL و Verify Token المعروضين أعلاه</li>
+            <li>اشترك في الأحداث: messages</li>
           </ol>
+          
+          <div className="mt-4 p-3 bg-background rounded border">
+            <p className="text-xs font-mono break-all">
+              <strong>Webhook URL:</strong><br />
+              {webhookUrl}
+            </p>
+          </div>
         </div>
-      </div>
+      </CardContent>
     </Card>
   );
 };
