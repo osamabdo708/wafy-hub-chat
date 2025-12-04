@@ -59,7 +59,9 @@ export const FacebookSettings = () => {
   const handleLogin = () => {
     setIsLoading(true);
     const scope = 'pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata';
-    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=facebook`;
+    // Include redirect URI in state to ensure exact match
+    const state = `facebook|${oauthCallbackUrl}`;
+    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
     
     // Open popup window
     const width = 600;
