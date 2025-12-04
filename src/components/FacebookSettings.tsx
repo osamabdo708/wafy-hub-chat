@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Facebook, CheckCircle, XCircle, Loader2, LogIn, LogOut, Copy } from 'lucide-react';
+import { Facebook, CheckCircle, XCircle, Loader2, LogIn, LogOut } from 'lucide-react';
 
 const FACEBOOK_APP_ID = '1749195285754662';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -14,33 +12,34 @@ export const FacebookSettings = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [pageName, setPageName] = useState('');
-  const [pageId, setPageId] = useState('');
-  const [verifyToken, setVerifyToken] = useState('');
   const { toast } = useToast();
 
-  const webhookUrl = `${SUPABASE_URL}/functions/v1/facebook-webhook`;
   const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
 
   useEffect(() => {
     loadSettings();
-    // Check for OAuth callback results
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('success') === 'facebook_connected') {
-      toast({
-        title: 'تم الربط بنجاح',
-        description: `تم ربط صفحة ${params.get('page') || 'فيسبوك'} بنجاح`,
-      });
-      // Clear URL params
-      window.history.replaceState({}, '', '/settings');
-      loadSettings();
-    } else if (params.get('error')) {
-      toast({
-        title: 'خطأ في الربط',
-        description: params.get('error'),
-        variant: 'destructive',
-      });
-      window.history.replaceState({}, '', '/settings');
-    }
+
+    // Listen for OAuth popup messages
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'oauth_success' && event.data?.channel === 'facebook') {
+        toast({
+          title: 'تم الربط بنجاح',
+          description: `تم ربط صفحة ${event.data.account} بنجاح`,
+        });
+        loadSettings();
+        setIsLoading(false);
+      } else if (event.data?.type === 'oauth_error') {
+        toast({
+          title: 'خطأ في الربط',
+          description: event.data.error,
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const loadSettings = async () => {
@@ -54,17 +53,25 @@ export const FacebookSettings = () => {
       const config = data.config as any;
       setIsConnected(data.is_connected || false);
       setPageName(config?.page_name || '');
-      setPageId(config?.page_id || '');
-      setVerifyToken(config?.verify_token || '');
     }
   };
 
   const handleLogin = () => {
     setIsLoading(true);
     const scope = 'pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata';
-    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=facebook`;
+    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=facebook`;
     
-    window.location.href = authUrl;
+    // Open popup window
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    window.open(
+      authUrl,
+      'facebook_oauth',
+      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
+    );
   };
 
   const handleDisconnect = async () => {
@@ -80,8 +87,6 @@ export const FacebookSettings = () => {
 
       setIsConnected(false);
       setPageName('');
-      setPageId('');
-      setVerifyToken('');
 
       toast({
         title: 'تم فصل الاتصال',
@@ -96,14 +101,6 @@ export const FacebookSettings = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: 'تم النسخ',
-      description: `تم نسخ ${label}`,
-    });
   };
 
   return (

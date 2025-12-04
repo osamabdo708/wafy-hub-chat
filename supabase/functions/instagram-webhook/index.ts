@@ -66,8 +66,12 @@ serve(async (req) => {
       }
 
       const config = integration.config as any;
+      const myInstagramId = config.instagram_account_id;
+
+      console.log('[INSTAGRAM-WEBHOOK] My Instagram ID:', myInstagramId);
 
       for (const entry of body.entry || []) {
+        // Handle Instagram messaging events
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id;
           const recipientId = messaging.recipient?.id;
@@ -75,11 +79,15 @@ serve(async (req) => {
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
-          if (!messageText || senderId === config.instagram_account_id) {
+          console.log('[INSTAGRAM-WEBHOOK] Message details:', { senderId, recipientId, myInstagramId, messageText });
+
+          // Skip if no text or if message is from our account
+          if (!messageText || senderId === myInstagramId) {
+            console.log('[INSTAGRAM-WEBHOOK] Skipping message - no text or from self');
             continue;
           }
 
-          console.log('[INSTAGRAM-WEBHOOK] Processing message:', { senderId, messageText, messageId });
+          console.log('[INSTAGRAM-WEBHOOK] Processing incoming message:', { senderId, messageText, messageId });
 
           let conversationId: string;
           const threadId = `ig_${senderId}_${recipientId}`;
@@ -100,8 +108,27 @@ serve(async (req) => {
                 thread_id: threadId
               })
               .eq('id', conversationId);
+            console.log('[INSTAGRAM-WEBHOOK] Updated existing conversation:', conversationId);
           } else {
             let customerName = `Instagram User ${senderId.slice(-8)}`;
+
+            // Try to get user info from Instagram API
+            if (config.page_access_token) {
+              try {
+                const userInfoRes = await fetch(
+                  `https://graph.facebook.com/v19.0/${senderId}?fields=name,username&access_token=${config.page_access_token}`
+                );
+                const userInfo = await userInfoRes.json();
+                console.log('[INSTAGRAM-WEBHOOK] User info:', JSON.stringify(userInfo));
+                if (userInfo.username) {
+                  customerName = `@${userInfo.username}`;
+                } else if (userInfo.name) {
+                  customerName = userInfo.name;
+                }
+              } catch (e) {
+                console.log('[INSTAGRAM-WEBHOOK] Could not fetch user info:', e);
+              }
+            }
 
             const { data: newConv, error: convError } = await supabase
               .from('conversations')
@@ -123,8 +150,10 @@ serve(async (req) => {
               continue;
             }
             conversationId = newConv.id;
+            console.log('[INSTAGRAM-WEBHOOK] Created new conversation:', conversationId);
           }
 
+          // Check for duplicate message
           const { data: existingMsg } = await supabase
             .from('messages')
             .select('id')
@@ -153,6 +182,7 @@ serve(async (req) => {
             console.error('[INSTAGRAM-WEBHOOK] Error inserting message:', msgError);
           } else {
             console.log('[INSTAGRAM-WEBHOOK] Message saved successfully');
+            // Trigger auto-reply if enabled
             try {
               await supabase.functions.invoke('auto-reply-messages');
             } catch (e) {
