@@ -60,7 +60,9 @@ export const InstagramSettings = () => {
     setIsLoading(true);
     // Instagram Business API requires these permissions
     const scope = 'instagram_basic,instagram_manage_messages,pages_show_list,pages_messaging,pages_read_engagement';
-    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=instagram`;
+    // Include redirect URI in state to ensure exact match
+    const state = `instagram|${oauthCallbackUrl}`;
+    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
     
     // Open popup window
     const width = 600;

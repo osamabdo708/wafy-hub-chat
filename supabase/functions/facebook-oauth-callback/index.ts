@@ -6,8 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const FACEBOOK_APP_ID = Deno.env.get("FACEBOOK_APP_ID") || "1749195285754662";
-const FACEBOOK_APP_SECRET = Deno.env.get("FACEBOOK_APP_SECRET");
+// Support both env variable names
+const META_APP_ID = Deno.env.get("META_APP_ID") || Deno.env.get("FACEBOOK_APP_ID") || "1749195285754662";
+const META_APP_SECRET = Deno.env.get("META_APP_SECRET") || Deno.env.get("FACEBOOK_APP_SECRET");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -23,7 +24,7 @@ serve(async (req) => {
     const error = url.searchParams.get("error");
     const errorDescription = url.searchParams.get("error_description");
 
-    console.log("[OAUTH] Received callback with state:", state);
+    console.log("[OAUTH] Callback received:", { code: !!code, state, error });
 
     if (error) {
       console.error("[OAUTH] Error:", error, errorDescription);
@@ -40,15 +41,28 @@ serve(async (req) => {
       );
     }
 
-    const channel = state || "facebook";
-    const redirectUri = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
+    // Parse state - support both formats:
+    // Simple: "facebook" or "instagram"
+    // Complex: "channelType|redirectUri"
+    let channelType = "facebook";
+    let redirectUri = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
 
-    // Exchange code for short-lived token
-    const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${FACEBOOK_APP_SECRET}&code=${code}`;
-    console.log("[OAUTH] Exchanging code for token...");
+    if (state) {
+      const parts = state.split("|");
+      channelType = parts[0] || "facebook";
+      if (parts[1]) {
+        redirectUri = parts[1];
+      }
+    }
+
+    console.log("[OAUTH] Channel:", channelType, "RedirectUri:", redirectUri);
+
+    // Exchange code for access token
+    const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${META_APP_SECRET}&code=${code}`;
     
-    const tokenRes = await fetch(tokenUrl);
-    const tokenData = await tokenRes.json();
+    console.log("[OAUTH] Exchanging code for token...");
+    const tokenResponse = await fetch(tokenUrl);
+    const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
       console.error("[OAUTH] Token exchange error:", tokenData.error);
@@ -58,148 +72,133 @@ serve(async (req) => {
       );
     }
 
-    const shortToken = tokenData.access_token;
-    console.log("[OAUTH] Got short-lived token");
+    const accessToken = tokenData.access_token;
+    console.log("[OAUTH] Got access token");
 
-    // Convert to long-lived token
-    const longUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FACEBOOK_APP_ID}&client_secret=${FACEBOOK_APP_SECRET}&fb_exchange_token=${shortToken}`;
-    const longRes = await fetch(longUrl);
-    const longData = await longRes.json();
-    const longLivedToken = longData.access_token || shortToken;
+    // Get long-lived token
+    const longLivedUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${accessToken}`;
+    const longLivedResponse = await fetch(longLivedUrl);
+    const longLivedData = await longLivedResponse.json();
+    const longLivedToken = longLivedData.access_token || accessToken;
     console.log("[OAUTH] Got long-lived token");
 
-    // Fetch ALL pages using the long-lived token
-    const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedToken}&limit=100`);
-    const pagesData = await pagesRes.json();
+    // Get user pages
+    const pagesResponse = await fetch(
+      `https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedToken}`
+    );
+    const pagesData = await pagesResponse.json();
     console.log("[OAUTH] Pages data:", JSON.stringify(pagesData));
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-
-    if (!pagesData.data || pagesData.data.length === 0) {
-      console.log("[OAUTH] No pages found");
-      return new Response(
-        `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'لم يتم العثور على صفحات. تأكد من أن لديك صلاحيات إدارة صفحة فيسبوك.'},'*');window.close();</script></body></html>`,
-        { headers: { "Content-Type": "text/html" } }
-      );
-    }
-
-    // For Facebook channel, use first page
-    // For Instagram channel, find page with linked Instagram account
-    let selectedPage = pagesData.data[0];
-    let config: any = {};
-    let accountName = selectedPage.name;
     const verifyToken = `almared_webhook_${Math.random().toString(36).substring(2, 7)}`;
 
-    if (channel === "instagram") {
-      console.log("[OAUTH] Looking for Instagram business account...");
-      
-      let instagramFound = false;
-      
-      for (const page of pagesData.data) {
-        console.log(`[OAUTH] Checking page: ${page.name} (${page.id})`);
-        
-        const igCheckRes = await fetch(
+    let config: any = { access_token: longLivedToken };
+    let accountIdentifier = "Connected Account";
+
+    if (pagesData.data && pagesData.data.length > 0) {
+      const page = pagesData.data[0]; // Use first page
+      config.page_id = page.id;
+      config.page_access_token = page.access_token;
+      config.page_name = page.name;
+      config.verify_token = verifyToken;
+      config.connected_at = new Date().toISOString();
+      config.connected_via = "oauth";
+      accountIdentifier = page.name;
+      console.log("[OAUTH] Got page:", page.name, "with page access token");
+
+      if (channelType === "instagram") {
+        // Get Instagram Business Account linked to this page
+        const igResponse = await fetch(
           `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
         );
-        const igCheck = await igCheckRes.json();
-        console.log(`[OAUTH] Instagram check for ${page.name}:`, JSON.stringify(igCheck));
+        const igData = await igResponse.json();
+        console.log("[OAUTH] Instagram data:", JSON.stringify(igData));
 
-        if (igCheck.instagram_business_account) {
-          // Get Instagram account info
-          const igInfoRes = await fetch(
-            `https://graph.facebook.com/v19.0/${igCheck.instagram_business_account.id}?fields=username,name,profile_picture_url&access_token=${page.access_token}`
+        if (igData.instagram_business_account) {
+          config.instagram_account_id = igData.instagram_business_account.id;
+          
+          // Get Instagram username
+          const igInfoResponse = await fetch(
+            `https://graph.facebook.com/v19.0/${igData.instagram_business_account.id}?fields=username,name,profile_picture_url&access_token=${page.access_token}`
           );
-          const igInfo = await igInfoRes.json();
+          const igInfo = await igInfoResponse.json();
           console.log("[OAUTH] Instagram info:", JSON.stringify(igInfo));
-
-          config = {
-            page_id: page.id,
-            page_name: page.name,
-            page_access_token: page.access_token,
-            instagram_account_id: igCheck.instagram_business_account.id,
-            account_name: igInfo.username || igInfo.name || page.name,
-            verify_token: verifyToken,
-            connected_at: new Date().toISOString(),
-            connected_via: "oauth"
-          };
-          accountName = igInfo.username || igInfo.name || page.name;
-          instagramFound = true;
-          break;
+          config.account_name = igInfo.username || igInfo.name || page.name;
+          accountIdentifier = igInfo.username ? `@${igInfo.username}` : (igInfo.name || page.name);
+        } else {
+          console.log("[OAUTH] No Instagram Business Account found for this page");
+          config.account_name = `${page.name} (Facebook)`;
+          accountIdentifier = `${page.name} (Facebook)`;
         }
-      }
 
-      if (!instagramFound) {
-        console.log("[OAUTH] No Instagram business account found on any page");
+        // Save Instagram connection
+        const { error: upsertError } = await supabase
+          .from("channel_integrations")
+          .upsert({
+            channel: "instagram",
+            is_connected: true,
+            config,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "channel" });
+
+        if (upsertError) {
+          console.error("[OAUTH] Database error:", upsertError);
+          return new Response(
+            `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
+            { headers: { "Content-Type": "text/html" } }
+          );
+        }
+
+        console.log("[OAUTH] Instagram connection saved successfully");
         return new Response(
-          `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'لم يتم العثور على حساب إنستغرام للأعمال مرتبط بأي صفحة. تأكد من ربط حساب إنستغرام بصفحة فيسبوك الخاصة بك.'},'*');window.close();</script></body></html>`,
+          `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'instagram',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
           { headers: { "Content-Type": "text/html" } }
         );
       }
-
-      // Save to channel_integrations table
-      const { error: upsertError } = await supabase
-        .from("channel_integrations")
-        .upsert({
-          channel: "instagram",
-          is_connected: true,
-          config,
-          updated_at: new Date().toISOString()
-        }, { onConflict: "channel" });
-
-      if (upsertError) {
-        console.error("[OAUTH] Database error:", upsertError);
-        return new Response(
-          `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'خطأ في حفظ البيانات'},'*');window.close();</script></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
-      }
-
-      console.log("[OAUTH] Instagram connected successfully:", accountName);
-      return new Response(
-        `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'instagram',account:'${accountName}'},'*');window.close();</script></body></html>`,
-        { headers: { "Content-Type": "text/html" } }
-      );
-
     } else {
-      // Facebook Messenger
-      config = {
-        page_id: selectedPage.id,
-        page_name: selectedPage.name,
-        page_access_token: selectedPage.access_token,
-        verify_token: verifyToken,
-        connected_at: new Date().toISOString(),
-        connected_via: "oauth"
-      };
+      console.log("[OAUTH] No pages found, getting user info");
+      // Get user info as fallback
+      const userResponse = await fetch(
+        `https://graph.facebook.com/v19.0/me?fields=name&access_token=${longLivedToken}`
+      );
+      const userData = await userResponse.json();
+      console.log("[OAUTH] User data:", JSON.stringify(userData));
+      accountIdentifier = userData.name || "Connected Account";
+      config.account_name = accountIdentifier;
+      config.verify_token = verifyToken;
+      config.connected_at = new Date().toISOString();
+      config.connected_via = "oauth";
+    }
 
-      const { error: upsertError } = await supabase
-        .from("channel_integrations")
-        .upsert({
-          channel: "facebook",
-          is_connected: true,
-          config,
-          updated_at: new Date().toISOString()
-        }, { onConflict: "channel" });
+    // Save Facebook connection
+    const { error: upsertError } = await supabase
+      .from("channel_integrations")
+      .upsert({
+        channel: "facebook",
+        is_connected: true,
+        config,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "channel" });
 
-      if (upsertError) {
-        console.error("[OAUTH] Database error:", upsertError);
-        return new Response(
-          `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'خطأ في حفظ البيانات'},'*');window.close();</script></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
-      }
-
-      console.log("[OAUTH] Facebook connected successfully:", accountName);
+    if (upsertError) {
+      console.error("[OAUTH] Database error:", upsertError);
       return new Response(
-        `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'facebook',account:'${accountName}'},'*');window.close();</script></body></html>`,
+        `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
         { headers: { "Content-Type": "text/html" } }
       );
     }
 
-  } catch (err) {
-    console.error("[OAUTH] Unexpected error:", err);
-    const msg = err instanceof Error ? err.message : "unknown";
+    console.log("[OAUTH] Facebook connection saved successfully");
     return new Response(
-      `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'${msg}'},'*');window.close();</script></body></html>`,
+      `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'facebook',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
+      { headers: { "Content-Type": "text/html" } }
+    );
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[OAUTH] Error:", error);
+    return new Response(
+      `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'${errorMessage}'},'*');window.close();</script></body></html>`,
       { headers: { "Content-Type": "text/html" } }
     );
   }
