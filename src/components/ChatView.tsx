@@ -148,10 +148,11 @@ const ChatView = ({
         .eq('id', conversationId)
         .single();
 
-      // Send message to Facebook FIRST to get message_id
-      let fbMessageId = null;
-      if (channel === 'facebook' && conversation?.thread_id) {
-        const { data: fbResponse, error: sendError } = await supabase.functions.invoke('send-facebook-message', {
+      // Send message to platform FIRST to get message_id
+      let platformMessageId = null;
+      if ((channel === 'facebook' || channel === 'instagram') && conversation?.thread_id) {
+        const functionName = channel === 'instagram' ? 'send-instagram-message' : 'send-facebook-message';
+        const { data: platformResponse, error: sendError } = await supabase.functions.invoke(functionName, {
           body: {
             recipientId: customerPhone,
             message: newMessage.trim()
@@ -159,23 +160,23 @@ const ChatView = ({
         });
 
         if (sendError) {
-          console.error('Error sending to Facebook:', sendError);
-          toast.error('فشل إرسال الرسالة إلى فيسبوك');
+          console.error(`Error sending to ${channel}:`, sendError);
+          toast.error(`فشل إرسال الرسالة إلى ${channel === 'instagram' ? 'إنستغرام' : 'فيسبوك'}`);
           setSending(false);
           return;
         }
 
-        fbMessageId = fbResponse?.messageId;
+        platformMessageId = platformResponse?.messageId;
       }
 
-      // Insert message to database with Facebook message_id to prevent duplicate imports
+      // Insert message to database with platform message_id to prevent duplicate imports
       const { error } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversationId,
           content: newMessage.trim(),
           sender_type: 'employee',
-          message_id: fbMessageId, // Save Facebook message_id
+          message_id: platformMessageId, // Save platform message_id
           is_old: false,
           reply_sent: true // Mark as already sent since employee sent it
         });
@@ -206,9 +207,10 @@ const ChatView = ({
       const productMessage = `📦 *${product.name}*\n\n${product.description}\n\n💰 السعر: ${product.price} ريال`;
       
       // Send to channel FIRST to get message_id
-      let fbMessageId = null;
-      if (channel === 'facebook' && customerPhone) {
-        const { data: fbResponse, error: sendError } = await supabase.functions.invoke('send-facebook-message', {
+      let platformMessageId = null;
+      if ((channel === 'facebook' || channel === 'instagram') && customerPhone) {
+        const functionName = channel === 'instagram' ? 'send-instagram-message' : 'send-facebook-message';
+        const { data: platformResponse, error: sendError } = await supabase.functions.invoke(functionName, {
           body: {
             recipientId: customerPhone,
             message: productMessage
@@ -216,12 +218,12 @@ const ChatView = ({
         });
 
         if (sendError) {
-          console.error('Error sending to Facebook:', sendError);
-          toast.error('فشل إرسال المنتج إلى فيسبوك');
+          console.error(`Error sending to ${channel}:`, sendError);
+          toast.error(`فشل إرسال المنتج إلى ${channel === 'instagram' ? 'إنستغرام' : 'فيسبوك'}`);
           return;
         }
 
-        fbMessageId = fbResponse?.messageId;
+        platformMessageId = platformResponse?.messageId;
       }
 
       // Save to database with message_id to prevent duplicate imports
@@ -231,7 +233,7 @@ const ChatView = ({
           conversation_id: conversationId,
           content: productMessage,
           sender_type: 'employee',
-          message_id: fbMessageId,
+          message_id: platformMessageId,
           is_old: false,
           reply_sent: true
         });
