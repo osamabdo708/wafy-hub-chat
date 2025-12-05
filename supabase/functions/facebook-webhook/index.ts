@@ -28,19 +28,27 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: integration } = await supabase
+    const { data: fbIntegration } = await supabase
       .from('channel_integrations')
       .select('config')
       .eq('channel', 'facebook')
       .single();
 
-    const verifyToken = (integration?.config as any)?.verify_token || 'almared_webhook_verify';
+    const { data: igIntegration } = await supabase
+      .from('channel_integrations')
+      .select('config')
+      .eq('channel', 'instagram')
+      .single();
 
-    if (mode === 'subscribe' && token === verifyToken) {
+    const fbVerifyToken = (fbIntegration?.config as any)?.verify_token;
+    const igVerifyToken = (igIntegration?.config as any)?.verify_token;
+
+    // Accept either Facebook or Instagram verify token
+    if (mode === 'subscribe' && (token === fbVerifyToken || token === igVerifyToken)) {
       console.log('[WEBHOOK] Verification successful');
       return new Response(challenge, { status: 200 });
     } else {
-      console.log('[WEBHOOK] Verification failed');
+      console.log('[WEBHOOK] Verification failed - token mismatch');
       return new Response('Forbidden', { status: 403 });
     }
   }
@@ -56,20 +64,30 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
 
-      // Get Facebook integration config
+      // Determine if this is Facebook or Instagram based on the object type
+      const objectType = body.object;
+      const isInstagram = objectType === 'instagram';
+      const channel = isInstagram ? 'instagram' : 'facebook';
+
+      console.log('[WEBHOOK] Object type:', objectType, '- Channel:', channel);
+
+      // Get the appropriate integration config
       const { data: integration } = await supabase
         .from('channel_integrations')
         .select('config')
-        .eq('channel', 'facebook')
+        .eq('channel', channel)
         .single();
 
       if (!integration) {
-        console.log('[WEBHOOK] No Facebook integration found');
+        console.log(`[WEBHOOK] No ${channel} integration found`);
         return new Response('OK', { status: 200 });
       }
 
       const config = integration.config as any;
-      const pageId = config?.page_id;
+      const myAccountId = isInstagram ? config?.instagram_account_id : config?.page_id;
+      const accessToken = config?.page_access_token;
+
+      console.log('[WEBHOOK] My account ID:', myAccountId);
 
       // Process each entry
       for (const entry of body.entry || []) {
@@ -80,23 +98,25 @@ serve(async (req) => {
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
-          // Skip if no message text or if sender is the page
-          if (!messageText || senderId === pageId) {
-            console.log('[WEBHOOK] Skipping - no text or page message');
+          console.log('[WEBHOOK] Message details:', { senderId, recipientId, myAccountId, messageText, messageId });
+
+          // Skip if no message text or if sender is our account
+          if (!messageText || senderId === myAccountId) {
+            console.log('[WEBHOOK] Skipping - no text or self message');
             continue;
           }
 
-          console.log('[WEBHOOK] Processing message:', { senderId, messageText, messageId });
+          console.log('[WEBHOOK] Processing message from:', senderId);
 
           // Find or create conversation
           let conversationId: string;
-          const threadId = `t_${senderId}_${recipientId}`;
+          const threadId = isInstagram ? `ig_${senderId}_${recipientId}` : `t_${senderId}_${recipientId}`;
 
           const { data: existingConv } = await supabase
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
-            .eq('channel', 'facebook')
+            .eq('channel', channel)
             .single();
 
           if (existingConv) {
@@ -109,17 +129,28 @@ serve(async (req) => {
                 thread_id: threadId
               })
               .eq('id', conversationId);
+            console.log('[WEBHOOK] Updated existing conversation:', conversationId);
           } else {
-            // Get customer name from Facebook
-            let customerName = `Facebook User ${senderId.slice(-8)}`;
+            // Get customer name
+            let customerName = isInstagram 
+              ? `Instagram User ${senderId.slice(-8)}`
+              : `Facebook User ${senderId.slice(-8)}`;
+            
             try {
-              const nameResponse = await fetch(
-                `https://graph.facebook.com/v17.0/${senderId}?fields=name&access_token=${config.page_access_token}`
-              );
-              const nameData = await nameResponse.json();
-              if (nameData.name) customerName = nameData.name;
+              if (accessToken) {
+                const nameResponse = await fetch(
+                  `https://graph.facebook.com/v19.0/${senderId}?fields=name,username&access_token=${accessToken}`
+                );
+                const nameData = await nameResponse.json();
+                console.log('[WEBHOOK] User info:', JSON.stringify(nameData));
+                if (isInstagram && nameData.username) {
+                  customerName = `@${nameData.username}`;
+                } else if (nameData.name) {
+                  customerName = nameData.name;
+                }
+              }
             } catch (e) {
-              console.log('[WEBHOOK] Could not fetch customer name');
+              console.log('[WEBHOOK] Could not fetch customer name:', e);
             }
 
             const { data: newConv, error: convError } = await supabase
@@ -127,8 +158,8 @@ serve(async (req) => {
               .insert({
                 customer_name: customerName,
                 customer_phone: senderId,
-                channel: 'facebook',
-                platform: 'facebook',
+                channel: channel,
+                platform: channel,
                 thread_id: threadId,
                 status: 'جديد',
                 ai_enabled: false,
@@ -142,6 +173,7 @@ serve(async (req) => {
               continue;
             }
             conversationId = newConv.id;
+            console.log('[WEBHOOK] Created new conversation:', conversationId);
           }
 
           // Check if message already exists
@@ -173,7 +205,7 @@ serve(async (req) => {
           if (msgError) {
             console.error('[WEBHOOK] Error inserting message:', msgError);
           } else {
-            console.log('[WEBHOOK] Message saved successfully');
+            console.log('[WEBHOOK] Message saved successfully for', channel);
 
             // Trigger AI auto-reply if enabled
             try {
