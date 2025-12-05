@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Clock, User, Trash2 } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2, Instagram } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -122,6 +122,9 @@ const Inbox = () => {
   const getChannelIcon = (channel: string) => {
     if (channel === 'facebook') {
       return <img src={facebookIcon} alt="Facebook" className="w-4 h-4" />;
+    }
+    if (channel === 'instagram') {
+      return <Instagram className="w-4 h-4 text-pink-500" />;
     }
     return null;
   };
