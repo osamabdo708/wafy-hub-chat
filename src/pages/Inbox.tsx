@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Clock, User, Trash2, Instagram } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -32,6 +32,14 @@ interface Conversation {
   customer_email?: string;
   customer_avatar?: string;
   ai_enabled?: boolean;
+  unread_count?: number;
+}
+
+type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email';
+
+interface ConnectedChannel {
+  channel: ChannelType;
+  is_connected: boolean;
 }
 
 const Inbox = () => {
@@ -39,22 +47,25 @@ const Inbox = () => {
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [connectedChannels, setConnectedChannels] = useState<ChannelType[]>([]);
+  const [loadingChannels, setLoadingChannels] = useState(true);
 
+  // Fetch connected channels first
   useEffect(() => {
-    fetchConversations();
+    fetchConnectedChannels();
 
-    // Subscribe to real-time updates
+    // Subscribe to channel integration changes
     const channel = supabase
-      .channel('conversations-changes')
+      .channel('channel-integrations-changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'conversations'
+          table: 'channel_integrations'
         },
         () => {
-          fetchConversations();
+          fetchConnectedChannels();
         }
       )
       .subscribe();
@@ -64,15 +75,107 @@ const Inbox = () => {
     };
   }, []);
 
-  const fetchConversations = async () => {
+  // Fetch conversations when connected channels change
+  useEffect(() => {
+    if (!loadingChannels) {
+      fetchConversations();
+
+      // Subscribe to real-time updates for conversations
+      const conversationsChannel = supabase
+        .channel('conversations-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversations'
+          },
+          () => {
+            fetchConversations();
+          }
+        )
+        .subscribe();
+
+      // Subscribe to message changes for unread count updates
+      const messagesChannel = supabase
+        .channel('messages-unread-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'messages'
+          },
+          () => {
+            fetchConversations();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(conversationsChannel);
+        supabase.removeChannel(messagesChannel);
+      };
+    }
+  }, [connectedChannels, loadingChannels]);
+
+  const fetchConnectedChannels = async () => {
     try {
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled')
-      .order('last_message_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('channel_integrations')
+        .select('channel, is_connected')
+        .eq('is_connected', true);
 
       if (error) throw error;
-      setConversations(data || []);
+      
+      const channels = (data || []).map((ch: ConnectedChannel) => ch.channel);
+      setConnectedChannels(channels);
+    } catch (error) {
+      console.error('Error fetching connected channels:', error);
+      setConnectedChannels([]);
+    } finally {
+      setLoadingChannels(false);
+    }
+  };
+
+  const fetchConversations = async () => {
+    try {
+      // If no channels are connected, show empty state
+      if (connectedChannels.length === 0) {
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch conversations only for connected channels
+      const { data: conversationsData, error: conversationsError } = await supabase
+        .from('conversations')
+        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled')
+        .in('channel', connectedChannels)
+        .order('last_message_at', { ascending: false });
+
+      if (conversationsError) throw conversationsError;
+
+      // Fetch unread counts for each conversation
+      const conversationsWithUnread = await Promise.all(
+        (conversationsData || []).map(async (conv) => {
+          const { count, error: countError } = await supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('conversation_id', conv.id)
+            .eq('is_read', false)
+            .eq('sender_type', 'customer');
+
+          if (countError) {
+            console.error('Error fetching unread count:', countError);
+            return { ...conv, unread_count: 0 };
+          }
+
+          return { ...conv, unread_count: count || 0 };
+        })
+      );
+
+      setConversations(conversationsWithUnread);
     } catch (error) {
       console.error('Error fetching conversations:', error);
     } finally {
@@ -108,6 +211,33 @@ const Inbox = () => {
     }
   };
 
+  const markMessagesAsRead = async (conversationId: string) => {
+    try {
+      await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('conversation_id', conversationId)
+        .eq('sender_type', 'customer')
+        .eq('is_read', false);
+
+      // Update local state
+      setConversations(conversations.map(conv => 
+        conv.id === conversationId 
+          ? { ...conv, unread_count: 0 }
+          : conv
+      ));
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  };
+
+  const handleSelectConversation = (conversation: Conversation) => {
+    setSelectedConversation(conversation);
+    if (conversation.unread_count && conversation.unread_count > 0) {
+      markMessagesAsRead(conversation.id);
+    }
+  };
+
   const getChannelName = (channel: string) => {
     const channelMap: Record<string, string> = {
       'whatsapp': 'واتساب',
@@ -129,8 +259,10 @@ const Inbox = () => {
     return null;
   };
 
-  // Auto-reply check every 15 seconds
+  // Auto-reply check every 15 seconds (only if channels are connected)
   useEffect(() => {
+    if (connectedChannels.length === 0) return;
+
     const autoReplyInterval = setInterval(async () => {
       try {
         await supabase.functions.invoke('auto-reply-messages');
@@ -142,7 +274,7 @@ const Inbox = () => {
     return () => {
       clearInterval(autoReplyInterval);
     };
-  }, []);
+  }, [connectedChannels]);
 
   const handleDeleteAll = async () => {
     try {
@@ -173,12 +305,62 @@ const Inbox = () => {
     }
   };
 
+  const totalUnread = conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+
+  // No channels connected state
+  if (!loadingChannels && connectedChannels.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">البريد الوارد الموحد</h1>
+            <p className="text-muted-foreground mt-1">جميع محادثاتك من كل القنوات في مكان واحد</p>
+          </div>
+        </div>
+
+        <Card className="p-12">
+          <div className="flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold mb-2">لا توجد قنوات متصلة</h3>
+              <p className="text-muted-foreground max-w-md">
+                يرجى ربط قناة واحدة على الأقل (فيسبوك، إنستغرام، واتساب) من صفحة الإعدادات لبدء استقبال الرسائل
+              </p>
+            </div>
+            <Button variant="default" onClick={() => window.location.href = '/settings'}>
+              الذهاب للإعدادات
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">البريد الوارد الموحد</h1>
-          <p className="text-muted-foreground mt-1">جميع محادثاتك من كل القنوات في مكان واحد</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">البريد الوارد الموحد</h1>
+            {totalUnread > 0 && (
+              <Badge variant="destructive" className="text-sm px-2 py-1">
+                {totalUnread} غير مقروءة
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-muted-foreground">القنوات المتصلة:</p>
+            <div className="flex items-center gap-1">
+              {connectedChannels.map((ch) => (
+                <Badge key={ch} variant="outline" className="text-xs flex items-center gap-1">
+                  <Wifi className="w-3 h-3 text-green-500" />
+                  {getChannelName(ch)}
+                </Badge>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline">تصفية</Button>
@@ -195,7 +377,7 @@ const Inbox = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
-          {loading ? (
+          {loading || loadingChannels ? (
             <Card className="p-4">
               <p className="text-center text-muted-foreground">جاري التحميل...</p>
             </Card>
@@ -212,15 +394,24 @@ const Inbox = () => {
                 className={`p-4 cursor-pointer hover:shadow-md transition-shadow relative ${
                   selectedConversation?.id === conversation.id ? 'border-primary shadow-md' : ''
                 } ${conversation.ai_enabled ? 'genie-card-animated-bg' : ''}`}
-                onClick={() => setSelectedConversation(conversation)}
+                onClick={() => handleSelectConversation(conversation)}
               >
+                {/* Unread badge */}
+                {conversation.unread_count && conversation.unread_count > 0 && (
+                  <div className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                    {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                  </div>
+                )}
+
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                       <User className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold">{conversation.customer_name}</h3>
+                      <h3 className={`font-semibold ${conversation.unread_count && conversation.unread_count > 0 ? 'text-foreground' : ''}`}>
+                        {conversation.customer_name}
+                      </h3>
                       <div className="flex items-center gap-1">
                         {getChannelIcon(conversation.channel)}
                         <Badge variant="secondary" className="text-xs">
@@ -301,7 +492,7 @@ const Inbox = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>هل أنت متأكد من حذف جميع المحادثات؟</AlertDialogTitle>
             <AlertDialogDescription>
-              سيتم حذف جميع المحادث��ت والرسائل نهائياً. لا يمكن التراجع عن هذا الإجراء.
+              سيتم حذف جميع المحادثات والرسائل نهائياً. لا يمكن التراجع عن هذا الإجراء.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
