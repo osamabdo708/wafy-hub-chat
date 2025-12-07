@@ -440,14 +440,43 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       generate_order_number: { Args: never; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role: "admin" | "moderator" | "user"
       channel_type: "whatsapp" | "facebook" | "instagram" | "telegram" | "email"
       conversation_status: "جديد" | "مفتوح" | "مغلق" | "معلق"
       order_status: "مسودة" | "قيد الانتظار" | "مؤكد" | "مكتمل" | "ملغي"
@@ -579,6 +608,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["admin", "moderator", "user"],
       channel_type: ["whatsapp", "facebook", "instagram", "telegram", "email"],
       conversation_status: ["جديد", "مفتوح", "مغلق", "معلق"],
       order_status: ["مسودة", "قيد الانتظار", "مؤكد", "مكتمل", "ملغي"],
