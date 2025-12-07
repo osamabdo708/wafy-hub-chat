@@ -11,18 +11,3 @@ verify_jwt = false
 
 [functions.instagram-webhook]
 verify_jwt = false
-
-[functions.test-openai-connection]
-verify_jwt = false
-
-[functions.ai-chat-handler]
-verify_jwt = false
-
-[functions.check-ai-responses]
-verify_jwt = false
-
-[functions.auto-import-messages]
-verify_jwt = false
-
-[functions.auto-reply-messages]
-verify_jwt = false
