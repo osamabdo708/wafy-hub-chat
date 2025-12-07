@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -13,6 +13,8 @@ export const InstagramSettings = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [accountName, setAccountName] = useState('');
   const { toast } = useToast();
+  const popupRef = useRef<Window | null>(null);
+  const popupCheckInterval = useRef<NodeJS.Timeout | null>(null);
 
   const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
 
@@ -22,6 +24,12 @@ export const InstagramSettings = () => {
     // Listen for OAuth popup messages
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'oauth_success' && event.data?.channel === 'instagram') {
+        // Close popup if still open
+        if (popupRef.current && !popupRef.current.closed) {
+          popupRef.current.close();
+        }
+        clearPopupCheck();
+        
         toast({
           title: 'تم الربط بنجاح',
           description: `تم ربط حساب إنستغرام بنجاح`,
@@ -29,6 +37,12 @@ export const InstagramSettings = () => {
         loadSettings();
         setIsLoading(false);
       } else if (event.data?.type === 'oauth_error') {
+        // Close popup if still open
+        if (popupRef.current && !popupRef.current.closed) {
+          popupRef.current.close();
+        }
+        clearPopupCheck();
+        
         toast({
           title: 'خطأ في الربط',
           description: event.data.error,
@@ -39,15 +53,25 @@ export const InstagramSettings = () => {
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearPopupCheck();
+    };
   }, []);
+
+  const clearPopupCheck = () => {
+    if (popupCheckInterval.current) {
+      clearInterval(popupCheckInterval.current);
+      popupCheckInterval.current = null;
+    }
+  };
 
   const loadSettings = async () => {
     const { data } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'instagram')
-      .single();
+      .maybeSingle();
 
     if (data) {
       const config = data.config as any;
@@ -60,7 +84,6 @@ export const InstagramSettings = () => {
     setIsLoading(true);
     // Instagram Business API requires these permissions
     const scope = 'instagram_basic,instagram_manage_messages,pages_show_list,pages_messaging,pages_read_engagement';
-    // Include redirect URI in state to ensure exact match
     const state = `instagram|${oauthCallbackUrl}`;
     const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
     
@@ -70,23 +93,44 @@ export const InstagramSettings = () => {
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
     
-    window.open(
+    popupRef.current = window.open(
       authUrl,
       'instagram_oauth',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
     );
+
+    // Check if popup was closed manually
+    popupCheckInterval.current = setInterval(() => {
+      if (popupRef.current && popupRef.current.closed) {
+        clearPopupCheck();
+        setIsLoading(false);
+        // Reload settings in case OAuth completed
+        loadSettings();
+      }
+    }, 500);
   };
 
   const handleDisconnect = async () => {
     setIsLoading(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from('channel_integrations')
         .update({
           is_connected: false,
-          config: {}
+          config: {},
+          updated_at: new Date().toISOString()
         })
         .eq('channel', 'instagram');
+
+      if (error) {
+        console.error('Disconnect error:', error);
+        toast({
+          title: 'خطأ',
+          description: 'لا تملك الصلاحية لفصل الاتصال',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       setIsConnected(false);
       setAccountName('');
@@ -96,6 +140,7 @@ export const InstagramSettings = () => {
         description: 'تم فصل حساب إنستغرام بنجاح',
       });
     } catch (error) {
+      console.error('Disconnect error:', error);
       toast({
         title: 'خطأ',
         description: 'حدث خطأ أثناء فصل الاتصال',

@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useRef } from 'react';
+import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { MessageSquare, CheckCircle, XCircle, Loader2, LogIn, LogOut, Copy } from 'lucide-react';
+import { MessageSquare, CheckCircle, XCircle, Loader2, LogIn, LogOut } from 'lucide-react';
 
 const FACEBOOK_APP_ID = '1749195285754662';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -15,77 +13,136 @@ export const WhatsAppSettings = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [businessName, setBusinessName] = useState('');
-  const [verifyToken, setVerifyToken] = useState('');
   const { toast } = useToast();
+  const popupRef = useRef<Window | null>(null);
+  const popupCheckInterval = useRef<NodeJS.Timeout | null>(null);
 
-  const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
   const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
 
   useEffect(() => {
     loadSettings();
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('success') === 'whatsapp_connected') {
-      toast({
-        title: 'تم الربط بنجاح',
-        description: `تم ربط واتساب بنجاح`,
-      });
-      window.history.replaceState({}, '', '/settings');
-      loadSettings();
-    } else if (params.get('error') && params.get('error').includes('whatsapp')) {
-      toast({
-        title: 'خطأ في الربط',
-        description: params.get('error'),
-        variant: 'destructive',
-      });
-      window.history.replaceState({}, '', '/settings');
-    }
+
+    // Listen for OAuth popup messages
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'oauth_success' && event.data?.channel === 'whatsapp') {
+        // Close popup if still open
+        if (popupRef.current && !popupRef.current.closed) {
+          popupRef.current.close();
+        }
+        clearPopupCheck();
+        
+        toast({
+          title: 'تم الربط بنجاح',
+          description: `تم ربط واتساب بنجاح`,
+        });
+        loadSettings();
+        setIsLoading(false);
+      } else if (event.data?.type === 'oauth_error') {
+        // Close popup if still open
+        if (popupRef.current && !popupRef.current.closed) {
+          popupRef.current.close();
+        }
+        clearPopupCheck();
+        
+        toast({
+          title: 'خطأ في الربط',
+          description: event.data.error,
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearPopupCheck();
+    };
   }, []);
+
+  const clearPopupCheck = () => {
+    if (popupCheckInterval.current) {
+      clearInterval(popupCheckInterval.current);
+      popupCheckInterval.current = null;
+    }
+  };
 
   const loadSettings = async () => {
     const { data } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'whatsapp')
-      .single();
+      .maybeSingle();
 
     if (data) {
       const config = data.config as any;
       setIsConnected(data.is_connected || false);
       setPhoneNumber(config?.phone_number || '');
       setBusinessName(config?.business_name || '');
-      setVerifyToken(config?.verify_token || 'almared_whatsapp_webhook');
     }
   };
 
   const handleLogin = () => {
     setIsLoading(true);
     const scope = 'whatsapp_business_management,whatsapp_business_messaging';
-    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=whatsapp`;
+    const state = `whatsapp|${oauthCallbackUrl}`;
+    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
     
-    window.location.href = authUrl;
+    // Open popup window
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    popupRef.current = window.open(
+      authUrl,
+      'whatsapp_oauth',
+      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
+    );
+
+    // Check if popup was closed manually
+    popupCheckInterval.current = setInterval(() => {
+      if (popupRef.current && popupRef.current.closed) {
+        clearPopupCheck();
+        setIsLoading(false);
+        // Reload settings in case OAuth completed
+        loadSettings();
+      }
+    }, 500);
   };
 
   const handleDisconnect = async () => {
     setIsLoading(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from('channel_integrations')
         .update({
           is_connected: false,
-          config: {}
+          config: {},
+          updated_at: new Date().toISOString()
         })
         .eq('channel', 'whatsapp');
+
+      if (error) {
+        console.error('Disconnect error:', error);
+        toast({
+          title: 'خطأ',
+          description: 'لا تملك الصلاحية لفصل الاتصال',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       setIsConnected(false);
       setPhoneNumber('');
       setBusinessName('');
-      setVerifyToken('');
 
       toast({
         title: 'تم فصل الاتصال',
         description: 'تم فصل حساب واتساب بنجاح',
       });
     } catch (error) {
+      console.error('Disconnect error:', error);
       toast({
         title: 'خطأ',
         description: 'حدث خطأ أثناء فصل الاتصال',
@@ -94,14 +151,6 @@ export const WhatsAppSettings = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: 'تم النسخ',
-      description: `تم نسخ ${label}`,
-    });
   };
 
   return (
