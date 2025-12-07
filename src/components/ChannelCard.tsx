@@ -122,6 +122,28 @@ export const ChannelCard = ({
   const handleDisconnect = async () => {
     setIsLoading(true);
     try {
+      // First, get all conversation IDs for this channel
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('channel', channel as any);
+
+      // Delete all messages for these conversations
+      if (conversations && conversations.length > 0) {
+        const conversationIds = conversations.map(c => c.id);
+        await supabase
+          .from('messages')
+          .delete()
+          .in('conversation_id', conversationIds);
+      }
+
+      // Delete all conversations for this channel
+      await supabase
+        .from('conversations')
+        .delete()
+        .eq('channel', channel as any);
+
+      // Update the channel integration to disconnected
       await supabase
         .from('channel_integrations')
         .update({
@@ -135,9 +157,10 @@ export const ChannelCard = ({
 
       toast({
         title: 'تم فصل الاتصال',
-        description: `تم فصل ${name} بنجاح`,
+        description: `تم فصل ${name} وحذف جميع المحادثات بنجاح`,
       });
     } catch (error) {
+      console.error('Error disconnecting:', error);
       toast({
         title: 'خطأ',
         description: 'حدث خطأ أثناء فصل الاتصال',
