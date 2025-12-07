@@ -4,10 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Bot, Link, Building, MessageCircle, Loader2, CheckCircle, XCircle } from "lucide-react";
-import { WhatsAppSettings } from "@/components/WhatsAppSettings";
-import { FacebookSettings } from "@/components/FacebookSettings";
-import { InstagramSettings } from "@/components/InstagramSettings";
+import { Settings as SettingsIcon, Bot, Link, Building, MessageSquare, Loader2, CheckCircle, XCircle, Facebook, Instagram, Mail, Send } from "lucide-react";
+import { ChannelCard } from "@/components/ChannelCard";
+import { TikTokIcon } from "@/components/TikTokIcon";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -141,42 +140,66 @@ const Settings = () => {
           </Card>
         </TabsContent>
 
-	        <TabsContent value="channels" className="space-y-4">
-	          <h3 className="text-lg font-bold mb-4">قنوات التواصل الاجتماعي</h3>
-	          <div className="space-y-4">
-	            <WhatsAppSettings />
-	            <FacebookSettings />
-	            <InstagramSettings />
-	          </div>
-	          
-	          <Card className="p-6">
-	            <h3 className="text-lg font-bold mb-4">قنوات أخرى</h3>
-	            <div className="space-y-4">
-	              {[
-	                { name: "تليجرام", status: "غير متصل", color: "bg-blue-400/20", iconColor: "text-blue-400" },
-	                { name: "البريد الإلكتروني", status: "غير متصل", color: "bg-gray-500/20", iconColor: "text-gray-500" }
-	              ].map((channel) => (
-	                <div 
-	                  key={channel.name}
-	                  className="flex items-center justify-between p-4 border border-border rounded-lg"
-	                >
-	                  <div className="flex items-center gap-3">
-	                    <div className={`w-10 h-10 rounded-full ${channel.color} flex items-center justify-center`}>
-	                      <MessageCircle className={`w-5 h-5 ${channel.iconColor}`} />
-	                    </div>
-	                    <div>
-	                      <p className="font-medium">{channel.name}</p>
-	                      <p className="text-sm text-muted-foreground">{channel.status}</p>
-	                    </div>
-	                  </div>
-	                  <Button variant="outline" disabled>
-	                    قريباً
-	                  </Button>
-	                </div>
-	              ))}
-	            </div>
-	          </Card>
-	        </TabsContent>
+        <TabsContent value="channels" className="space-y-6">
+          <div>
+            <h3 className="text-lg font-bold mb-2">قنوات التواصل</h3>
+            <p className="text-muted-foreground text-sm mb-6">اربط حساباتك لاستقبال الرسائل في صندوق وارد موحد</p>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <ChannelCard
+              channel="whatsapp"
+              name="واتساب"
+              icon={MessageSquare}
+              iconColor="text-white"
+              bgColor="bg-green-500"
+              buttonColor="bg-green-600 hover:bg-green-700"
+            />
+            <ChannelCard
+              channel="facebook"
+              name="فيسبوك"
+              icon={Facebook}
+              iconColor="text-white"
+              bgColor="bg-blue-600"
+              buttonColor="bg-blue-600 hover:bg-blue-700"
+            />
+            <ChannelCard
+              channel="instagram"
+              name="إنستغرام"
+              icon={Instagram}
+              iconColor="text-white"
+              bgColor="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400"
+              buttonColor="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            />
+            <ChannelCard
+              channel="tiktok"
+              name="تيك توك"
+              icon={TikTokIcon}
+              iconColor="text-white"
+              bgColor="bg-black"
+              buttonColor="bg-black hover:bg-gray-900"
+              comingSoon
+            />
+            <ChannelCard
+              channel="telegram"
+              name="تليجرام"
+              icon={Send}
+              iconColor="text-white"
+              bgColor="bg-sky-500"
+              buttonColor="bg-sky-500 hover:bg-sky-600"
+              comingSoon
+            />
+            <ChannelCard
+              channel="email"
+              name="البريد"
+              icon={Mail}
+              iconColor="text-white"
+              bgColor="bg-gray-600"
+              buttonColor="bg-gray-600 hover:bg-gray-700"
+              comingSoon
+            />
+          </div>
+        </TabsContent>
 
         <TabsContent value="business" className="space-y-4">
           <Card className="p-6">
