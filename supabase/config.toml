@@ -11,3 +11,18 @@ verify_jwt = false
 
 [functions.instagram-webhook]
 verify_jwt = false
+
+[functions.oauth-connect]
+verify_jwt = false
+
+[functions.oauth-callback]
+verify_jwt = false
+
+[functions.webhooks-meta]
+verify_jwt = false
+
+[functions.unified-send-message]
+verify_jwt = true
+
+[functions.token-refresh-worker]
+verify_jwt = true
