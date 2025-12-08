@@ -126,28 +126,28 @@ const Settings = () => {
               channel="whatsapp"
               name="واتساب"
               iconComponent={<WhatsAppIcon className="h-8 w-8" />}
-              bgColor="bg-green-500"
+              bgColor="bg-muted"
               buttonColor="bg-green-600 hover:bg-green-700"
             />
             <ChannelCard
               channel="facebook"
               name="فيسبوك"
               iconComponent={<MessengerIcon className="h-8 w-8" />}
-              bgColor="bg-blue-600"
+              bgColor="bg-muted"
               buttonColor="bg-blue-600 hover:bg-blue-700"
             />
             <ChannelCard
               channel="instagram"
               name="إنستغرام"
               iconComponent={<InstagramIcon className="h-8 w-8" />}
-              bgColor="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400"
+              bgColor="bg-muted"
               buttonColor="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             />
             <ChannelCard
               channel="tiktok"
               name="تيك توك"
               iconComponent={<TikTokChannelIcon className="h-8 w-8" />}
-              bgColor="bg-black"
+              bgColor="bg-muted"
               buttonColor="bg-black hover:bg-gray-900"
               comingSoon
             />
@@ -155,15 +155,15 @@ const Settings = () => {
               channel="telegram"
               name="تليجرام"
               iconComponent={<TelegramIcon className="h-8 w-8" />}
-              bgColor="bg-sky-500"
+              bgColor="bg-muted"
               buttonColor="bg-sky-500 hover:bg-sky-600"
               comingSoon
             />
             <ChannelCard
               channel="email"
               name="البريد"
-              iconComponent={<Mail className="h-8 w-8 text-white" />}
-              bgColor="bg-gray-600"
+              iconComponent={<Mail className="h-8 w-8 text-muted-foreground" />}
+              bgColor="bg-muted"
               buttonColor="bg-gray-600 hover:bg-gray-700"
               comingSoon
             />
