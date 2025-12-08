@@ -80,11 +80,20 @@ serve(async (req) => {
           const config = integration.config as any;
           const accountId = integration.account_id;
           
-          // Check multiple fields to match
+          // For Instagram, check instagram_account_id first, then page_id and account_id
           if (isInstagram) {
-            return config?.instagram_account_id === recipientId || 
+            const match = config?.instagram_account_id === recipientId || 
                    config?.page_id === recipientId ||
                    accountId === recipientId;
+            if (match) {
+              console.log('[WEBHOOK] Instagram integration matched:', { 
+                instagram_account_id: config?.instagram_account_id,
+                page_id: config?.page_id, 
+                account_id: accountId,
+                recipientId 
+              });
+            }
+            return match;
           }
           return config?.page_id === recipientId || accountId === recipientId;
         });
