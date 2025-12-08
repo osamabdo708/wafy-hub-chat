@@ -72,17 +72,19 @@ serve(async (req) => {
       }
     }
 
-    // Fallback to legacy channel_integrations
-    if (!accessToken) {
+    // Fallback to legacy channel_integrations - use workspace_id to get correct token
+    if (!accessToken && conversation.workspace_id) {
       const { data: integration } = await supabase
         .from("channel_integrations")
         .select("config")
         .eq("channel", provider)
+        .eq("workspace_id", conversation.workspace_id)
         .eq("is_connected", true)
         .single();
 
       if (integration?.config?.page_access_token) {
         accessToken = integration.config.page_access_token;
+        console.log("[SEND-MESSAGE] Using legacy token for workspace:", conversation.workspace_id);
       }
     }
 

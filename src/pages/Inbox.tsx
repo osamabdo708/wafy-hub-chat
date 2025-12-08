@@ -147,21 +147,46 @@ const Inbox = () => {
 
   const fetchConnectedChannels = async () => {
     try {
-      // Fetch from legacy channel_integrations
+      // Get current user's workspace
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('No user found');
+        setConnectedChannels([]);
+        setLoadingChannels(false);
+        return;
+      }
+
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .limit(1)
+        .single();
+
+      if (!workspace) {
+        console.error('No workspace found for user');
+        setConnectedChannels([]);
+        setLoadingChannels(false);
+        return;
+      }
+
+      // Fetch from legacy channel_integrations for THIS workspace only
       const { data: legacyData, error: legacyError } = await supabase
         .from('channel_integrations')
         .select('channel, is_connected')
-        .eq('is_connected', true);
+        .eq('is_connected', true)
+        .eq('workspace_id', workspace.id);
 
       if (legacyError) {
         console.error('Error fetching legacy integrations:', legacyError);
       }
       
-      // Also fetch from new channel_connections table
+      // Also fetch from new channel_connections table for THIS workspace only
       const { data: connectionsData, error: connectionsError } = await supabase
         .from('channel_connections')
         .select('provider, status')
-        .eq('status', 'connected');
+        .eq('status', 'connected')
+        .eq('workspace_id', workspace.id);
 
       if (connectionsError) {
         console.error('Error fetching channel connections:', connectionsError);
