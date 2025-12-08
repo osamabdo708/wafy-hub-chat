@@ -72,13 +72,18 @@ export const WhatsAppSettings = () => {
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'whatsapp')
+      .eq('is_connected', true)
       .maybeSingle();
 
     if (data) {
       const config = data.config as any;
-      setIsConnected(data.is_connected || false);
+      setIsConnected(true);
       setPhoneNumber(config?.phone_number || '');
       setBusinessName(config?.business_name || '');
+    } else {
+      setIsConnected(false);
+      setPhoneNumber('');
+      setBusinessName('');
     }
   };
 
