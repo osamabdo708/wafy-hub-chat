@@ -9,7 +9,7 @@ import { Settings as SettingsIcon, Link, Building, Mail } from "lucide-react";
 import { ChannelCard } from "@/components/ChannelCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import genieIcon from "@/assets/genie-icon.png";
+import agentIcon from "@/assets/agent-icon.png";
 import { 
   WhatsAppIcon, 
   MessengerIcon, 
@@ -205,7 +205,7 @@ const Settings = () => {
               <div className="flex items-center justify-between p-4 rounded-lg border-2 border-primary/20 bg-primary/5">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                    <img src={genieIcon} alt="المارد" className="w-6 h-6" />
+                    <img src={agentIcon} alt="المارد" className="w-6 h-6" />
                   </div>
                   <div>
                     <Label className="text-base font-semibold">تفعيل المارد تلقائياً</Label>

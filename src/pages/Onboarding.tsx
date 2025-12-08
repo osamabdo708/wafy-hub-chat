@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Building2, Sparkles } from "lucide-react";
-import genieIcon from "@/assets/genie-icon.png";
+import agentIcon from "@/assets/agent-icon.png";
 
 const Onboarding = () => {
   const [workspaceName, setWorkspaceName] = useState("");
@@ -117,7 +117,7 @@ const Onboarding = () => {
       <Card className="w-full max-w-md p-8">
         <div className="flex flex-col items-center mb-8">
           <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-            <img src={genieIcon} alt="المارد" className="w-12 h-12" />
+            <img src={agentIcon} alt="المارد" className="w-12 h-12" />
           </div>
           <h1 className="text-3xl font-bold text-center">مرحباً بك في المارد</h1>
           <p className="text-muted-foreground text-center mt-2">

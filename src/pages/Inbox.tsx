@@ -10,7 +10,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
-import genieIcon from "@/assets/genie-icon.png";
+import agentIcon from "@/assets/agent-icon.png";
 import { AgentSelector } from "@/components/AgentSelector";
 import { 
   MessengerIcon, 
@@ -569,7 +569,7 @@ const Inbox = () => {
                         : 'bg-primary/10 text-primary'
                     }`}>
                       {conversation.assigned_agent.is_ai ? (
-                        <img src={genieIcon} alt="المارد" className="w-4 h-4" />
+                        <img src={agentIcon} alt="المارد" className="w-4 h-4" />
                       ) : (
                         <User className="w-3 h-3" />
                       )}
