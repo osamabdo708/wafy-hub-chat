@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Users, Plus, Trash2, Bot, User } from "lucide-react";
+import { Users, Plus, Trash2, Bot } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import genieIcon from "@/assets/genie-icon.png";
+import agentIcon from "@/assets/agent-icon.png";
 
 interface Agent {
   id: string;
@@ -193,8 +194,10 @@ const Agents = () => {
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center ${agent.is_ai ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'bg-primary/10'}`}>
                   {agent.is_ai ? (
                     <img src={genieIcon} alt="المارد" className="w-8 h-8" />
+                  ) : agent.avatar_url ? (
+                    <img src={agent.avatar_url} alt={agent.name} className="w-8 h-8 rounded-full object-cover" />
                   ) : (
-                    <User className="w-6 h-6 text-primary" />
+                    <img src={agentIcon} alt={agent.name} className="w-8 h-8" />
                   )}
                 </div>
                 <div>
