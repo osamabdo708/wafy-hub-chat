@@ -121,17 +121,15 @@ const SuperAdmin = () => {
     if (!deleteUserId) return;
 
     try {
-      // Delete user's workspace first
-      await supabase
-        .from('workspaces')
-        .delete()
-        .eq('owner_user_id', deleteUserId);
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: deleteUserId }
+      });
 
-      // Delete profile
-      await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', deleteUserId);
+      if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
 
       toast.success("تم حذف المستخدم بنجاح");
       fetchData();

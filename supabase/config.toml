@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.token-refresh-worker]
 verify_jwt = true
+
+[functions.delete-user]
+verify_jwt = false
