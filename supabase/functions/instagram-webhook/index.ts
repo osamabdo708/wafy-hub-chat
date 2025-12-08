@@ -45,15 +45,62 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
 
-      // Get ALL connected Instagram integrations
-      const { data: integrations } = await supabase
+      // Get ALL connected Instagram integrations from BOTH tables
+      const { data: legacyIntegrations } = await supabase
         .from('channel_integrations')
         .select('config, account_id')
         .eq('channel', 'instagram')
         .eq('is_connected', true);
 
-      if (!integrations || integrations.length === 0) {
-        console.log('[INSTAGRAM-WEBHOOK] No Instagram integrations found');
+      // Also check new channel_connections table with oauth_tokens
+      const { data: newConnections } = await supabase
+        .from('channel_connections')
+        .select(`
+          id,
+          provider_channel_id,
+          provider_entity_name,
+          workspace_id,
+          oauth_tokens (
+            access_token_encrypted
+          )
+        `)
+        .eq('provider', 'instagram')
+        .eq('status', 'connected');
+
+      // Decrypt tokens for new connections
+      const decryptToken = async (encrypted: string): Promise<string> => {
+        try {
+          const key = Deno.env.get('TOKEN_ENCRYPTION_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          const [ivHex, ciphertextHex] = encrypted.split(':');
+          const iv = new Uint8Array(ivHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+          const ciphertext = new Uint8Array(ciphertextHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+          const keyData = new TextEncoder().encode(key.slice(0, 32).padEnd(32, '0'));
+          const cryptoKey = await crypto.subtle.importKey('raw', keyData, 'AES-GCM', false, ['decrypt']);
+          const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, ciphertext);
+          return new TextDecoder().decode(decrypted);
+        } catch (e) {
+          console.error('[INSTAGRAM-WEBHOOK] Token decryption failed:', e);
+          return '';
+        }
+      };
+
+      // Transform new connections to match legacy format
+      const transformedConnections = await Promise.all((newConnections || []).map(async (conn: any) => {
+        const token = conn.oauth_tokens?.[0]?.access_token_encrypted;
+        const accessToken = token ? await decryptToken(token) : '';
+        return {
+          account_id: conn.provider_channel_id,
+          config: {
+            instagram_account_id: conn.provider_channel_id,
+            page_access_token: accessToken
+          }
+        };
+      }));
+
+      const integrations = [...(legacyIntegrations || []), ...transformedConnections];
+
+      if (integrations.length === 0) {
+        console.log('[INSTAGRAM-WEBHOOK] No Instagram integrations found in either table');
         return new Response('OK', { status: 200 });
       }
 
