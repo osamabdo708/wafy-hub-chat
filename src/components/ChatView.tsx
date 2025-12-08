@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
-import facebookIcon from "@/assets/facebook.png";
+import { getChannelIconComponent } from "@/components/ChannelIcons";
 import {
   Dialog,
   DialogContent,
@@ -305,10 +305,7 @@ const ChatView = ({
   };
 
   const getChannelIcon = () => {
-    if (channel === 'facebook') {
-      return <img src={facebookIcon} alt="Facebook" className="w-4 h-4" />;
-    }
-    return null;
+    return getChannelIconComponent(channel, "w-4 h-4");
   };
 
   return (

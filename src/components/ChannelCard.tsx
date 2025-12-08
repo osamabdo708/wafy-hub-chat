@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, XCircle, Loader2, LogIn, LogOut, LucideIcon } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, LogIn, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const FACEBOOK_APP_ID = '1749195285754662';
@@ -11,8 +11,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 interface ChannelCardProps {
   channel: string;
   name: string;
-  icon: LucideIcon | React.ComponentType<any>;
-  iconColor: string;
+  iconComponent: ReactNode;
   bgColor: string;
   buttonColor?: string;
   comingSoon?: boolean;
@@ -21,8 +20,7 @@ interface ChannelCardProps {
 export const ChannelCard = ({ 
   channel, 
   name, 
-  icon: Icon, 
-  iconColor, 
+  iconComponent, 
   bgColor,
   buttonColor,
   comingSoon = false 
@@ -261,7 +259,7 @@ export const ChannelCard = ({
         "w-16 h-16 rounded-2xl flex items-center justify-center mb-4 mt-4",
         bgColor
       )}>
-        <Icon className={cn("h-8 w-8", iconColor)} />
+        {iconComponent}
       </div>
 
       {/* Name */}
