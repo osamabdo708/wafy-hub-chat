@@ -106,12 +106,6 @@ serve(async (req) => {
           return config?.page_id === recipientId || accountId === recipientId;
         });
 
-        // If no match found but we have integrations, use the first one (single account per channel model)
-        if (!matchingIntegration && integrations.length > 0) {
-          console.log('[WEBHOOK] No exact match found, using first available integration');
-          matchingIntegration = integrations[0];
-        }
-
         if (!matchingIntegration) {
           console.log('[WEBHOOK] No matching integration found for recipient:', recipientId);
           continue;
