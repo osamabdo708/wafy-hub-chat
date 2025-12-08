@@ -66,15 +66,22 @@ export const ChannelCard = ({
     // Only load for supported channels
     if (!['whatsapp', 'facebook', 'instagram'].includes(channel)) return;
     
-    const { data } = await supabase
+    // Get the first connected integration for this channel
+    const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', channel as any)
-      .single();
+      .eq('is_connected', true)
+      .limit(1);
 
-    if (data) {
-      const config = data.config as any;
-      setIsConnected(data.is_connected || false);
+    if (error) {
+      console.error(`Error loading ${channel} settings:`, error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const config = data[0].config as any;
+      setIsConnected(true);
       
       // Set account info based on channel
       if (channel === 'whatsapp') {
@@ -84,6 +91,9 @@ export const ChannelCard = ({
       } else if (channel === 'instagram') {
         setAccountInfo(config?.account_name ? `@${config.account_name}` : '');
       }
+    } else {
+      setIsConnected(false);
+      setAccountInfo('');
     }
   };
 
@@ -143,14 +153,25 @@ export const ChannelCard = ({
         .delete()
         .eq('channel', channel as any);
 
-      // Update the channel integration to disconnected
-      await supabase
+      // Update only connected integrations for this channel to disconnected
+      const { error } = await supabase
         .from('channel_integrations')
         .update({
           is_connected: false,
-          config: {}
+          updated_at: new Date().toISOString()
         })
-        .eq('channel', channel as any);
+        .eq('channel', channel as any)
+        .eq('is_connected', true);
+
+      if (error) {
+        console.error('Disconnect error:', error);
+        toast({
+          title: 'خطأ',
+          description: 'لا تملك الصلاحية لفصل الاتصال',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       setIsConnected(false);
       setAccountInfo('');
