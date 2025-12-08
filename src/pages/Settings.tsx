@@ -146,6 +146,31 @@ const Settings = () => {
             <p className="text-muted-foreground text-sm mb-6">اربط حساباتك لاستقبال الرسائل في صندوق وارد موحد</p>
           </div>
           
+          {/* Webhook Configuration Info */}
+          <Card className="p-4 bg-muted/50 border-dashed">
+            <h4 className="font-semibold mb-3 flex items-center gap-2">
+              <Link className="w-4 h-4" />
+              إعدادات Webhook (للمطورين)
+            </h4>
+            <div className="space-y-3 text-sm">
+              <div>
+                <Label className="text-muted-foreground">Webhook URL:</Label>
+                <code className="block mt-1 p-2 bg-background rounded border text-xs break-all">
+                  https://pegkzuxbgswqouieordl.supabase.co/functions/v1/facebook-webhook
+                </code>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Verify Token:</Label>
+                <code className="block mt-1 p-2 bg-background rounded border text-xs">
+                  almared_unified_webhook_2024
+                </code>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                استخدم هذه القيم في إعدادات Webhook في Meta Developer Dashboard لجميع القنوات (Facebook, Instagram, WhatsApp)
+              </p>
+            </div>
+          </Card>
+          
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <ChannelCard
               channel="whatsapp"
