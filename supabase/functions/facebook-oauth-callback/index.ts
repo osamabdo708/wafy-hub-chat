@@ -94,6 +94,7 @@ serve(async (req) => {
 
     let config: any = { access_token: longLivedToken };
     let accountIdentifier = "Connected Account";
+    let accountId = "";
 
     if (pagesData.data && pagesData.data.length > 0) {
       const page = pagesData.data[0]; // Use first page
@@ -104,6 +105,7 @@ serve(async (req) => {
       config.connected_at = new Date().toISOString();
       config.connected_via = "oauth";
       accountIdentifier = page.name;
+      accountId = page.id;
       console.log("[OAUTH] Got page:", page.name, "with page access token");
 
       if (channelType === "instagram") {
@@ -116,6 +118,7 @@ serve(async (req) => {
 
         if (igData.instagram_business_account) {
           config.instagram_account_id = igData.instagram_business_account.id;
+          accountId = igData.instagram_business_account.id;
           
           // Get Instagram username
           const igInfoResponse = await fetch(
@@ -129,17 +132,19 @@ serve(async (req) => {
           console.log("[OAUTH] No Instagram Business Account found for this page");
           config.account_name = `${page.name} (Facebook)`;
           accountIdentifier = `${page.name} (Facebook)`;
+          accountId = page.id;
         }
 
-        // Save Instagram connection
+        // Save Instagram connection - INSERT or UPDATE based on account_id
         const { error: upsertError } = await supabase
           .from("channel_integrations")
           .upsert({
             channel: "instagram",
+            account_id: accountId,
             is_connected: true,
             config,
             updated_at: new Date().toISOString()
-          }, { onConflict: "channel" });
+          }, { onConflict: "channel,account_id", ignoreDuplicates: false });
 
         if (upsertError) {
           console.error("[OAUTH] Database error:", upsertError);
@@ -149,7 +154,7 @@ serve(async (req) => {
           );
         }
 
-        console.log("[OAUTH] Instagram connection saved successfully");
+        console.log("[OAUTH] Instagram connection saved successfully with account_id:", accountId);
         return new Response(
           `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'instagram',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
           { headers: { "Content-Type": "text/html" } }
@@ -159,26 +164,28 @@ serve(async (req) => {
       console.log("[OAUTH] No pages found, getting user info");
       // Get user info as fallback
       const userResponse = await fetch(
-        `https://graph.facebook.com/v19.0/me?fields=name&access_token=${longLivedToken}`
+        `https://graph.facebook.com/v19.0/me?fields=name,id&access_token=${longLivedToken}`
       );
       const userData = await userResponse.json();
       console.log("[OAUTH] User data:", JSON.stringify(userData));
       accountIdentifier = userData.name || "Connected Account";
+      accountId = userData.id || "";
       config.account_name = accountIdentifier;
       config.verify_token = verifyToken;
       config.connected_at = new Date().toISOString();
       config.connected_via = "oauth";
     }
 
-    // Save Facebook connection
+    // Save Facebook connection with account_id
     const { error: upsertError } = await supabase
       .from("channel_integrations")
       .upsert({
         channel: "facebook",
+        account_id: accountId,
         is_connected: true,
         config,
         updated_at: new Date().toISOString()
-      }, { onConflict: "channel" });
+      }, { onConflict: "channel,account_id", ignoreDuplicates: false });
 
     if (upsertError) {
       console.error("[OAUTH] Database error:", upsertError);
@@ -188,7 +195,7 @@ serve(async (req) => {
       );
     }
 
-    console.log("[OAUTH] Facebook connection saved successfully");
+    console.log("[OAUTH] Facebook connection saved successfully with account_id:", accountId);
     return new Response(
       `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'facebook',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
       { headers: { "Content-Type": "text/html" } }
