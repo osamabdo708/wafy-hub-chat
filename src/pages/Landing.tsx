@@ -8,9 +8,6 @@ import {
   BarChart3, 
   Shield, 
   ArrowLeft,
-  Facebook,
-  Instagram,
-  Send,
   Sparkles,
   Check,
   Sun,
@@ -18,9 +15,15 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
-import genieIcon from "@/assets/genie-icon.png";
+import agentIcon from "@/assets/agent-icon.png";
 import genieLogo from "@/assets/genie-logo.png";
-import { TikTokIcon } from "@/components/TikTokIcon";
+import { 
+  WhatsAppIcon, 
+  MessengerIcon, 
+  InstagramIcon, 
+  TikTokChannelIcon, 
+  TelegramIcon 
+} from "@/components/ChannelIcons";
 
 const Landing = () => {
   const { theme, setTheme } = useTheme();
@@ -60,11 +63,11 @@ const Landing = () => {
   ];
 
   const channels = [
-    { icon: MessageSquare, name: "واتساب", color: "bg-green-500" },
-    { icon: Facebook, name: "فيسبوك", color: "bg-blue-600" },
-    { icon: Instagram, name: "إنستغرام", color: "bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400" },
-    { icon: TikTokIcon, name: "تيك توك", color: "bg-black" },
-    { icon: Send, name: "تليجرام", color: "bg-sky-500" },
+    { icon: WhatsAppIcon, name: "واتساب" },
+    { icon: MessengerIcon, name: "فيسبوك" },
+    { icon: InstagramIcon, name: "إنستغرام" },
+    { icon: TikTokChannelIcon, name: "تيك توك" },
+    { icon: TelegramIcon, name: "تليجرام" },
   ];
 
   const pricingPlans = [
@@ -157,9 +160,9 @@ const Landing = () => {
             {channels.map((channel, index) => (
               <div 
                 key={index}
-                className={`w-12 h-12 rounded-xl ${channel.color} flex items-center justify-center shadow-lg`}
+                className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center shadow-lg"
               >
-                <channel.icon className="w-6 h-6 text-white" />
+                <channel.icon className="w-7 h-7" />
               </div>
             ))}
           </div>
@@ -201,7 +204,7 @@ const Landing = () => {
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-purple-500/30 via-blue-500/30 to-green-500/30 rounded-full blur-3xl" />
                 <div className="relative w-64 h-64 md:w-80 md:h-80 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-green-500 flex items-center justify-center shadow-2xl">
-                  <img src={genieIcon} alt="المارد" className="w-40 h-40 md:w-48 md:h-48" />
+                  <img src={agentIcon} alt="المارد" className="w-40 h-40 md:w-48 md:h-48" />
                 </div>
               </div>
             </div>
