@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,7 +11,6 @@ import {
   BarChart3, 
   Settings,
   LogOut,
-  User,
   Users
 } from "lucide-react";
 import {
@@ -32,6 +32,19 @@ const navItems = [
 
 export const HorizontalNav = () => {
   const navigate = useNavigate();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>("المستخدم");
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserEmail(user.email || null);
+        setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || "المستخدم");
+      }
+    };
+    fetchUser();
+  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -59,14 +72,14 @@ export const HorizontalNav = () => {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full">
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
-                أ
+                {userName.charAt(0).toUpperCase()}
               </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <div className="px-2 py-1.5">
-              <p className="text-sm font-medium">المدير</p>
-              <p className="text-xs text-muted-foreground">admin@example.com</p>
+              <p className="text-sm font-medium">{userName}</p>
+              <p className="text-xs text-muted-foreground">{userEmail || "غير معروف"}</p>
             </div>
             <DropdownMenuItem onClick={handleLogout} className="gap-2 cursor-pointer">
               <LogOut className="w-4 h-4" />
