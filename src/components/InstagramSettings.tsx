@@ -71,12 +71,16 @@ export const InstagramSettings = () => {
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'instagram')
+      .eq('is_connected', true)
       .maybeSingle();
 
     if (data) {
       const config = data.config as any;
-      setIsConnected(data.is_connected || false);
+      setIsConnected(true);
       setAccountName(config?.account_name || '');
+    } else {
+      setIsConnected(false);
+      setAccountName('');
     }
   };
 

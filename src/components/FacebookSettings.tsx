@@ -71,12 +71,16 @@ export const FacebookSettings = () => {
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'facebook')
+      .eq('is_connected', true)
       .maybeSingle();
 
     if (data) {
       const config = data.config as any;
-      setIsConnected(data.is_connected || false);
+      setIsConnected(true);
       setPageName(config?.page_name || '');
+    } else {
+      setIsConnected(false);
+      setPageName('');
     }
   };
 
