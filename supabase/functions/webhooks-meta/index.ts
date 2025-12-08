@@ -119,13 +119,13 @@ serve(async (req) => {
           .eq("channel", source.provider)
           .eq("is_connected", true);
 
-        // Find matching integration by channel ID
+        // Find matching integration by channel ID - strict match only
         const matchingIntegration = legacyIntegrations?.find(i => {
           const config = i.config as any;
           return config?.page_id === source.channelId || 
                  config?.instagram_account_id === source.channelId ||
                  i.account_id === source.channelId;
-        }) || legacyIntegrations?.[0]; // Fallback to first if no exact match
+        });
 
         if (matchingIntegration) {
           if (!accessToken && matchingIntegration.config?.page_access_token) {
