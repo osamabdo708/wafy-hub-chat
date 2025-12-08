@@ -4,16 +4,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff, Facebook } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2, Wifi, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
-import facebookIcon from "@/assets/facebook.png";
 import genieIcon from "@/assets/genie-icon.png";
 import { AgentSelector } from "@/components/AgentSelector";
-import { TikTokIcon } from "@/components/TikTokIcon";
+import { 
+  MessengerIcon, 
+  InstagramIcon, 
+  WhatsAppIcon, 
+  TikTokChannelIcon,
+  getChannelIconComponent 
+} from "@/components/ChannelIcons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -360,13 +365,7 @@ const Inbox = () => {
   };
 
   const getChannelIcon = (channel: string) => {
-    if (channel === 'facebook') {
-      return <img src={facebookIcon} alt="Facebook" className="w-4 h-4" />;
-    }
-    if (channel === 'instagram') {
-      return <Instagram className="w-4 h-4 text-pink-500" />;
-    }
-    return null;
+    return getChannelIconComponent(channel, "w-4 h-4");
   };
 
   // Auto-reply check every 15 seconds (only if channels are connected)
@@ -497,19 +496,19 @@ const Inbox = () => {
             الكل
           </TabsTrigger>
           <TabsTrigger value="facebook" className="flex items-center gap-2 text-sm">
-            <Facebook className="w-4 h-4 text-blue-600" />
+            <MessengerIcon className="w-4 h-4" />
             ماسنجر
           </TabsTrigger>
           <TabsTrigger value="instagram" className="flex items-center gap-2 text-sm">
-            <Instagram className="w-4 h-4 text-pink-500" />
+            <InstagramIcon className="w-4 h-4" />
             إنستا
           </TabsTrigger>
           <TabsTrigger value="whatsapp" className="flex items-center gap-2 text-sm">
-            <MessageSquare className="w-4 h-4 text-green-500" />
+            <WhatsAppIcon className="w-4 h-4" />
             واتساب
           </TabsTrigger>
           <TabsTrigger value="tiktok" className="flex items-center gap-2 text-sm">
-            <TikTokIcon className="w-4 h-4" />
+            <TikTokChannelIcon className="w-4 h-4" />
             تيك توك
           </TabsTrigger>
         </TabsList>

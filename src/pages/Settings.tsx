@@ -5,12 +5,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Link, Building, MessageSquare, Facebook, Instagram, Mail, Send } from "lucide-react";
+import { Settings as SettingsIcon, Link, Building, Mail } from "lucide-react";
 import { ChannelCard } from "@/components/ChannelCard";
-import { TikTokIcon } from "@/components/TikTokIcon";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import genieIcon from "@/assets/genie-icon.png";
+import { 
+  WhatsAppIcon, 
+  MessengerIcon, 
+  InstagramIcon, 
+  TikTokChannelIcon, 
+  TelegramIcon 
+} from "@/components/ChannelIcons";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -119,32 +125,28 @@ const Settings = () => {
             <ChannelCard
               channel="whatsapp"
               name="واتساب"
-              icon={MessageSquare}
-              iconColor="text-white"
+              iconComponent={<WhatsAppIcon className="h-8 w-8" />}
               bgColor="bg-green-500"
               buttonColor="bg-green-600 hover:bg-green-700"
             />
             <ChannelCard
               channel="facebook"
               name="فيسبوك"
-              icon={Facebook}
-              iconColor="text-white"
+              iconComponent={<MessengerIcon className="h-8 w-8" />}
               bgColor="bg-blue-600"
               buttonColor="bg-blue-600 hover:bg-blue-700"
             />
             <ChannelCard
               channel="instagram"
               name="إنستغرام"
-              icon={Instagram}
-              iconColor="text-white"
+              iconComponent={<InstagramIcon className="h-8 w-8" />}
               bgColor="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400"
               buttonColor="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             />
             <ChannelCard
               channel="tiktok"
               name="تيك توك"
-              icon={TikTokIcon}
-              iconColor="text-white"
+              iconComponent={<TikTokChannelIcon className="h-8 w-8" />}
               bgColor="bg-black"
               buttonColor="bg-black hover:bg-gray-900"
               comingSoon
@@ -152,8 +154,7 @@ const Settings = () => {
             <ChannelCard
               channel="telegram"
               name="تليجرام"
-              icon={Send}
-              iconColor="text-white"
+              iconComponent={<TelegramIcon className="h-8 w-8" />}
               bgColor="bg-sky-500"
               buttonColor="bg-sky-500 hover:bg-sky-600"
               comingSoon
@@ -161,8 +162,7 @@ const Settings = () => {
             <ChannelCard
               channel="email"
               name="البريد"
-              icon={Mail}
-              iconColor="text-white"
+              iconComponent={<Mail className="h-8 w-8 text-white" />}
               bgColor="bg-gray-600"
               buttonColor="bg-gray-600 hover:bg-gray-700"
               comingSoon
