@@ -38,38 +38,24 @@ export function detectMetaSource(payload: any): DetectedSource | null {
       }
     }
 
-    // Check for Instagram
+    // Check for Facebook/Instagram Messaging
     if (entry.messaging) {
       const messaging = entry.messaging[0];
       const pageId = entry.id;
       
-      // Determine if Instagram by checking for instagram field or message structure
-      const isInstagram = payload.object === "instagram" || 
-                          entry.id?.toString().length > 15; // Instagram IDs are typically longer
+      // Determine platform by webhook object type
+      let provider = "facebook";
+      if (payload.object === "instagram") {
+        provider = "instagram";
+      } else if (payload.object === "page" || payload.object === "feed") {
+        provider = "facebook";
+      }
       
       if (messaging.message) {
         const isEcho = messaging.message.is_echo === true;
         return {
-          provider: isInstagram ? "instagram" : "facebook",
+          provider,
           channelId: pageId,
-          conversationId: isEcho ? messaging.recipient.id : messaging.sender.id,
-          senderId: messaging.sender.id,
-          messageId: messaging.message.mid,
-          messageText: messaging.message.text || "[Media]",
-          timestamp: messaging.timestamp,
-          isEcho
-        };
-      }
-    }
-
-    // Check for Facebook Messenger
-    if (entry.messaging) {
-      const messaging = entry.messaging[0];
-      if (messaging.message) {
-        const isEcho = messaging.message.is_echo === true;
-        return {
-          provider: "facebook",
-          channelId: entry.id,
           conversationId: isEcho ? messaging.recipient.id : messaging.sender.id,
           senderId: messaging.sender.id,
           messageId: messaging.message.mid,

@@ -54,8 +54,8 @@ const Inbox = () => {
   useEffect(() => {
     fetchConnectedChannels();
 
-    // Subscribe to channel integration changes
-    const channel = supabase
+    // Subscribe to channel integration changes (both legacy and new tables)
+    const legacyChannel = supabase
       .channel('channel-integrations-changes')
       .on(
         'postgres_changes',
@@ -70,8 +70,25 @@ const Inbox = () => {
       )
       .subscribe();
 
+    // Subscribe to new channel_connections table
+    const connectionsChannel = supabase
+      .channel('channel-connections-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'channel_connections'
+        },
+        () => {
+          fetchConnectedChannels();
+        }
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(legacyChannel);
+      supabase.removeChannel(connectionsChannel);
     };
   }, []);
 
@@ -121,15 +138,32 @@ const Inbox = () => {
 
   const fetchConnectedChannels = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch from legacy channel_integrations
+      const { data: legacyData, error: legacyError } = await supabase
         .from('channel_integrations')
         .select('channel, is_connected')
         .eq('is_connected', true);
 
-      if (error) throw error;
+      if (legacyError) {
+        console.error('Error fetching legacy integrations:', legacyError);
+      }
       
-      const channels = (data || []).map((ch: ConnectedChannel) => ch.channel);
-      setConnectedChannels(channels);
+      // Also fetch from new channel_connections table
+      const { data: connectionsData, error: connectionsError } = await supabase
+        .from('channel_connections')
+        .select('provider, status')
+        .eq('status', 'connected');
+
+      if (connectionsError) {
+        console.error('Error fetching channel connections:', connectionsError);
+      }
+
+      // Combine channels from both sources (deduplicated)
+      const legacyChannels = (legacyData || []).map((ch: ConnectedChannel) => ch.channel);
+      const newChannels = (connectionsData || []).map((conn: { provider: string }) => conn.provider as ChannelType);
+      
+      const allChannels = [...new Set([...legacyChannels, ...newChannels])];
+      setConnectedChannels(allChannels);
     } catch (error) {
       console.error('Error fetching connected channels:', error);
       setConnectedChannels([]);
