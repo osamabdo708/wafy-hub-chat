@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff, Bot } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
