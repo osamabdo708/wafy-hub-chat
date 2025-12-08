@@ -53,10 +53,10 @@ serve(async (req) => {
 
       console.log('[WEBHOOK] Object type:', objectType, '- Channel:', channel);
 
-      // Get ALL connected integrations from channel_integrations table
+      // Get ALL connected integrations from channel_integrations table (include workspace_id)
       const { data: legacyIntegrations } = await supabase
         .from('channel_integrations')
-        .select('config, account_id')
+        .select('config, account_id, workspace_id')
         .eq('channel', channel)
         .eq('is_connected', true);
 
@@ -71,6 +71,7 @@ serve(async (req) => {
       console.log(`[WEBHOOK] Found ${integrations.length} ${channel} integrations:`, 
         integrations.map(i => ({ 
           account_id: i.account_id, 
+          workspace_id: i.workspace_id,
           instagram_account_id: (i.config as any)?.instagram_account_id,
           page_id: (i.config as any)?.page_id 
         }))
@@ -117,12 +118,18 @@ serve(async (req) => {
         }
 
         const config = matchingIntegration.config as any;
+        const workspaceId = matchingIntegration.workspace_id;
         const myAccountId = isInstagram 
           ? (config?.instagram_account_id || matchingIntegration.account_id)
           : (config?.page_id || matchingIntegration.account_id);
         const accessToken = config?.page_access_token;
 
-        console.log('[WEBHOOK] Using integration with account ID:', myAccountId);
+        console.log('[WEBHOOK] Using integration with account ID:', myAccountId, 'workspace:', workspaceId);
+
+        if (!workspaceId) {
+          console.log('[WEBHOOK] No workspace_id for integration, skipping');
+          continue;
+        }
 
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id;
@@ -192,6 +199,7 @@ serve(async (req) => {
             const { data: newConv, error: convError } = await supabase
               .from('conversations')
               .insert({
+                workspace_id: workspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
                 channel: channel,
