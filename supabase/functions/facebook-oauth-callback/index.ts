@@ -92,12 +92,8 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     const verifyToken = `almared_webhook_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Disconnect any existing connections for this channel first (single account per channel)
-    await supabase
-      .from("channel_integrations")
-      .update({ is_connected: false, updated_at: new Date().toISOString() })
-      .eq("channel", channelType)
-      .eq("is_connected", true);
+    // Multi-account support: Do NOT disconnect existing connections
+    // Each account remains connected independently
 
     let config: any = { access_token: longLivedToken };
     let accountIdentifier = "Connected Account";
