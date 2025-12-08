@@ -110,27 +110,31 @@ serve(async (req) => {
         }
       }
 
-      // Fallback to legacy system
-      if (!accessToken) {
-        const { data: legacyIntegration } = await supabase
+      // Fallback to legacy system - match by channel AND account identifier
+      if (!accessToken || !workspaceId) {
+        // Try to find by page_id or instagram_account_id in config
+        const { data: legacyIntegrations } = await supabase
           .from("channel_integrations")
-          .select("config")
+          .select("config, workspace_id, account_id")
           .eq("channel", source.provider)
-          .eq("is_connected", true)
-          .single();
+          .eq("is_connected", true);
 
-        if (legacyIntegration?.config?.page_access_token) {
-          accessToken = legacyIntegration.config.page_access_token;
-        }
+        // Find matching integration by channel ID
+        const matchingIntegration = legacyIntegrations?.find(i => {
+          const config = i.config as any;
+          return config?.page_id === source.channelId || 
+                 config?.instagram_account_id === source.channelId ||
+                 i.account_id === source.channelId;
+        }) || legacyIntegrations?.[0]; // Fallback to first if no exact match
 
-        // Get workspace for legacy system
-        if (!workspaceId) {
-          const { data: workspace } = await supabase
-            .from("workspaces")
-            .select("id")
-            .limit(1)
-            .single();
-          workspaceId = workspace?.id;
+        if (matchingIntegration) {
+          if (!accessToken && matchingIntegration.config?.page_access_token) {
+            accessToken = matchingIntegration.config.page_access_token;
+          }
+          if (!workspaceId) {
+            workspaceId = matchingIntegration.workspace_id;
+          }
+          console.log("[WEBHOOK-META] Using legacy integration, workspace:", workspaceId);
         }
       }
 
