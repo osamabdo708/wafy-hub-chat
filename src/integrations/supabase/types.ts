@@ -219,6 +219,7 @@ export type Database = {
           is_connected: boolean | null
           last_fetch_timestamp: string | null
           updated_at: string | null
+          workspace_id: string | null
         }
         Insert: {
           account_id?: string | null
@@ -229,6 +230,7 @@ export type Database = {
           is_connected?: boolean | null
           last_fetch_timestamp?: string | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
         Update: {
           account_id?: string | null
@@ -239,8 +241,17 @@ export type Database = {
           is_connected?: boolean | null
           last_fetch_timestamp?: string | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "channel_integrations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversations: {
         Row: {

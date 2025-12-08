@@ -30,12 +30,32 @@ export const ChannelCard = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [accountInfo, setAccountInfo] = useState('');
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
 
   useEffect(() => {
-    if (!comingSoon) {
+    // Get the user's workspace
+    const getWorkspace = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: workspaces } = await supabase
+          .from('workspaces')
+          .select('id')
+          .eq('owner_user_id', user.id)
+          .limit(1);
+        
+        if (workspaces && workspaces.length > 0) {
+          setWorkspaceId(workspaces[0].id);
+        }
+      }
+    };
+    getWorkspace();
+  }, []);
+
+  useEffect(() => {
+    if (!comingSoon && workspaceId) {
       loadSettings();
 
       // Listen for OAuth popup messages
@@ -60,18 +80,20 @@ export const ChannelCard = ({
       window.addEventListener('message', handleMessage);
       return () => window.removeEventListener('message', handleMessage);
     }
-  }, [channel, comingSoon]);
+  }, [channel, comingSoon, workspaceId]);
 
   const loadSettings = async () => {
     // Only load for supported channels
     if (!['whatsapp', 'facebook', 'instagram'].includes(channel)) return;
+    if (!workspaceId) return;
     
-    // Get the first connected integration for this channel
+    // Get the first connected integration for this channel in this workspace
     const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', channel as any)
       .eq('is_connected', true)
+      .eq('workspace_id', workspaceId)
       .limit(1);
 
     if (error) {
@@ -111,9 +133,19 @@ export const ChannelCard = ({
   };
 
   const handleLogin = () => {
+    if (!workspaceId) {
+      toast({
+        title: 'خطأ',
+        description: 'لم يتم العثور على مساحة العمل',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
     const scope = getOAuthScope();
-    const state = `${channel}|${oauthCallbackUrl}`;
+    // Include workspace_id in state
+    const state = `${channel}|${oauthCallbackUrl}|${workspaceId}`;
     const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
     
     // Open popup window for all channels
@@ -130,13 +162,16 @@ export const ChannelCard = ({
   };
 
   const handleDisconnect = async () => {
+    if (!workspaceId) return;
+    
     setIsLoading(true);
     try {
-      // First, get all conversation IDs for this channel
+      // First, get all conversation IDs for this channel in this workspace
       const { data: conversations } = await supabase
         .from('conversations')
         .select('id')
-        .eq('channel', channel as any);
+        .eq('channel', channel as any)
+        .eq('workspace_id', workspaceId);
 
       // Delete all messages for these conversations
       if (conversations && conversations.length > 0) {
@@ -147,13 +182,14 @@ export const ChannelCard = ({
           .in('conversation_id', conversationIds);
       }
 
-      // Delete all conversations for this channel
+      // Delete all conversations for this channel in this workspace
       await supabase
         .from('conversations')
         .delete()
-        .eq('channel', channel as any);
+        .eq('channel', channel as any)
+        .eq('workspace_id', workspaceId);
 
-      // Update only connected integrations for this channel to disconnected
+      // Update only connected integrations for this channel in this workspace to disconnected
       const { error } = await supabase
         .from('channel_integrations')
         .update({
@@ -161,7 +197,8 @@ export const ChannelCard = ({
           updated_at: new Date().toISOString()
         })
         .eq('channel', channel as any)
-        .eq('is_connected', true);
+        .eq('is_connected', true)
+        .eq('workspace_id', workspaceId);
 
       if (error) {
         console.error('Disconnect error:', error);
