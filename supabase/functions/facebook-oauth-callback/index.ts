@@ -41,11 +41,12 @@ serve(async (req) => {
       );
     }
 
-    // Parse state - support both formats:
+    // Parse state - support formats:
     // Simple: "facebook" or "instagram"
-    // Complex: "channelType|redirectUri"
+    // Complex: "channelType|redirectUri|workspaceId"
     let channelType = "facebook";
     let redirectUri = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
+    let workspaceId: string | null = null;
 
     if (state) {
       const parts = state.split("|");
@@ -53,9 +54,20 @@ serve(async (req) => {
       if (parts[1]) {
         redirectUri = parts[1];
       }
+      if (parts[2]) {
+        workspaceId = parts[2];
+      }
     }
 
-    console.log("[OAUTH] Channel:", channelType, "RedirectUri:", redirectUri);
+    console.log("[OAUTH] Channel:", channelType, "RedirectUri:", redirectUri, "WorkspaceId:", workspaceId);
+
+    if (!workspaceId) {
+      console.error("[OAUTH] Missing workspace_id in state");
+      return new Response(
+        `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Missing workspace ID'},'*');window.close();</script></body></html>`,
+        { headers: { "Content-Type": "text/html" } }
+      );
+    }
 
     // Exchange code for access token
     const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${META_APP_SECRET}&code=${code}`;
@@ -91,9 +103,6 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     const verifyToken = `almared_webhook_${Math.random().toString(36).substring(2, 7)}`;
-
-    // Multi-account support: Do NOT disconnect existing connections
-    // Each account remains connected independently
 
     let config: any = { access_token: longLivedToken };
     let accountIdentifier = "Connected Account";
@@ -165,26 +174,34 @@ serve(async (req) => {
           accountId = page.id;
         }
 
-        // Save Instagram connection - INSERT or UPDATE based on account_id
-        const { error: upsertError } = await supabase
+        // First disconnect any existing Instagram connection for this workspace
+        await supabase
           .from("channel_integrations")
-          .upsert({
+          .update({ is_connected: false, updated_at: new Date().toISOString() })
+          .eq("channel", "instagram")
+          .eq("workspace_id", workspaceId)
+          .eq("is_connected", true);
+
+        // Save Instagram connection with workspace_id
+        const { error: insertError } = await supabase
+          .from("channel_integrations")
+          .insert({
             channel: "instagram",
             account_id: accountId,
+            workspace_id: workspaceId,
             is_connected: true,
             config,
-            updated_at: new Date().toISOString()
-          }, { onConflict: "channel,account_id", ignoreDuplicates: false });
+          });
 
-        if (upsertError) {
-          console.error("[OAUTH] Database error:", upsertError);
+        if (insertError) {
+          console.error("[OAUTH] Database error:", insertError);
           return new Response(
             `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
             { headers: { "Content-Type": "text/html" } }
           );
         }
 
-        console.log("[OAUTH] Instagram connection saved successfully with account_id:", accountId);
+        console.log("[OAUTH] Instagram connection saved successfully for workspace:", workspaceId);
         return new Response(
           `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'instagram',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
           { headers: { "Content-Type": "text/html" } }
@@ -206,26 +223,34 @@ serve(async (req) => {
       config.connected_via = "oauth";
     }
 
-    // Save Facebook connection with account_id
-    const { error: upsertError } = await supabase
+    // First disconnect any existing Facebook connection for this workspace
+    await supabase
       .from("channel_integrations")
-      .upsert({
+      .update({ is_connected: false, updated_at: new Date().toISOString() })
+      .eq("channel", "facebook")
+      .eq("workspace_id", workspaceId)
+      .eq("is_connected", true);
+
+    // Save Facebook connection with workspace_id
+    const { error: insertError } = await supabase
+      .from("channel_integrations")
+      .insert({
         channel: "facebook",
         account_id: accountId,
+        workspace_id: workspaceId,
         is_connected: true,
         config,
-        updated_at: new Date().toISOString()
-      }, { onConflict: "channel,account_id", ignoreDuplicates: false });
+      });
 
-    if (upsertError) {
-      console.error("[OAUTH] Database error:", upsertError);
+    if (insertError) {
+      console.error("[OAUTH] Database error:", insertError);
       return new Response(
         `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
         { headers: { "Content-Type": "text/html" } }
       );
     }
 
-    console.log("[OAUTH] Facebook connection saved successfully with account_id:", accountId);
+    console.log("[OAUTH] Facebook connection saved successfully for workspace:", workspaceId);
     return new Response(
       `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'facebook',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
       { headers: { "Content-Type": "text/html" } }
