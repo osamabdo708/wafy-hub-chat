@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +9,82 @@ import { Settings as SettingsIcon, Link, Building, MessageSquare, Facebook, Inst
 import { ChannelCard } from "@/components/ChannelCard";
 import { TikTokIcon } from "@/components/TikTokIcon";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import genieIcon from "@/assets/genie-icon.png";
 
 const Settings = () => {
   const { toast } = useToast();
+  const [defaultAiEnabled, setDefaultAiEnabled] = useState(false);
+  const [loadingAiSetting, setLoadingAiSetting] = useState(true);
+
+  // Load the default AI setting from workspace settings
+  useEffect(() => {
+    const loadAiSetting = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('settings')
+          .eq('owner_user_id', user.id)
+          .limit(1)
+          .single();
+
+        if (workspace?.settings) {
+          const settings = workspace.settings as { default_ai_enabled?: boolean };
+          setDefaultAiEnabled(settings.default_ai_enabled || false);
+        }
+      } catch (error) {
+        console.error('Error loading AI setting:', error);
+      } finally {
+        setLoadingAiSetting(false);
+      }
+    };
+
+    loadAiSetting();
+  }, []);
+
+  const handleToggleDefaultAi = async (enabled: boolean) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id, settings')
+        .eq('owner_user_id', user.id)
+        .limit(1)
+        .single();
+
+      if (!workspace) return;
+
+      const currentSettings = (workspace.settings as Record<string, unknown>) || {};
+      const newSettings = { ...currentSettings, default_ai_enabled: enabled };
+
+      const { error } = await supabase
+        .from('workspaces')
+        .update({ settings: newSettings })
+        .eq('id', workspace.id);
+
+      if (error) throw error;
+
+      setDefaultAiEnabled(enabled);
+      toast({
+        title: enabled ? "تم تفعيل المارد" : "تم تعطيل المارد",
+        description: enabled 
+          ? "سيتم تفعيل المارد تلقائياً لجميع المحادثات الجديدة" 
+          : "لن يتم تفعيل المارد تلقائياً للمحادثات الجديدة",
+      });
+    } catch (error) {
+      console.error('Error updating AI setting:', error);
+      toast({
+        title: "خطأ",
+        description: "فشل في تحديث الإعداد",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -127,6 +201,27 @@ const Settings = () => {
           <Card className="p-6">
             <h3 className="text-lg font-bold mb-4">الإعدادات العامة</h3>
             <div className="space-y-4">
+              {/* Default AI Toggle - Featured */}
+              <div className="flex items-center justify-between p-4 rounded-lg border-2 border-primary/20 bg-primary/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+                    <img src={genieIcon} alt="المارد" className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <Label className="text-base font-semibold">تفعيل المارد تلقائياً</Label>
+                    <p className="text-sm text-muted-foreground">
+                      تفعيل المارد لجميع المحادثات الجديدة بشكل افتراضي
+                    </p>
+                  </div>
+                </div>
+                <Switch 
+                  checked={defaultAiEnabled} 
+                  onCheckedChange={handleToggleDefaultAi}
+                  disabled={loadingAiSetting}
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-blue-500"
+                />
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label>الإشعارات</Label>

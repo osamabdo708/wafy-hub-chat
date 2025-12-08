@@ -3,7 +3,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff, Facebook } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -12,6 +13,7 @@ import ChatView from "@/components/ChatView";
 import facebookIcon from "@/assets/facebook.png";
 import genieIcon from "@/assets/genie-icon.png";
 import { AgentSelector } from "@/components/AgentSelector";
+import { TikTokIcon } from "@/components/TikTokIcon";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +47,7 @@ interface Conversation {
 }
 
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email';
+type FilterType = 'all' | 'facebook' | 'instagram' | 'whatsapp' | 'tiktok';
 
 interface ConnectedChannel {
   channel: ChannelType;
@@ -58,6 +61,7 @@ const Inbox = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [connectedChannels, setConnectedChannels] = useState<ChannelType[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
   // Fetch connected channels first
   useEffect(() => {
@@ -444,6 +448,11 @@ const Inbox = () => {
     );
   }
 
+  // Filter conversations based on active filter
+  const filteredConversations = activeFilter === 'all' 
+    ? conversations 
+    : conversations.filter(conv => conv.channel === activeFilter);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -469,7 +478,6 @@ const Inbox = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">تصفية</Button>
           <Button 
             variant="destructive" 
             onClick={() => setShowDeleteDialog(true)}
@@ -481,20 +489,48 @@ const Inbox = () => {
         </div>
       </div>
 
+      {/* Channel Filter Tabs */}
+      <Tabs value={activeFilter} onValueChange={(v) => setActiveFilter(v as FilterType)} className="w-full">
+        <TabsList className="grid w-full grid-cols-5 h-12">
+          <TabsTrigger value="all" className="flex items-center gap-2 text-sm">
+            <MessageSquare className="w-4 h-4" />
+            الكل
+          </TabsTrigger>
+          <TabsTrigger value="facebook" className="flex items-center gap-2 text-sm">
+            <Facebook className="w-4 h-4 text-blue-600" />
+            ماسنجر
+          </TabsTrigger>
+          <TabsTrigger value="instagram" className="flex items-center gap-2 text-sm">
+            <Instagram className="w-4 h-4 text-pink-500" />
+            إنستا
+          </TabsTrigger>
+          <TabsTrigger value="whatsapp" className="flex items-center gap-2 text-sm">
+            <MessageSquare className="w-4 h-4 text-green-500" />
+            واتساب
+          </TabsTrigger>
+          <TabsTrigger value="tiktok" className="flex items-center gap-2 text-sm">
+            <TikTokIcon className="w-4 h-4" />
+            تيك توك
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           {loading || loadingChannels ? (
             <Card className="p-4">
               <p className="text-center text-muted-foreground">جاري التحميل...</p>
             </Card>
-          ) : conversations.length === 0 ? (
+          ) : filteredConversations.length === 0 ? (
             <Card className="p-4">
-              <p className="text-center text-muted-foreground">لا توجد محادثات بعد</p>
+              <p className="text-center text-muted-foreground">
+                {activeFilter === 'all' ? 'لا توجد محادثات بعد' : `لا توجد محادثات ${getChannelName(activeFilter)}`}
+              </p>
             </Card>
           ) : (
             <ScrollArea className="h-[600px]">
               <div className="space-y-4 pr-4">
-                {conversations.map((conversation) => (
+                {filteredConversations.map((conversation) => (
               <Card 
                 key={conversation.id} 
                 className={`p-4 cursor-pointer hover:shadow-md transition-shadow relative ${
