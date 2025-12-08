@@ -7,12 +7,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { Bot, User } from "lucide-react";
 import genieIcon from "@/assets/genie-icon.png";
+import agentIcon from "@/assets/agent-icon.png";
 
 interface Agent {
   id: string;
   name: string;
+  avatar_url: string | null;
   is_ai: boolean;
   is_system: boolean;
 }
@@ -46,7 +47,7 @@ export const AgentSelector = ({ value, onChange, disabled }: AgentSelectorProps)
 
       const { data: agentsData } = await supabase
         .from('agents')
-        .select('id, name, is_ai, is_system')
+        .select('id, name, avatar_url, is_ai, is_system')
         .eq('workspace_id', workspace.id)
         .order('is_system', { ascending: false })
         .order('name', { ascending: true });
@@ -81,7 +82,7 @@ export const AgentSelector = ({ value, onChange, disabled }: AgentSelectorProps)
       <SelectContent>
         <SelectItem value="unassigned">
           <span className="flex items-center gap-2">
-            <User className="w-4 h-4 text-muted-foreground" />
+            <img src={agentIcon} alt="غير معين" className="w-4 h-4 opacity-50" />
             غير معين
           </span>
         </SelectItem>
@@ -90,8 +91,10 @@ export const AgentSelector = ({ value, onChange, disabled }: AgentSelectorProps)
             <span className="flex items-center gap-2">
               {agent.is_ai ? (
                 <img src={genieIcon} alt="المارد" className="w-4 h-4" />
+              ) : agent.avatar_url ? (
+                <img src={agent.avatar_url} alt={agent.name} className="w-4 h-4 rounded-full object-cover" />
               ) : (
-                <User className="w-4 h-4" />
+                <img src={agentIcon} alt={agent.name} className="w-4 h-4" />
               )}
               {agent.name}
             </span>
