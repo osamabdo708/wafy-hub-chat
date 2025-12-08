@@ -183,31 +183,32 @@ serve(async (req) => {
           .neq("account_id", accountId)
           .eq("is_connected", true);
 
-        // Check if this exact account already exists (possibly connected to another workspace)
-        const { data: existingIgConnection } = await supabase
+        // Check if this workspace already has a connection for this Instagram account
+        const { data: existingIgWorkspaceConnection } = await supabase
           .from("channel_integrations")
-          .select("id, workspace_id")
+          .select("id")
           .eq("channel", "instagram")
           .eq("account_id", accountId)
+          .eq("workspace_id", workspaceId)
           .single();
 
         let igSaveError: any = null;
         
-        if (existingIgConnection) {
-          // Update existing connection to point to new workspace
-          console.log("[OAUTH] Updating existing Instagram connection from workspace", existingIgConnection.workspace_id, "to", workspaceId);
+        if (existingIgWorkspaceConnection) {
+          // Update existing connection for this workspace
+          console.log("[OAUTH] Updating existing Instagram connection for workspace:", workspaceId);
           const { error } = await supabase
             .from("channel_integrations")
             .update({
-              workspace_id: workspaceId,
               is_connected: true,
               config,
               updated_at: new Date().toISOString(),
             })
-            .eq("id", existingIgConnection.id);
+            .eq("id", existingIgWorkspaceConnection.id);
           igSaveError = error;
         } else {
-          // Insert new connection
+          // Insert new connection for this workspace (each workspace can have its own connection)
+          console.log("[OAUTH] Creating new Instagram connection for workspace:", workspaceId);
           const { error } = await supabase
             .from("channel_integrations")
             .insert({
@@ -259,31 +260,32 @@ serve(async (req) => {
       .neq("account_id", accountId)
       .eq("is_connected", true);
 
-    // Check if this exact account already exists (possibly connected to another workspace)
-    const { data: existingConnection } = await supabase
+    // Check if this workspace already has a connection for this account
+    const { data: existingWorkspaceConnection } = await supabase
       .from("channel_integrations")
-      .select("id, workspace_id")
+      .select("id")
       .eq("channel", "facebook")
       .eq("account_id", accountId)
+      .eq("workspace_id", workspaceId)
       .single();
 
     let saveError: any = null;
     
-    if (existingConnection) {
-      // Update existing connection to point to new workspace
-      console.log("[OAUTH] Updating existing connection from workspace", existingConnection.workspace_id, "to", workspaceId);
+    if (existingWorkspaceConnection) {
+      // Update existing connection for this workspace
+      console.log("[OAUTH] Updating existing connection for workspace:", workspaceId);
       const { error } = await supabase
         .from("channel_integrations")
         .update({
-          workspace_id: workspaceId,
           is_connected: true,
           config,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", existingConnection.id);
+        .eq("id", existingWorkspaceConnection.id);
       saveError = error;
     } else {
-      // Insert new connection
+      // Insert new connection for this workspace (each workspace can have its own connection to same page)
+      console.log("[OAUTH] Creating new connection for workspace:", workspaceId);
       const { error } = await supabase
         .from("channel_integrations")
         .insert({
