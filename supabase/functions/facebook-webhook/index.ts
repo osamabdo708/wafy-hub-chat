@@ -22,29 +22,26 @@ serve(async (req) => {
 
     console.log('[WEBHOOK] Verification request:', { mode, token, challenge });
 
-    // Get verify token from database
+    // Get verify token from database - check all integrations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: fbIntegration } = await supabase
+    // Get all connected Facebook and Instagram integrations
+    const { data: integrations } = await supabase
       .from('channel_integrations')
-      .select('config')
-      .eq('channel', 'facebook')
-      .single();
+      .select('config, channel')
+      .in('channel', ['facebook', 'instagram'])
+      .eq('is_connected', true);
 
-    const { data: igIntegration } = await supabase
-      .from('channel_integrations')
-      .select('config')
-      .eq('channel', 'instagram')
-      .single();
+    // Check if token matches any of the integrations
+    const validToken = integrations?.some(integration => {
+      const verifyToken = (integration?.config as any)?.verify_token;
+      return verifyToken && token === verifyToken;
+    });
 
-    const fbVerifyToken = (fbIntegration?.config as any)?.verify_token;
-    const igVerifyToken = (igIntegration?.config as any)?.verify_token;
-
-    // Accept either Facebook or Instagram verify token
-    if (mode === 'subscribe' && (token === fbVerifyToken || token === igVerifyToken)) {
+    if (mode === 'subscribe' && validToken) {
       console.log('[WEBHOOK] Verification successful');
       return new Response(challenge, { status: 200 });
     } else {
@@ -71,34 +68,54 @@ serve(async (req) => {
 
       console.log('[WEBHOOK] Object type:', objectType, '- Channel:', channel);
 
-      // Get the appropriate integration config
-      const { data: integration } = await supabase
+      // Get ALL connected integrations for this channel
+      const { data: integrations } = await supabase
         .from('channel_integrations')
-        .select('config')
+        .select('config, account_id')
         .eq('channel', channel)
-        .single();
+        .eq('is_connected', true);
 
-      if (!integration) {
-        console.log(`[WEBHOOK] No ${channel} integration found`);
+      if (!integrations || integrations.length === 0) {
+        console.log(`[WEBHOOK] No ${channel} integrations found`);
         return new Response('OK', { status: 200 });
       }
 
-      const config = integration.config as any;
-      const myAccountId = isInstagram ? config?.instagram_account_id : config?.page_id;
-      const accessToken = config?.page_access_token;
-
-      console.log('[WEBHOOK] My account ID:', myAccountId);
+      console.log(`[WEBHOOK] Found ${integrations.length} ${channel} integrations`);
 
       // Process each entry
       for (const entry of body.entry || []) {
+        // Get the recipient ID from the first messaging event to identify which integration to use
+        const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
+        console.log('[WEBHOOK] Looking for integration matching recipient:', recipientId);
+
+        // Find the matching integration based on page_id or instagram_account_id
+        const matchingIntegration = integrations.find(integration => {
+          const config = integration.config as any;
+          if (isInstagram) {
+            return config?.instagram_account_id === recipientId || config?.page_id === recipientId;
+          }
+          return config?.page_id === recipientId;
+        });
+
+        if (!matchingIntegration) {
+          console.log('[WEBHOOK] No matching integration found for recipient:', recipientId);
+          continue;
+        }
+
+        const config = matchingIntegration.config as any;
+        const myAccountId = isInstagram ? config?.instagram_account_id : config?.page_id;
+        const accessToken = config?.page_access_token;
+
+        console.log('[WEBHOOK] Using integration with account ID:', myAccountId);
+
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id;
-          const recipientId = messaging.recipient?.id;
+          const messageRecipientId = messaging.recipient?.id;
           const messageText = messaging.message?.text;
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
-          console.log('[WEBHOOK] Message details:', { senderId, recipientId, myAccountId, messageText, messageId });
+          console.log('[WEBHOOK] Message details:', { senderId, recipientId: messageRecipientId, myAccountId, messageText, messageId });
 
           // Skip if no message text or if sender is our account
           if (!messageText || senderId === myAccountId) {
@@ -108,16 +125,17 @@ serve(async (req) => {
 
           console.log('[WEBHOOK] Processing message from:', senderId);
 
-          // Find or create conversation
+          // Find or create conversation - include account_id in the lookup
           let conversationId: string;
-          const threadId = isInstagram ? `ig_${senderId}_${recipientId}` : `t_${senderId}_${recipientId}`;
+          const threadId = isInstagram ? `ig_${senderId}_${messageRecipientId}` : `t_${senderId}_${messageRecipientId}`;
 
           const { data: existingConv } = await supabase
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
             .eq('channel', channel)
-            .single();
+            .eq('thread_id', threadId)
+            .maybeSingle();
 
           if (existingConv) {
             conversationId = existingConv.id;
@@ -125,8 +143,7 @@ serve(async (req) => {
             await supabase
               .from('conversations')
               .update({ 
-                last_message_at: new Date(timestamp).toISOString(),
-                thread_id: threadId
+                last_message_at: new Date(timestamp).toISOString()
               })
               .eq('id', conversationId);
             console.log('[WEBHOOK] Updated existing conversation:', conversationId);
@@ -159,7 +176,7 @@ serve(async (req) => {
                 customer_name: customerName,
                 customer_phone: senderId,
                 channel: channel,
-                platform: channel,
+                platform: `${channel}_${myAccountId}`, // Include account ID in platform for differentiation
                 thread_id: threadId,
                 status: 'جديد',
                 ai_enabled: false,
@@ -181,7 +198,7 @@ serve(async (req) => {
             .from('messages')
             .select('id')
             .eq('message_id', messageId)
-            .single();
+            .maybeSingle();
 
           if (existingMsg) {
             console.log('[WEBHOOK] Message already exists, skipping');

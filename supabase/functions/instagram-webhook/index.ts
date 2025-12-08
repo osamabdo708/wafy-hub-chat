@@ -26,15 +26,20 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: integration } = await supabase
+    // Get all connected Instagram integrations
+    const { data: integrations } = await supabase
       .from('channel_integrations')
       .select('config')
       .eq('channel', 'instagram')
-      .single();
+      .eq('is_connected', true);
 
-    const verifyToken = (integration?.config as any)?.verify_token || 'almared_instagram_webhook';
+    // Check if token matches any of the integrations
+    const validToken = integrations?.some(integration => {
+      const verifyToken = (integration?.config as any)?.verify_token;
+      return verifyToken && token === verifyToken;
+    }) || token === 'almared_instagram_webhook';
 
-    if (mode === 'subscribe' && token === verifyToken) {
+    if (mode === 'subscribe' && validToken) {
       console.log('[INSTAGRAM-WEBHOOK] Verification successful');
       return new Response(challenge, { status: 200 });
     } else {
@@ -54,32 +59,50 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
 
-      const { data: integration } = await supabase
+      // Get ALL connected Instagram integrations
+      const { data: integrations } = await supabase
         .from('channel_integrations')
-        .select('config')
+        .select('config, account_id')
         .eq('channel', 'instagram')
-        .single();
+        .eq('is_connected', true);
 
-      if (!integration) {
-        console.log('[INSTAGRAM-WEBHOOK] No Instagram integration found');
+      if (!integrations || integrations.length === 0) {
+        console.log('[INSTAGRAM-WEBHOOK] No Instagram integrations found');
         return new Response('OK', { status: 200 });
       }
 
-      const config = integration.config as any;
-      const myInstagramId = config.instagram_account_id;
-
-      console.log('[INSTAGRAM-WEBHOOK] My Instagram ID:', myInstagramId);
+      console.log(`[INSTAGRAM-WEBHOOK] Found ${integrations.length} Instagram integrations`);
 
       for (const entry of body.entry || []) {
+        // Get the recipient ID from the first messaging event
+        const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
+        console.log('[INSTAGRAM-WEBHOOK] Looking for integration matching recipient:', recipientId);
+
+        // Find the matching integration
+        const matchingIntegration = integrations.find(integration => {
+          const config = integration.config as any;
+          return config?.instagram_account_id === recipientId || config?.page_id === recipientId;
+        });
+
+        if (!matchingIntegration) {
+          console.log('[INSTAGRAM-WEBHOOK] No matching integration found for recipient:', recipientId);
+          continue;
+        }
+
+        const config = matchingIntegration.config as any;
+        const myInstagramId = config.instagram_account_id;
+
+        console.log('[INSTAGRAM-WEBHOOK] Using integration with Instagram ID:', myInstagramId);
+
         // Handle Instagram messaging events
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id;
-          const recipientId = messaging.recipient?.id;
+          const messageRecipientId = messaging.recipient?.id;
           const messageText = messaging.message?.text;
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
-          console.log('[INSTAGRAM-WEBHOOK] Message details:', { senderId, recipientId, myInstagramId, messageText });
+          console.log('[INSTAGRAM-WEBHOOK] Message details:', { senderId, recipientId: messageRecipientId, myInstagramId, messageText });
 
           // Skip if no text or if message is from our account
           if (!messageText || senderId === myInstagramId) {
@@ -90,22 +113,22 @@ serve(async (req) => {
           console.log('[INSTAGRAM-WEBHOOK] Processing incoming message:', { senderId, messageText, messageId });
 
           let conversationId: string;
-          const threadId = `ig_${senderId}_${recipientId}`;
+          const threadId = `ig_${senderId}_${messageRecipientId}`;
 
           const { data: existingConv } = await supabase
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
             .eq('channel', 'instagram')
-            .single();
+            .eq('thread_id', threadId)
+            .maybeSingle();
 
           if (existingConv) {
             conversationId = existingConv.id;
             await supabase
               .from('conversations')
               .update({ 
-                last_message_at: new Date(timestamp).toISOString(),
-                thread_id: threadId
+                last_message_at: new Date(timestamp).toISOString()
               })
               .eq('id', conversationId);
             console.log('[INSTAGRAM-WEBHOOK] Updated existing conversation:', conversationId);
@@ -136,7 +159,7 @@ serve(async (req) => {
                 customer_name: customerName,
                 customer_phone: senderId,
                 channel: 'instagram',
-                platform: 'instagram',
+                platform: `instagram_${myInstagramId}`, // Include account ID for differentiation
                 thread_id: threadId,
                 status: 'جديد',
                 ai_enabled: false,
@@ -158,7 +181,7 @@ serve(async (req) => {
             .from('messages')
             .select('id')
             .eq('message_id', messageId)
-            .single();
+            .maybeSingle();
 
           if (existingMsg) {
             console.log('[INSTAGRAM-WEBHOOK] Message already exists, skipping');

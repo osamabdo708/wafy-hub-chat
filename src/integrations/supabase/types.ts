@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       channel_integrations: {
         Row: {
+          account_id: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           config: Json | null
           created_at: string | null
@@ -25,6 +26,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          account_id?: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           config?: Json | null
           created_at?: string | null
@@ -34,6 +36,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          account_id?: string | null
           channel?: Database["public"]["Enums"]["channel_type"]
           config?: Json | null
           created_at?: string | null
