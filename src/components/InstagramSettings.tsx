@@ -12,6 +12,7 @@ export const InstagramSettings = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [accountName, setAccountName] = useState('');
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const { toast } = useToast();
   const popupRef = useRef<Window | null>(null);
   const popupCheckInterval = useRef<NodeJS.Timeout | null>(null);
@@ -67,12 +68,27 @@ export const InstagramSettings = () => {
   };
 
   const loadSettings = async () => {
-    // Get the first connected Instagram integration
+    // Get current user's workspace
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: workspace } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_user_id', user.id)
+      .maybeSingle();
+
+    if (workspace) {
+      setWorkspaceId(workspace.id);
+    }
+
+    // Get the first connected Instagram integration for THIS workspace
     const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'instagram')
       .eq('is_connected', true)
+      .eq('workspace_id', workspace?.id)
       .limit(1);
 
     if (error) {
@@ -91,10 +107,19 @@ export const InstagramSettings = () => {
   };
 
   const handleLogin = () => {
+    if (!workspaceId) {
+      toast({
+        title: 'خطأ',
+        description: 'لم يتم تحميل مساحة العمل بعد',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
     // Instagram Business API requires these permissions
     const scope = 'instagram_basic,instagram_manage_messages,pages_show_list,pages_messaging,pages_read_engagement';
-    const state = `instagram|${oauthCallbackUrl}`;
+    const state = `instagram|${oauthCallbackUrl}|${workspaceId}`;
     const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
     
     // Open popup window
@@ -123,7 +148,7 @@ export const InstagramSettings = () => {
   const handleDisconnect = async () => {
     setIsLoading(true);
     try {
-      // Disconnect all connected Instagram integrations
+      // Disconnect Instagram integrations for THIS workspace only
       const { error } = await supabase
         .from('channel_integrations')
         .update({
@@ -131,7 +156,8 @@ export const InstagramSettings = () => {
           updated_at: new Date().toISOString()
         })
         .eq('channel', 'instagram')
-        .eq('is_connected', true);
+        .eq('is_connected', true)
+        .eq('workspace_id', workspaceId);
 
       if (error) {
         console.error('Disconnect error:', error);
