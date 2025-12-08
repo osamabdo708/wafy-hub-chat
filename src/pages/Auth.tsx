@@ -19,10 +19,13 @@ const Auth = () => {
 
   useEffect(() => {
     // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        checkWorkspaceAndRedirect(session.user.id);
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error || !session) {
+        // Clear any stale session
+        await supabase.auth.signOut();
+        return;
       }
+      checkWorkspaceAndRedirect(session.user.id);
     });
 
     // Listen for auth changes
@@ -40,11 +43,18 @@ const Auth = () => {
 
   const checkWorkspaceAndRedirect = async (userId: string) => {
     try {
-      const { data: workspace } = await supabase
+      const { data: workspace, error } = await supabase
         .from('workspaces')
         .select('id')
         .eq('owner_user_id', userId)
         .maybeSingle();
+
+      // If there's a permission error (user doesn't exist), sign out
+      if (error) {
+        console.error('Error checking workspace:', error);
+        await supabase.auth.signOut();
+        return;
+      }
 
       if (workspace) {
         navigate("/inbox");
@@ -53,7 +63,7 @@ const Auth = () => {
       }
     } catch (error) {
       console.error('Error checking workspace:', error);
-      navigate("/onboarding");
+      await supabase.auth.signOut();
     }
   };
 

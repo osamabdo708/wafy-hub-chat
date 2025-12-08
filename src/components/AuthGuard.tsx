@@ -9,13 +9,16 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     // Check initial auth state
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthenticated(!!session);
-      if (session) {
-        checkWorkspace(session.user.id);
-      } else {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error || !session) {
+        // Clear any stale session
+        await supabase.auth.signOut();
+        setAuthenticated(false);
         setLoading(false);
+        return;
       }
+      setAuthenticated(true);
+      checkWorkspace(session.user.id);
     });
 
     // Listen for auth changes
@@ -25,6 +28,8 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
         setTimeout(() => {
           checkWorkspace(session.user.id);
         }, 0);
+      } else {
+        setLoading(false);
       }
     });
 
@@ -33,15 +38,27 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
   const checkWorkspace = async (userId: string) => {
     try {
-      const { data: workspace } = await supabase
+      const { data: workspace, error } = await supabase
         .from('workspaces')
         .select('id')
         .eq('owner_user_id', userId)
         .maybeSingle();
 
+      // If there's an error (user doesn't exist in DB), sign out
+      if (error) {
+        console.error('Error checking workspace:', error);
+        await supabase.auth.signOut();
+        setAuthenticated(false);
+        setHasWorkspace(false);
+        setLoading(false);
+        return;
+      }
+
       setHasWorkspace(!!workspace);
     } catch (error) {
       console.error('Error checking workspace:', error);
+      await supabase.auth.signOut();
+      setAuthenticated(false);
       setHasWorkspace(false);
     } finally {
       setLoading(false);
