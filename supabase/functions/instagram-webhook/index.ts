@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Single unified verify token for all channels
+const UNIFIED_VERIFY_TOKEN = "almared_unified_webhook_2024";
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -21,26 +24,9 @@ serve(async (req) => {
 
     console.log('[INSTAGRAM-WEBHOOK] Verification request:', { mode, token, challenge });
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    // Get all connected Instagram integrations
-    const { data: integrations } = await supabase
-      .from('channel_integrations')
-      .select('config')
-      .eq('channel', 'instagram')
-      .eq('is_connected', true);
-
-    // Check if token matches any of the integrations
-    const validToken = integrations?.some(integration => {
-      const verifyToken = (integration?.config as any)?.verify_token;
-      return verifyToken && token === verifyToken;
-    }) || token === 'almared_instagram_webhook';
-
-    if (mode === 'subscribe' && validToken) {
-      console.log('[INSTAGRAM-WEBHOOK] Verification successful');
+    // Use single unified token
+    if (mode === 'subscribe' && token === UNIFIED_VERIFY_TOKEN) {
+      console.log('[INSTAGRAM-WEBHOOK] Verification successful with unified token');
       return new Response(challenge, { status: 200 });
     } else {
       console.log('[INSTAGRAM-WEBHOOK] Verification failed');

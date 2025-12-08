@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Single unified verify token for all channels
+const UNIFIED_VERIFY_TOKEN = "almared_unified_webhook_2024";
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -22,30 +25,12 @@ serve(async (req) => {
 
     console.log('[WEBHOOK] Verification request:', { mode, token, challenge });
 
-    // Get verify token from database - check all integrations
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    // Get all connected Facebook and Instagram integrations
-    const { data: integrations } = await supabase
-      .from('channel_integrations')
-      .select('config, channel')
-      .in('channel', ['facebook', 'instagram'])
-      .eq('is_connected', true);
-
-    // Check if token matches any of the integrations
-    const validToken = integrations?.some(integration => {
-      const verifyToken = (integration?.config as any)?.verify_token;
-      return verifyToken && token === verifyToken;
-    });
-
-    if (mode === 'subscribe' && validToken) {
-      console.log('[WEBHOOK] Verification successful');
+    // Use single unified token for all channels
+    if (mode === 'subscribe' && token === UNIFIED_VERIFY_TOKEN) {
+      console.log('[WEBHOOK] Verification successful with unified token');
       return new Response(challenge, { status: 200 });
     } else {
-      console.log('[WEBHOOK] Verification failed - token mismatch');
+      console.log('[WEBHOOK] Verification failed - token mismatch. Expected:', UNIFIED_VERIFY_TOKEN);
       return new Response('Forbidden', { status: 403 });
     }
   }
