@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [hasWorkspace, setHasWorkspace] = useState(false);
+
+  // NEW: detect current route to prevent redirect loops
+  const location = useLocation();
 
   useEffect(() => {
     // Check initial auth state
@@ -22,16 +25,18 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setAuthenticated(!!session);
-      if (session) {
-        setTimeout(() => {
-          checkWorkspace(session.user.id);
-        }, 0);
-      } else {
-        setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setAuthenticated(!!session);
+        if (session) {
+          setTimeout(() => {
+            checkWorkspace(session.user.id);
+          }, 0);
+        } else {
+          setLoading(false);
+        }
       }
-    });
+    );
 
     return () => subscription.unsubscribe();
   }, []);
@@ -39,14 +44,14 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const checkWorkspace = async (userId: string) => {
     try {
       const { data: workspace, error } = await supabase
-        .from('workspaces')
-        .select('id')
-        .eq('owner_user_id', userId)
+        .from("workspaces")
+        .select("id")
+        .eq("owner_user_id", userId)
         .maybeSingle();
 
       // If there's an error (user doesn't exist in DB), sign out
       if (error) {
-        console.error('Error checking workspace:', error);
+        console.error("Error checking workspace:", error);
         await supabase.auth.signOut();
         setAuthenticated(false);
         setHasWorkspace(false);
@@ -56,7 +61,7 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
       setHasWorkspace(!!workspace);
     } catch (error) {
-      console.error('Error checking workspace:', error);
+      console.error("Error checking workspace:", error);
       await supabase.auth.signOut();
       setAuthenticated(false);
       setHasWorkspace(false);
@@ -76,11 +81,13 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
+  // Not logged in → redirect to auth
   if (!authenticated) {
     return <Navigate to="/auth" replace />;
   }
 
-  if (!hasWorkspace) {
+  // FIX: prevent redirect loop by allowing the onboarding page
+  if (!hasWorkspace && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;
   }
 
