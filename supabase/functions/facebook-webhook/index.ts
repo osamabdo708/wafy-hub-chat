@@ -53,69 +53,21 @@ serve(async (req) => {
 
       console.log('[WEBHOOK] Object type:', objectType, '- Channel:', channel);
 
-      // Get ALL connected integrations from BOTH tables
+      // Get ALL connected integrations from channel_integrations table
       const { data: legacyIntegrations } = await supabase
         .from('channel_integrations')
         .select('config, account_id')
         .eq('channel', channel)
         .eq('is_connected', true);
 
-      // Also check new channel_connections table with oauth_tokens
-      const { data: newConnections } = await supabase
-        .from('channel_connections')
-        .select(`
-          id,
-          provider_channel_id,
-          provider_entity_name,
-          workspace_id,
-          oauth_tokens (
-            access_token_encrypted
-          )
-        `)
-        .eq('provider', channel)
-        .eq('status', 'connected');
-
-      // Decrypt tokens for new connections
-      const decryptToken = async (encrypted: string): Promise<string> => {
-        try {
-          const key = Deno.env.get('TOKEN_ENCRYPTION_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-          const [ivHex, ciphertextHex] = encrypted.split(':');
-          const iv = new Uint8Array(ivHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-          const ciphertext = new Uint8Array(ciphertextHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-          const keyData = new TextEncoder().encode(key.slice(0, 32).padEnd(32, '0'));
-          const cryptoKey = await crypto.subtle.importKey('raw', keyData, 'AES-GCM', false, ['decrypt']);
-          const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, ciphertext);
-          return new TextDecoder().decode(decrypted);
-        } catch (e) {
-          console.error('[WEBHOOK] Token decryption failed:', e);
-          return '';
-        }
-      };
-
-      // Transform new connections to match legacy format
-      const transformedConnections = await Promise.all((newConnections || []).map(async (conn: any) => {
-        const token = conn.oauth_tokens?.[0]?.access_token_encrypted;
-        const accessToken = token ? await decryptToken(token) : '';
-        return {
-          account_id: conn.provider_channel_id,
-          config: isInstagram ? {
-            instagram_account_id: conn.provider_channel_id,
-            page_access_token: accessToken
-          } : {
-            page_id: conn.provider_channel_id,
-            page_access_token: accessToken
-          }
-        };
-      }));
-
-      const integrations = [...(legacyIntegrations || []), ...transformedConnections];
+      const integrations = legacyIntegrations || [];
 
       if (integrations.length === 0) {
-        console.log(`[WEBHOOK] No ${channel} integrations found in either table`);
+        console.log(`[WEBHOOK] No ${channel} integrations found`);
         return new Response('OK', { status: 200 });
       }
 
-      console.log(`[WEBHOOK] Found ${integrations.length} ${channel} integrations (legacy + new)`);
+      console.log(`[WEBHOOK] Found ${integrations.length} ${channel} integrations`);
 
       // Process each entry
       for (const entry of body.entry || []) {
@@ -123,14 +75,25 @@ serve(async (req) => {
         const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
         console.log('[WEBHOOK] Looking for integration matching recipient:', recipientId);
 
-        // Find the matching integration based on page_id or instagram_account_id
-        const matchingIntegration = integrations.find(integration => {
+        // Find the matching integration based on page_id, instagram_account_id, or account_id
+        let matchingIntegration = integrations.find(integration => {
           const config = integration.config as any;
+          const accountId = integration.account_id;
+          
+          // Check multiple fields to match
           if (isInstagram) {
-            return config?.instagram_account_id === recipientId || config?.page_id === recipientId;
+            return config?.instagram_account_id === recipientId || 
+                   config?.page_id === recipientId ||
+                   accountId === recipientId;
           }
-          return config?.page_id === recipientId;
+          return config?.page_id === recipientId || accountId === recipientId;
         });
+
+        // If no match found but we have integrations, use the first one (single account per channel model)
+        if (!matchingIntegration && integrations.length > 0) {
+          console.log('[WEBHOOK] No exact match found, using first available integration');
+          matchingIntegration = integrations[0];
+        }
 
         if (!matchingIntegration) {
           console.log('[WEBHOOK] No matching integration found for recipient:', recipientId);
@@ -138,7 +101,9 @@ serve(async (req) => {
         }
 
         const config = matchingIntegration.config as any;
-        const myAccountId = isInstagram ? config?.instagram_account_id : config?.page_id;
+        const myAccountId = isInstagram 
+          ? (config?.instagram_account_id || matchingIntegration.account_id)
+          : (config?.page_id || matchingIntegration.account_id);
         const accessToken = config?.page_access_token;
 
         console.log('[WEBHOOK] Using integration with account ID:', myAccountId);
@@ -150,7 +115,13 @@ serve(async (req) => {
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
-          console.log('[WEBHOOK] Message details:', { senderId, recipientId: messageRecipientId, myAccountId, messageText, messageId });
+          console.log('[WEBHOOK] Message details:', {
+            senderId,
+            recipientId: messageRecipientId,
+            myAccountId,
+            messageText,
+            messageId
+          });
 
           // Skip if no message text or if sender is our account
           if (!messageText || senderId === myAccountId) {
@@ -160,7 +131,7 @@ serve(async (req) => {
 
           console.log('[WEBHOOK] Processing message from:', senderId);
 
-          // Find or create conversation - include account_id in the lookup
+          // Find or create conversation
           let conversationId: string;
           const threadId = isInstagram ? `ig_${senderId}_${messageRecipientId}` : `t_${senderId}_${messageRecipientId}`;
 
@@ -174,20 +145,17 @@ serve(async (req) => {
 
           if (existingConv) {
             conversationId = existingConv.id;
-            // Update last_message_at
             await supabase
               .from('conversations')
-              .update({ 
-                last_message_at: new Date(timestamp).toISOString()
-              })
+              .update({ last_message_at: new Date(timestamp).toISOString() })
               .eq('id', conversationId);
             console.log('[WEBHOOK] Updated existing conversation:', conversationId);
           } else {
             // Get customer name
-            let customerName = isInstagram 
+            let customerName = isInstagram
               ? `Instagram User ${senderId.slice(-8)}`
               : `Facebook User ${senderId.slice(-8)}`;
-            
+
             try {
               if (accessToken) {
                 const nameResponse = await fetch(
@@ -211,7 +179,7 @@ serve(async (req) => {
                 customer_name: customerName,
                 customer_phone: senderId,
                 channel: channel,
-                platform: `${channel}_${myAccountId}`, // Include account ID in platform for differentiation
+                platform: `${channel}_${myAccountId}`,
                 thread_id: threadId,
                 status: 'جديد',
                 ai_enabled: false,
