@@ -174,27 +174,54 @@ serve(async (req) => {
           accountId = page.id;
         }
 
-        // First disconnect any existing Instagram connection for this workspace
+        // First disconnect any existing Instagram connection for this workspace (different account)
         await supabase
           .from("channel_integrations")
           .update({ is_connected: false, updated_at: new Date().toISOString() })
           .eq("channel", "instagram")
           .eq("workspace_id", workspaceId)
+          .neq("account_id", accountId)
           .eq("is_connected", true);
 
-        // Save Instagram connection with workspace_id
-        const { error: insertError } = await supabase
+        // Check if this exact account already exists (possibly connected to another workspace)
+        const { data: existingIgConnection } = await supabase
           .from("channel_integrations")
-          .insert({
-            channel: "instagram",
-            account_id: accountId,
-            workspace_id: workspaceId,
-            is_connected: true,
-            config,
-          });
+          .select("id, workspace_id")
+          .eq("channel", "instagram")
+          .eq("account_id", accountId)
+          .single();
 
-        if (insertError) {
-          console.error("[OAUTH] Database error:", insertError);
+        let igSaveError: any = null;
+        
+        if (existingIgConnection) {
+          // Update existing connection to point to new workspace
+          console.log("[OAUTH] Updating existing Instagram connection from workspace", existingIgConnection.workspace_id, "to", workspaceId);
+          const { error } = await supabase
+            .from("channel_integrations")
+            .update({
+              workspace_id: workspaceId,
+              is_connected: true,
+              config,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingIgConnection.id);
+          igSaveError = error;
+        } else {
+          // Insert new connection
+          const { error } = await supabase
+            .from("channel_integrations")
+            .insert({
+              channel: "instagram",
+              account_id: accountId,
+              workspace_id: workspaceId,
+              is_connected: true,
+              config,
+            });
+          igSaveError = error;
+        }
+
+        if (igSaveError) {
+          console.error("[OAUTH] Database error:", igSaveError);
           return new Response(
             `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
             { headers: { "Content-Type": "text/html" } }
@@ -223,27 +250,54 @@ serve(async (req) => {
       config.connected_via = "oauth";
     }
 
-    // First disconnect any existing Facebook connection for this workspace
+    // First disconnect any existing Facebook connection for this workspace (different account)
     await supabase
       .from("channel_integrations")
       .update({ is_connected: false, updated_at: new Date().toISOString() })
       .eq("channel", "facebook")
       .eq("workspace_id", workspaceId)
+      .neq("account_id", accountId)
       .eq("is_connected", true);
 
-    // Save Facebook connection with workspace_id
-    const { error: insertError } = await supabase
+    // Check if this exact account already exists (possibly connected to another workspace)
+    const { data: existingConnection } = await supabase
       .from("channel_integrations")
-      .insert({
-        channel: "facebook",
-        account_id: accountId,
-        workspace_id: workspaceId,
-        is_connected: true,
-        config,
-      });
+      .select("id, workspace_id")
+      .eq("channel", "facebook")
+      .eq("account_id", accountId)
+      .single();
 
-    if (insertError) {
-      console.error("[OAUTH] Database error:", insertError);
+    let saveError: any = null;
+    
+    if (existingConnection) {
+      // Update existing connection to point to new workspace
+      console.log("[OAUTH] Updating existing connection from workspace", existingConnection.workspace_id, "to", workspaceId);
+      const { error } = await supabase
+        .from("channel_integrations")
+        .update({
+          workspace_id: workspaceId,
+          is_connected: true,
+          config,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingConnection.id);
+      saveError = error;
+    } else {
+      // Insert new connection
+      const { error } = await supabase
+        .from("channel_integrations")
+        .insert({
+          channel: "facebook",
+          account_id: accountId,
+          workspace_id: workspaceId,
+          is_connected: true,
+          config,
+        });
+      saveError = error;
+    }
+
+    if (saveError) {
+      console.error("[OAUTH] Database error:", saveError);
       return new Response(
         `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
         { headers: { "Content-Type": "text/html" } }
