@@ -5,21 +5,48 @@ import { supabase } from "@/integrations/supabase/client";
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [hasWorkspace, setHasWorkspace] = useState(false);
 
   useEffect(() => {
     // Check initial auth state
     supabase.auth.getSession().then(({ data: { session } }) => {
       setAuthenticated(!!session);
-      setLoading(false);
+      if (session) {
+        checkWorkspace(session.user.id);
+      } else {
+        setLoading(false);
+      }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthenticated(!!session);
+      if (session) {
+        setTimeout(() => {
+          checkWorkspace(session.user.id);
+        }, 0);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const checkWorkspace = async (userId: string) => {
+    try {
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', userId)
+        .maybeSingle();
+
+      setHasWorkspace(!!workspace);
+    } catch (error) {
+      console.error('Error checking workspace:', error);
+      setHasWorkspace(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -34,6 +61,10 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
   if (!authenticated) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (!hasWorkspace) {
+    return <Navigate to="/onboarding" replace />;
   }
 
   return <>{children}</>;

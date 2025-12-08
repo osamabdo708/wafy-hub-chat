@@ -21,19 +21,41 @@ const Auth = () => {
     // Check if user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/inbox");
+        checkWorkspaceAndRedirect(session.user.id);
       }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        navigate("/inbox");
+        // Defer the check to avoid deadlock
+        setTimeout(() => {
+          checkWorkspaceAndRedirect(session.user.id);
+        }, 0);
       }
     });
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  const checkWorkspaceAndRedirect = async (userId: string) => {
+    try {
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', userId)
+        .maybeSingle();
+
+      if (workspace) {
+        navigate("/inbox");
+      } else {
+        navigate("/onboarding");
+      }
+    } catch (error) {
+      console.error('Error checking workspace:', error);
+      navigate("/onboarding");
+    }
+  };
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();

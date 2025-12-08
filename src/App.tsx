@@ -13,6 +13,7 @@ import Products from "./pages/Products";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
+import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 import Agents from "./pages/Agents";
 import SuperAdmin from "./pages/SuperAdmin";
@@ -30,6 +31,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route element={<AuthGuard><Layout /></AuthGuard>}>
               <Route path="/inbox" element={<Inbox />} />
               <Route path="/orders" element={<Orders />} />
