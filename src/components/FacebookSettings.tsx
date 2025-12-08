@@ -67,15 +67,21 @@ export const FacebookSettings = () => {
   };
 
   const loadSettings = async () => {
-    const { data } = await supabase
+    // Get the first connected Facebook integration (like Respond.io - one active connection)
+    const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'facebook')
       .eq('is_connected', true)
-      .maybeSingle();
+      .limit(1);
 
-    if (data) {
-      const config = data.config as any;
+    if (error) {
+      console.error('Error loading Facebook settings:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const config = data[0].config as any;
       setIsConnected(true);
       setPageName(config?.page_name || '');
     } else {
@@ -116,14 +122,15 @@ export const FacebookSettings = () => {
   const handleDisconnect = async () => {
     setIsLoading(true);
     try {
+      // Disconnect all connected Facebook integrations
       const { error } = await supabase
         .from('channel_integrations')
         .update({
           is_connected: false,
-          config: {},
           updated_at: new Date().toISOString()
         })
-        .eq('channel', 'facebook');
+        .eq('channel', 'facebook')
+        .eq('is_connected', true);
 
       if (error) {
         console.error('Disconnect error:', error);

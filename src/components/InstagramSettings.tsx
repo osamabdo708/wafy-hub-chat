@@ -67,15 +67,21 @@ export const InstagramSettings = () => {
   };
 
   const loadSettings = async () => {
-    const { data } = await supabase
+    // Get the first connected Instagram integration
+    const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'instagram')
       .eq('is_connected', true)
-      .maybeSingle();
+      .limit(1);
 
-    if (data) {
-      const config = data.config as any;
+    if (error) {
+      console.error('Error loading Instagram settings:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const config = data[0].config as any;
       setIsConnected(true);
       setAccountName(config?.account_name || '');
     } else {
@@ -117,14 +123,15 @@ export const InstagramSettings = () => {
   const handleDisconnect = async () => {
     setIsLoading(true);
     try {
+      // Disconnect all connected Instagram integrations
       const { error } = await supabase
         .from('channel_integrations')
         .update({
           is_connected: false,
-          config: {},
           updated_at: new Date().toISOString()
         })
-        .eq('channel', 'instagram');
+        .eq('channel', 'instagram')
+        .eq('is_connected', true);
 
       if (error) {
         console.error('Disconnect error:', error);

@@ -68,15 +68,21 @@ export const WhatsAppSettings = () => {
   };
 
   const loadSettings = async () => {
-    const { data } = await supabase
+    // Get the first connected WhatsApp integration
+    const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('channel', 'whatsapp')
       .eq('is_connected', true)
-      .maybeSingle();
+      .limit(1);
 
-    if (data) {
-      const config = data.config as any;
+    if (error) {
+      console.error('Error loading WhatsApp settings:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const config = data[0].config as any;
       setIsConnected(true);
       setPhoneNumber(config?.phone_number || '');
       setBusinessName(config?.business_name || '');
@@ -119,14 +125,15 @@ export const WhatsAppSettings = () => {
   const handleDisconnect = async () => {
     setIsLoading(true);
     try {
+      // Disconnect all connected WhatsApp integrations
       const { error } = await supabase
         .from('channel_integrations')
         .update({
           is_connected: false,
-          config: {},
           updated_at: new Date().toISOString()
         })
-        .eq('channel', 'whatsapp');
+        .eq('channel', 'whatsapp')
+        .eq('is_connected', true);
 
       if (error) {
         console.error('Disconnect error:', error);
