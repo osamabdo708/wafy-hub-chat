@@ -7,8 +7,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import genieIcon from "@/assets/genie-icon.png";
-import agentIcon from "@/assets/agent-icon.png";
+import { User } from "lucide-react";
+import genieIcon from "@/assets/agent-icon.png";
 
 interface Agent {
   id: string;
@@ -82,7 +82,7 @@ export const AgentSelector = ({ value, onChange, disabled }: AgentSelectorProps)
       <SelectContent>
         <SelectItem value="unassigned">
           <span className="flex items-center gap-2">
-            <img src={agentIcon} alt="غير معين" className="w-4 h-4 opacity-50" />
+            <User className="w-4 h-4 text-muted-foreground" />
             غير معين
           </span>
         </SelectItem>
@@ -94,7 +94,7 @@ export const AgentSelector = ({ value, onChange, disabled }: AgentSelectorProps)
               ) : agent.avatar_url ? (
                 <img src={agent.avatar_url} alt={agent.name} className="w-4 h-4 rounded-full object-cover" />
               ) : (
-                <img src={agentIcon} alt={agent.name} className="w-4 h-4" />
+                <User className="w-4 h-4" />
               )}
               {agent.name}
             </span>
