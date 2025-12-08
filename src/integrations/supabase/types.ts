@@ -14,6 +14,157 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          details: Json | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          ip_address: string | null
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_configs: {
+        Row: {
+          auth_url: string | null
+          color: string | null
+          config_schema: Json | null
+          created_at: string | null
+          display_name: string
+          icon_name: string | null
+          id: string
+          provider: string
+          refresh_url: string | null
+          scopes: Json | null
+          supports_polling: boolean | null
+          supports_refresh: boolean | null
+          supports_webhook: boolean | null
+          token_url: string | null
+          webhook_register_url: string | null
+        }
+        Insert: {
+          auth_url?: string | null
+          color?: string | null
+          config_schema?: Json | null
+          created_at?: string | null
+          display_name: string
+          icon_name?: string | null
+          id?: string
+          provider: string
+          refresh_url?: string | null
+          scopes?: Json | null
+          supports_polling?: boolean | null
+          supports_refresh?: boolean | null
+          supports_webhook?: boolean | null
+          token_url?: string | null
+          webhook_register_url?: string | null
+        }
+        Update: {
+          auth_url?: string | null
+          color?: string | null
+          config_schema?: Json | null
+          created_at?: string | null
+          display_name?: string
+          icon_name?: string | null
+          id?: string
+          provider?: string
+          refresh_url?: string | null
+          scopes?: Json | null
+          supports_polling?: boolean | null
+          supports_refresh?: boolean | null
+          supports_webhook?: boolean | null
+          token_url?: string | null
+          webhook_register_url?: string | null
+        }
+        Relationships: []
+      }
+      channel_connections: {
+        Row: {
+          created_at: string | null
+          display_name: string | null
+          id: string
+          last_synced_at: string | null
+          provider: string
+          provider_channel_id: string | null
+          provider_entity_name: string | null
+          scopes: string[] | null
+          status: string | null
+          updated_at: string | null
+          webhook_subscribed: boolean | null
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_name?: string | null
+          id?: string
+          last_synced_at?: string | null
+          provider: string
+          provider_channel_id?: string | null
+          provider_entity_name?: string | null
+          scopes?: string[] | null
+          status?: string | null
+          updated_at?: string | null
+          webhook_subscribed?: boolean | null
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_name?: string | null
+          id?: string
+          last_synced_at?: string | null
+          provider?: string
+          provider_channel_id?: string | null
+          provider_entity_name?: string | null
+          scopes?: string[] | null
+          status?: string | null
+          updated_at?: string | null
+          webhook_subscribed?: boolean | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_connections_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_integrations: {
         Row: {
           account_id: string | null
@@ -64,6 +215,7 @@ export type Database = {
           tags: string[] | null
           thread_id: string | null
           updated_at: string | null
+          workspace_id: string | null
         }
         Insert: {
           ai_enabled?: boolean | null
@@ -81,6 +233,7 @@ export type Database = {
           tags?: string[] | null
           thread_id?: string | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
         Update: {
           ai_enabled?: boolean | null
@@ -98,6 +251,7 @@ export type Database = {
           tags?: string[] | null
           thread_id?: string | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -105,6 +259,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
@@ -205,6 +366,50 @@ export type Database = {
           },
         ]
       }
+      oauth_tokens: {
+        Row: {
+          access_token_encrypted: string
+          connection_id: string | null
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          meta: Json | null
+          refresh_token_encrypted: string | null
+          token_type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          access_token_encrypted: string
+          connection_id?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          meta?: Json | null
+          refresh_token_encrypted?: string | null
+          token_type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          access_token_encrypted?: string
+          connection_id?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          meta?: Json | null
+          refresh_token_encrypted?: string | null
+          token_type?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oauth_tokens_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "channel_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           ai_generated: boolean | null
@@ -224,6 +429,7 @@ export type Database = {
           source_platform: string | null
           status: Database["public"]["Enums"]["order_status"] | null
           updated_at: string | null
+          workspace_id: string | null
         }
         Insert: {
           ai_generated?: boolean | null
@@ -243,6 +449,7 @@ export type Database = {
           source_platform?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
         Update: {
           ai_generated?: boolean | null
@@ -262,6 +469,7 @@ export type Database = {
           source_platform?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -292,6 +500,13 @@ export type Database = {
             referencedRelation: "services"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "orders_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
         ]
       }
       products: {
@@ -307,6 +522,7 @@ export type Database = {
           price: number
           stock: number | null
           updated_at: string | null
+          workspace_id: string | null
         }
         Insert: {
           attributes?: Json | null
@@ -320,6 +536,7 @@ export type Database = {
           price: number
           stock?: number | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
         Update: {
           attributes?: Json | null
@@ -333,8 +550,17 @@ export type Database = {
           price?: number
           stock?: number | null
           updated_at?: string | null
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -414,6 +640,7 @@ export type Database = {
           name: string
           price: number
           updated_at: string | null
+          workspace_id: string | null
         }
         Insert: {
           category?: string | null
@@ -427,6 +654,7 @@ export type Database = {
           name: string
           price: number
           updated_at?: string | null
+          workspace_id?: string | null
         }
         Update: {
           category?: string | null
@@ -440,8 +668,17 @@ export type Database = {
           name?: string
           price?: number
           updated_at?: string | null
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "services_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -461,6 +698,72 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          event_id: string | null
+          id: string
+          processed: boolean | null
+          processed_at: string | null
+          processing_error: string | null
+          provider: string
+          provider_channel_id: string | null
+          raw_payload: Json
+          received_at: string | null
+          retry_count: number | null
+        }
+        Insert: {
+          event_id?: string | null
+          id?: string
+          processed?: boolean | null
+          processed_at?: string | null
+          processing_error?: string | null
+          provider: string
+          provider_channel_id?: string | null
+          raw_payload: Json
+          received_at?: string | null
+          retry_count?: number | null
+        }
+        Update: {
+          event_id?: string | null
+          id?: string
+          processed?: boolean | null
+          processed_at?: string | null
+          processing_error?: string | null
+          provider?: string
+          provider_channel_id?: string | null
+          raw_payload?: Json
+          received_at?: string | null
+          retry_count?: number | null
+        }
+        Relationships: []
+      }
+      workspaces: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          owner_user_id: string | null
+          settings: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          owner_user_id?: string | null
+          settings?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          owner_user_id?: string | null
+          settings?: Json | null
+          updated_at?: string | null
         }
         Relationships: []
       }
