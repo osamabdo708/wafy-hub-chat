@@ -261,10 +261,26 @@ ${productsContext}
       // Send message via channel API (Facebook or Instagram)
       if ((conversation.channel === 'facebook' || conversation.channel === 'instagram') && conversation.customer_phone) {
         const channelType = conversation.channel;
+        
+        // Get channel config for the specific conversation's workspace
+        const { data: convWithWorkspace } = await supabase
+          .from('conversations')
+          .select('workspace_id')
+          .eq('id', conversation.id)
+          .single();
+        
+        if (!convWithWorkspace?.workspace_id) {
+          console.error(`[AI-REPLY] No workspace_id found for conversation ${conversation.id}`);
+          processedCount++;
+          continue;
+        }
+
         const { data: channelConfig } = await supabase
           .from('channel_integrations')
           .select('config')
           .eq('channel', channelType)
+          .eq('workspace_id', convWithWorkspace.workspace_id)
+          .eq('is_connected', true)
           .single();
 
         if (channelConfig?.config) {
@@ -286,6 +302,8 @@ ${productsContext}
           } else {
             console.log(`[AI-REPLY] Message sent to ${channelType} user ${conversation.customer_phone}`);
           }
+        } else {
+          console.error(`[AI-REPLY] No channel config found for ${channelType} in workspace ${convWithWorkspace.workspace_id}`);
         }
       }
 
