@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      agents: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          is_ai: boolean | null
+          is_system: boolean | null
+          name: string
+          updated_at: string
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_ai?: boolean | null
+          is_system?: boolean | null
+          name: string
+          updated_at?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_ai?: boolean | null
+          is_system?: boolean | null
+          name?: string
+          updated_at?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agents_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -201,6 +245,7 @@ export type Database = {
       conversations: {
         Row: {
           ai_enabled: boolean | null
+          assigned_agent_id: string | null
           assigned_to: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           created_at: string | null
@@ -219,6 +264,7 @@ export type Database = {
         }
         Insert: {
           ai_enabled?: boolean | null
+          assigned_agent_id?: string | null
           assigned_to?: string | null
           channel: Database["public"]["Enums"]["channel_type"]
           created_at?: string | null
@@ -237,6 +283,7 @@ export type Database = {
         }
         Update: {
           ai_enabled?: boolean | null
+          assigned_agent_id?: string | null
           assigned_to?: string | null
           channel?: Database["public"]["Enums"]["channel_type"]
           created_at?: string | null
@@ -254,6 +301,13 @@ export type Database = {
           workspace_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "conversations_assigned_agent_id_fkey"
+            columns: ["assigned_agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "conversations_assigned_to_fkey"
             columns: ["assigned_to"]
@@ -782,7 +836,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "moderator" | "user"
+      app_role: "admin" | "moderator" | "user" | "super_admin"
       channel_type: "whatsapp" | "facebook" | "instagram" | "telegram" | "email"
       conversation_status: "جديد" | "مفتوح" | "مغلق" | "معلق"
       order_status: "مسودة" | "قيد الانتظار" | "مؤكد" | "مكتمل" | "ملغي"
@@ -914,7 +968,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "moderator", "user"],
+      app_role: ["admin", "moderator", "user", "super_admin"],
       channel_type: ["whatsapp", "facebook", "instagram", "telegram", "email"],
       conversation_status: ["جديد", "مفتوح", "مغلق", "معلق"],
       order_status: ["مسودة", "قيد الانتظار", "مؤكد", "مكتمل", "ملغي"],

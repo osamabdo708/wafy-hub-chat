@@ -10,7 +10,8 @@ import {
   BarChart3, 
   Settings,
   LogOut,
-  User
+  User,
+  Users
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -24,6 +25,7 @@ const navItems = [
   { title: "الطلبات", url: "/orders", icon: ShoppingCart },
   { title: "المنتجات", url: "/products", icon: Package },
   { title: "الخدمات", url: "/services", icon: Briefcase },
+  { title: "الوكلاء", url: "/agents", icon: Users },
   { title: "التقارير", url: "/reports", icon: BarChart3 },
   { title: "الإعدادات", url: "/settings", icon: Settings },
 ];
