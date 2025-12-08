@@ -27,20 +27,23 @@ serve(async (req) => {
       );
     }
 
-    // Get Facebook credentials
-    const { data: integration, error: integrationError } = await supabase
+    // Get Facebook credentials - find a connected integration
+    const { data: integrations, error: integrationError } = await supabase
       .from('channel_integrations')
-      .select('config')
+      .select('config, account_id')
       .eq('channel', 'facebook')
-      .single();
+      .eq('is_connected', true);
 
-    if (integrationError || !integration?.config) {
+    if (integrationError || !integrations || integrations.length === 0) {
       console.error('Failed to get Facebook credentials:', integrationError);
       return new Response(
         JSON.stringify({ error: 'Facebook not connected' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
+
+    // Use the first connected integration
+    const integration = integrations[0];
 
     const config = integration.config as any;
     const { page_access_token } = config;
