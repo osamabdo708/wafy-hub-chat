@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff } from "lucide-react";
+import { MessageSquare, Clock, User, Trash2, Instagram, Wifi, WifiOff, Bot } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
 import facebookIcon from "@/assets/facebook.png";
 import genieIcon from "@/assets/genie-icon.png";
+import { AgentSelector } from "@/components/AgentSelector";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +22,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+interface Agent {
+  id: string;
+  name: string;
+  is_ai: boolean;
+}
 
 interface Conversation {
   id: string;
@@ -33,6 +40,8 @@ interface Conversation {
   customer_avatar?: string;
   ai_enabled?: boolean;
   unread_count?: number;
+  assigned_agent_id?: string | null;
+  assigned_agent?: Agent | null;
 }
 
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email';
@@ -184,11 +193,27 @@ const Inbox = () => {
       // Fetch conversations only for connected channels
       const { data: conversationsData, error: conversationsError } = await supabase
         .from('conversations')
-        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled')
+        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled, assigned_agent_id')
         .in('channel', connectedChannels)
         .order('last_message_at', { ascending: false });
 
       if (conversationsError) throw conversationsError;
+
+      // Fetch agents for assigned conversations
+      const agentIds = [...new Set((conversationsData || []).map(c => c.assigned_agent_id).filter(Boolean))];
+      let agentsMap: Record<string, Agent> = {};
+      
+      if (agentIds.length > 0) {
+        const { data: agentsData } = await supabase
+          .from('agents')
+          .select('id, name, is_ai')
+          .in('id', agentIds);
+        
+        agentsMap = (agentsData || []).reduce((acc, agent) => {
+          acc[agent.id] = agent;
+          return acc;
+        }, {} as Record<string, Agent>);
+      }
 
       // Fetch unread counts for each conversation
       const conversationsWithUnread = await Promise.all(
@@ -202,10 +227,18 @@ const Inbox = () => {
 
           if (countError) {
             console.error('Error fetching unread count:', countError);
-            return { ...conv, unread_count: 0 };
+            return { 
+              ...conv, 
+              unread_count: 0,
+              assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null
+            };
           }
 
-          return { ...conv, unread_count: count || 0 };
+          return { 
+            ...conv, 
+            unread_count: count || 0,
+            assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null
+          };
         })
       );
 
@@ -217,31 +250,45 @@ const Inbox = () => {
     }
   };
 
-  const toggleAI = async (conversationId: string, currentState: boolean) => {
+  const handleAssignAgent = async (conversationId: string, agentId: string | null) => {
     try {
+      // Check if the assigned agent is AI (المارد)
+      let isAiAgent = false;
+      if (agentId) {
+        const { data: agent } = await supabase
+          .from('agents')
+          .select('is_ai')
+          .eq('id', agentId)
+          .maybeSingle();
+        isAiAgent = agent?.is_ai || false;
+      }
+
       const { error } = await supabase
         .from('conversations')
-        .update({ ai_enabled: !currentState })
+        .update({ 
+          assigned_agent_id: agentId,
+          ai_enabled: isAiAgent
+        })
         .eq('id', conversationId);
 
       if (error) throw error;
 
       setConversations(conversations.map(conv => 
         conv.id === conversationId 
-          ? { ...conv, ai_enabled: !currentState }
+          ? { ...conv, assigned_agent_id: agentId, ai_enabled: isAiAgent }
           : conv
       ));
 
-      toast.success(!currentState ? "تم تفعيل المساعد الذكي" : "تم إيقاف المساعد الذكي");
+      toast.success(agentId ? "تم تعيين الوكيل بنجاح" : "تم إلغاء التعيين");
 
-      // If AI is being enabled, immediately trigger auto-reply to check for unreplied messages
-      if (!currentState) {
-        console.log('[TOGGLE-AI] AI enabled, triggering auto-reply check...');
+      // If AI agent is assigned, immediately trigger auto-reply
+      if (isAiAgent) {
+        console.log('[ASSIGN-AGENT] AI agent assigned, triggering auto-reply check...');
         await supabase.functions.invoke('auto-reply-messages');
       }
     } catch (error) {
-      console.error('Error toggling AI:', error);
-      toast.error("فشل في تحديث إعدادات المساعد الذكي");
+      console.error('Error assigning agent:', error);
+      toast.error("فشل في تعيين الوكيل");
     }
   };
 
@@ -454,18 +501,21 @@ const Inbox = () => {
                       </div>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant={conversation.ai_enabled ? "default" : "outline"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleAI(conversation.id, conversation.ai_enabled || false);
-                    }}
-                    className={`gap-2 ${conversation.ai_enabled ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse' : ''}`}
-                  >
-                    <img src={genieIcon} alt="Genie" className={`w-5 h-5 ${conversation.ai_enabled ? 'animate-pulse' : ''}`} />
-                    {conversation.ai_enabled ? "تعطيل المارد" : "تفعيل المارد"}
-                  </Button>
+                  {/* Agent indicator */}
+                  {conversation.assigned_agent && (
+                    <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                      conversation.assigned_agent.is_ai 
+                        ? 'bg-purple-500/10 text-purple-600' 
+                        : 'bg-primary/10 text-primary'
+                    }`}>
+                      {conversation.assigned_agent.is_ai ? (
+                        <img src={genieIcon} alt="المارد" className="w-4 h-4" />
+                      ) : (
+                        <User className="w-3 h-3" />
+                      )}
+                      {conversation.assigned_agent.name}
+                    </div>
+                  )}
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2">
@@ -480,13 +530,21 @@ const Inbox = () => {
                       locale: ar 
                     })}
                   </div>
-                  <Badge variant={
-                    conversation.status === "جديد" ? "default" :
-                    conversation.status === "مفتوح" ? "secondary" :
-                    "outline"
-                  }>
-                    {conversation.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <AgentSelector
+                        value={conversation.assigned_agent_id || null}
+                        onChange={(agentId) => handleAssignAgent(conversation.id, agentId)}
+                      />
+                    </div>
+                    <Badge variant={
+                      conversation.status === "جديد" ? "default" :
+                      conversation.status === "مفتوح" ? "secondary" :
+                      "outline"
+                    }>
+                      {conversation.status}
+                    </Badge>
+                  </div>
                 </div>
               </Card>
                 ))}

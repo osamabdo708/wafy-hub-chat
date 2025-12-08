@@ -14,6 +14,9 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import Agents from "./pages/Agents";
+import SuperAdmin from "./pages/SuperAdmin";
+import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 
 const queryClient = new QueryClient();
 
@@ -34,7 +37,9 @@ const App = () => (
               <Route path="/services" element={<Services />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/agents" element={<Agents />} />
             </Route>
+            <Route path="/super-admin" element={<SuperAdminGuard><SuperAdmin /></SuperAdminGuard>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
