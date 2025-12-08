@@ -63,11 +63,18 @@ serve(async (req) => {
       const integrations = legacyIntegrations || [];
 
       if (integrations.length === 0) {
-        console.log(`[WEBHOOK] No ${channel} integrations found`);
+        console.log(`[WEBHOOK] No ${channel} integrations found in database`);
         return new Response('OK', { status: 200 });
       }
 
-      console.log(`[WEBHOOK] Found ${integrations.length} ${channel} integrations`);
+      // Log all available integrations for debugging
+      console.log(`[WEBHOOK] Found ${integrations.length} ${channel} integrations:`, 
+        integrations.map(i => ({ 
+          account_id: i.account_id, 
+          instagram_account_id: (i.config as any)?.instagram_account_id,
+          page_id: (i.config as any)?.page_id 
+        }))
+      );
 
       // Process each entry
       for (const entry of body.entry || []) {
