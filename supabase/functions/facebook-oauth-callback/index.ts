@@ -115,6 +115,33 @@ serve(async (req) => {
       accountId = page.id;
       console.log("[OAUTH] Got page:", page.name, "with page access token");
 
+      // 🔥 AUTO-SUBSCRIBE PAGE TO WEBHOOK - This makes messages flow automatically!
+      const subscribeFields = channelType === "instagram" 
+        ? "messages,messaging_postbacks" 
+        : "messages,messaging_postbacks,messaging_optins,message_deliveries,message_reads";
+      
+      const subscribeUrl = `https://graph.facebook.com/v19.0/${page.id}/subscribed_apps`;
+      console.log("[OAUTH] Subscribing page to webhook with fields:", subscribeFields);
+      
+      const subscribeResponse = await fetch(subscribeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          access_token: page.access_token,
+          subscribed_fields: subscribeFields
+        })
+      });
+      const subscribeData = await subscribeResponse.json();
+      console.log("[OAUTH] Webhook subscription result:", JSON.stringify(subscribeData));
+      
+      if (subscribeData.error) {
+        console.error("[OAUTH] Webhook subscription failed:", subscribeData.error);
+        // Continue anyway - page is connected but may need manual webhook setup
+      } else {
+        console.log("[OAUTH] ✅ Page successfully subscribed to webhook - messages will flow automatically!");
+        config.webhook_subscribed = true;
+      }
+
       if (channelType === "instagram") {
         // Get Instagram Business Account linked to this page
         const igResponse = await fetch(
