@@ -12,14 +12,18 @@ import {
   Instagram,
   Send,
   Sparkles,
-  Check
+  Check,
+  Sun,
+  Moon
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTheme } from "next-themes";
 import genieIcon from "@/assets/genie-icon.png";
 import genieLogo from "@/assets/genie-logo.png";
 import { TikTokIcon } from "@/components/TikTokIcon";
 
 const Landing = () => {
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
 
   const features = [
@@ -97,6 +101,15 @@ const Landing = () => {
             <span className="text-xl font-bold">المارد</span>
           </div>
           <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">تبديل الوضع</span>
+            </Button>
             <Button variant="ghost" onClick={() => navigate('/auth')}>
               تسجيل الدخول
             </Button>
