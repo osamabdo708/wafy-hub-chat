@@ -10,6 +10,7 @@ const corsHeaders = {
 const UNIFIED_VERIFY_TOKEN = "almared_unified_webhook_2024";
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -24,12 +25,12 @@ serve(async (req) => {
 
     console.log('[INSTAGRAM-WEBHOOK] Verification request:', { mode, token, challenge });
 
-    // Use single unified token
+    // Use single unified token for all channels
     if (mode === 'subscribe' && token === UNIFIED_VERIFY_TOKEN) {
       console.log('[INSTAGRAM-WEBHOOK] Verification successful with unified token');
       return new Response(challenge, { status: 200 });
     } else {
-      console.log('[INSTAGRAM-WEBHOOK] Verification failed');
+      console.log('[INSTAGRAM-WEBHOOK] Verification failed - token mismatch. Expected:', UNIFIED_VERIFY_TOKEN);
       return new Response('Forbidden', { status: 403 });
     }
   }
@@ -45,76 +46,52 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
 
-      // Get ALL connected Instagram integrations from BOTH tables
-      const { data: legacyIntegrations } = await supabase
+      // Get ALL connected Instagram integrations from channel_integrations table (include workspace_id)
+      const { data: integrations } = await supabase
         .from('channel_integrations')
-        .select('config, account_id')
+        .select('config, account_id, workspace_id')
         .eq('channel', 'instagram')
         .eq('is_connected', true);
 
-      // Also check new channel_connections table with oauth_tokens
-      const { data: newConnections } = await supabase
-        .from('channel_connections')
-        .select(`
-          id,
-          provider_channel_id,
-          provider_entity_name,
-          workspace_id,
-          oauth_tokens (
-            access_token_encrypted
-          )
-        `)
-        .eq('provider', 'instagram')
-        .eq('status', 'connected');
-
-      // Decrypt tokens for new connections
-      const decryptToken = async (encrypted: string): Promise<string> => {
-        try {
-          const key = Deno.env.get('TOKEN_ENCRYPTION_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-          const [ivHex, ciphertextHex] = encrypted.split(':');
-          const iv = new Uint8Array(ivHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-          const ciphertext = new Uint8Array(ciphertextHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-          const keyData = new TextEncoder().encode(key.slice(0, 32).padEnd(32, '0'));
-          const cryptoKey = await crypto.subtle.importKey('raw', keyData, 'AES-GCM', false, ['decrypt']);
-          const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, ciphertext);
-          return new TextDecoder().decode(decrypted);
-        } catch (e) {
-          console.error('[INSTAGRAM-WEBHOOK] Token decryption failed:', e);
-          return '';
-        }
-      };
-
-      // Transform new connections to match legacy format
-      const transformedConnections = await Promise.all((newConnections || []).map(async (conn: any) => {
-        const token = conn.oauth_tokens?.[0]?.access_token_encrypted;
-        const accessToken = token ? await decryptToken(token) : '';
-        return {
-          account_id: conn.provider_channel_id,
-          config: {
-            instagram_account_id: conn.provider_channel_id,
-            page_access_token: accessToken
-          }
-        };
-      }));
-
-      const integrations = [...(legacyIntegrations || []), ...transformedConnections];
-
-      if (integrations.length === 0) {
-        console.log('[INSTAGRAM-WEBHOOK] No Instagram integrations found in either table');
+      if (!integrations || integrations.length === 0) {
+        console.log('[INSTAGRAM-WEBHOOK] No Instagram integrations found in database');
         return new Response('OK', { status: 200 });
       }
 
-      console.log(`[INSTAGRAM-WEBHOOK] Found ${integrations.length} Instagram integrations`);
+      // Log all available integrations for debugging
+      console.log(`[INSTAGRAM-WEBHOOK] Found ${integrations.length} Instagram integrations:`, 
+        integrations.map(i => ({ 
+          account_id: i.account_id, 
+          workspace_id: i.workspace_id,
+          instagram_account_id: (i.config as any)?.instagram_account_id,
+          page_id: (i.config as any)?.page_id 
+        }))
+      );
 
+      // Process each entry
       for (const entry of body.entry || []) {
-        // Get the recipient ID from the first messaging event
+        // Get the recipient ID from the first messaging event to identify which integration to use
         const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
         console.log('[INSTAGRAM-WEBHOOK] Looking for integration matching recipient:', recipientId);
 
-        // Find the matching integration
-        const matchingIntegration = integrations.find(integration => {
+        // Find the matching integration based on instagram_account_id, page_id, or account_id
+        let matchingIntegration = integrations.find(integration => {
           const config = integration.config as any;
-          return config?.instagram_account_id === recipientId || config?.page_id === recipientId;
+          const accountId = integration.account_id;
+          
+          // For Instagram, check instagram_account_id first, then page_id and account_id
+          const match = config?.instagram_account_id === recipientId || 
+                 config?.page_id === recipientId ||
+                 accountId === recipientId;
+          if (match) {
+            console.log('[INSTAGRAM-WEBHOOK] Integration matched:', { 
+              instagram_account_id: config?.instagram_account_id,
+              page_id: config?.page_id, 
+              account_id: accountId,
+              recipientId 
+            });
+          }
+          return match;
         });
 
         if (!matchingIntegration) {
@@ -123,11 +100,17 @@ serve(async (req) => {
         }
 
         const config = matchingIntegration.config as any;
-        const myInstagramId = config.instagram_account_id;
+        const workspaceId = matchingIntegration.workspace_id;
+        const myAccountId = config?.instagram_account_id || matchingIntegration.account_id;
+        const accessToken = config?.page_access_token;
 
-        console.log('[INSTAGRAM-WEBHOOK] Using integration with Instagram ID:', myInstagramId);
+        console.log('[INSTAGRAM-WEBHOOK] Using integration with account ID:', myAccountId, 'workspace:', workspaceId);
 
-        // Handle Instagram messaging events
+        if (!workspaceId) {
+          console.log('[INSTAGRAM-WEBHOOK] No workspace_id for integration, skipping');
+          continue;
+        }
+
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id;
           const messageRecipientId = messaging.recipient?.id;
@@ -135,16 +118,23 @@ serve(async (req) => {
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
-          console.log('[INSTAGRAM-WEBHOOK] Message details:', { senderId, recipientId: messageRecipientId, myInstagramId, messageText });
+          console.log('[INSTAGRAM-WEBHOOK] Message details:', {
+            senderId,
+            recipientId: messageRecipientId,
+            myAccountId,
+            messageText,
+            messageId
+          });
 
-          // Skip if no text or if message is from our account
-          if (!messageText || senderId === myInstagramId) {
-            console.log('[INSTAGRAM-WEBHOOK] Skipping message - no text or from self');
+          // Skip if no message text or if sender is our account
+          if (!messageText || senderId === myAccountId) {
+            console.log('[INSTAGRAM-WEBHOOK] Skipping - no text or self message');
             continue;
           }
 
-          console.log('[INSTAGRAM-WEBHOOK] Processing incoming message:', { senderId, messageText, messageId });
+          console.log('[INSTAGRAM-WEBHOOK] Processing message from:', senderId);
 
+          // Find or create conversation
           let conversationId: string;
           const threadId = `ig_${senderId}_${messageRecipientId}`;
 
@@ -160,39 +150,38 @@ serve(async (req) => {
             conversationId = existingConv.id;
             await supabase
               .from('conversations')
-              .update({ 
-                last_message_at: new Date(timestamp).toISOString()
-              })
+              .update({ last_message_at: new Date(timestamp).toISOString() })
               .eq('id', conversationId);
             console.log('[INSTAGRAM-WEBHOOK] Updated existing conversation:', conversationId);
           } else {
+            // Get customer name
             let customerName = `Instagram User ${senderId.slice(-8)}`;
 
-            // Try to get user info from Instagram API
-            if (config.page_access_token) {
-              try {
-                const userInfoRes = await fetch(
-                  `https://graph.facebook.com/v19.0/${senderId}?fields=name,username&access_token=${config.page_access_token}`
+            try {
+              if (accessToken) {
+                const nameResponse = await fetch(
+                  `https://graph.facebook.com/v19.0/${senderId}?fields=name,username&access_token=${accessToken}`
                 );
-                const userInfo = await userInfoRes.json();
-                console.log('[INSTAGRAM-WEBHOOK] User info:', JSON.stringify(userInfo));
-                if (userInfo.username) {
-                  customerName = `@${userInfo.username}`;
-                } else if (userInfo.name) {
-                  customerName = userInfo.name;
+                const nameData = await nameResponse.json();
+                console.log('[INSTAGRAM-WEBHOOK] User info:', JSON.stringify(nameData));
+                if (nameData.username) {
+                  customerName = `@${nameData.username}`;
+                } else if (nameData.name) {
+                  customerName = nameData.name;
                 }
-              } catch (e) {
-                console.log('[INSTAGRAM-WEBHOOK] Could not fetch user info:', e);
               }
+            } catch (e) {
+              console.log('[INSTAGRAM-WEBHOOK] Could not fetch customer name:', e);
             }
 
             const { data: newConv, error: convError } = await supabase
               .from('conversations')
               .insert({
+                workspace_id: workspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
                 channel: 'instagram',
-                platform: `instagram_${myInstagramId}`, // Include account ID for differentiation
+                platform: `instagram_${myAccountId}`,
                 thread_id: threadId,
                 status: 'جديد',
                 ai_enabled: false,
@@ -209,7 +198,7 @@ serve(async (req) => {
             console.log('[INSTAGRAM-WEBHOOK] Created new conversation:', conversationId);
           }
 
-          // Check for duplicate message
+          // Check if message already exists
           const { data: existingMsg } = await supabase
             .from('messages')
             .select('id')
@@ -221,6 +210,7 @@ serve(async (req) => {
             continue;
           }
 
+          // Insert message
           const { error: msgError } = await supabase
             .from('messages')
             .insert({
@@ -237,8 +227,9 @@ serve(async (req) => {
           if (msgError) {
             console.error('[INSTAGRAM-WEBHOOK] Error inserting message:', msgError);
           } else {
-            console.log('[INSTAGRAM-WEBHOOK] Message saved successfully');
-            // Trigger auto-reply if enabled
+            console.log('[INSTAGRAM-WEBHOOK] Message saved successfully for instagram');
+
+            // Trigger AI auto-reply if enabled
             try {
               await supabase.functions.invoke('auto-reply-messages');
             } catch (e) {
