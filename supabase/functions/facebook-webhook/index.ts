@@ -138,7 +138,7 @@ serve(async (req) => {
           }
 
           // 🔥 FIX: Ensure workspace_id exists
-          if (!workspaceId) {
+          if (!matchingWorkspaceId) {
             console.log('[WEBHOOK] ❌ No workspace_id for integration, skipping');
             continue;
           }
@@ -186,7 +186,7 @@ serve(async (req) => {
             conversationId = existingConv.id;
             await supabase
               .from('conversations')
-              .update({ last_message_at: new Date(timestamp).toISOString() })
+              .update({ last_message_at: new Date(timestamp).toISOString(), workspace_id: matchingWorkspaceId })
               .eq('id', conversationId);
             console.log('[WEBHOOK] Updated existing conversation:', conversationId);
           } else {
@@ -215,7 +215,7 @@ serve(async (req) => {
             const { data: newConv, error: convError } = await supabase
               .from('conversations')
               .insert({
-                workspace_id: workspaceId,
+                workspace_id: matchingWorkspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
                 channel: channel,
