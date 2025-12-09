@@ -79,7 +79,16 @@ serve(async (req) => {
     await supabase.from('user_roles').delete().eq('user_id', userId);
     console.log('User roles deleted');
 
-    // 7. Delete the auth user
+    // 7. Sign out all user sessions globally
+    const { error: signOutError } = await supabase.auth.admin.signOut(userId, 'global');
+    if (signOutError) {
+      console.error('Error signing out user sessions:', signOutError);
+      // Continue with deletion even if signout fails
+    } else {
+      console.log('All user sessions terminated');
+    }
+
+    // 8. Delete the auth user
     const { error: authError } = await supabase.auth.admin.deleteUser(userId);
     
     if (authError) {
