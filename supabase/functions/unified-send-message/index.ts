@@ -59,7 +59,7 @@ serve(async (req) => {
         .from("channel_connections")
         .select("*, oauth_tokens(*)")
         .eq("workspace_id", conversation.workspace_id)
-        .eq("provider", provider)
+        .like("provider", `${provider}%`)
         .eq("status", "connected")
         .single();
 
@@ -74,13 +74,14 @@ serve(async (req) => {
 
     // Fallback to legacy channel_integrations - use workspace_id to get correct token
     if (!accessToken && conversation.workspace_id) {
-      const { data: integration } = await supabase
+      const { data: integrations } = await supabase
         .from("channel_integrations")
         .select("config")
-        .eq("channel", provider)
+        .like("channel", `${provider}%`)
         .eq("workspace_id", conversation.workspace_id)
-        .eq("is_connected", true)
-        .single();
+        .eq("is_connected", true);
+
+      const integration = integrations?.[0]; // Use the first one found as a fallback
 
       if (integration?.config?.page_access_token) {
         accessToken = integration.config.page_access_token;
@@ -184,15 +185,16 @@ async function sendWhatsAppMessage(
   accessToken: string,
   supabase: any
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  // Get WhatsApp phone number ID from integration
-  const { data: integration } = await supabase
+  // Get WhatsApp phone number ID from the specific integration that owns this conversation
+  const { data: conversationIntegration } = await supabase
     .from("channel_integrations")
     .select("config")
-    .eq("channel", "whatsapp")
+    .eq("workspace_id", conversation.workspace_id)
+    .like("channel", "whatsapp%")
     .eq("is_connected", true)
-    .single();
+    .single(); // Assuming one connected WhatsApp account per workspace for now
 
-  const phoneNumberId = integration?.config?.phone_number_id;
+  const phoneNumberId = conversationIntegration?.config?.phone_number_id;
   if (!phoneNumberId) {
     return { success: false, error: "WhatsApp phone number ID not configured" };
   }
