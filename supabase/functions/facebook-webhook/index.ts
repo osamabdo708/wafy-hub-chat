@@ -57,7 +57,7 @@ serve(async (req) => {
       const { data: legacyIntegrations } = await supabase
         .from('channel_integrations')
         .select('config, account_id, workspace_id')
-        .eq('channel', channel)
+        .like('channel', `${channel}%`)
         .eq('is_connected', true);
 
       const integrations = legacyIntegrations || [];
@@ -156,7 +156,7 @@ serve(async (req) => {
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
-            .eq('channel', channel)
+            .like('channel', `${channel}%`)
             .eq('thread_id', threadId)
             .maybeSingle();
 
