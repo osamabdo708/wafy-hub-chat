@@ -26,13 +26,38 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: integration } = await supabase
+    // To support multiple independent WhatsApp connections, we need to find the
+    // correct integration based on the verify_token, which should be unique per connection.
+    // Since the verify_token is not passed in the URL for the GET request, we will
+    // have to query all connected WhatsApp channels and check the token.
+    // For now, we will assume a single connection and use the default token,
+    // but this is a point of failure for multiple connections.
+    // The proper fix would be to include a unique identifier in the webhook URL.
+
+    // Fallback to a single integration check for now.
+    const { data: integrations } = await supabase
       .from('channel_integrations')
       .select('config')
-      .eq('channel', 'whatsapp')
-      .single();
+      .like('channel', 'whatsapp%');
 
-    const verifyToken = (integration?.config as any)?.verify_token || 'almared_whatsapp_webhook';
+    let integration: any = null;
+    let verifyToken = 'almared_whatsapp_webhook'; // Default fallback
+
+    if (integrations && integrations.length > 0) {
+      for (const int of integrations) {
+        const token = (int.config as any)?.verify_token;
+        if (token && token === url.searchParams.get('hub.verify_token')) {
+          integration = int;
+          verifyToken = token;
+          break;
+        }
+      }
+      // If no match, use the first one as a fallback for the challenge response
+      if (!integration) {
+        integration = integrations[0];
+        verifyToken = (integration.config as any)?.verify_token || verifyToken;
+      }
+    }
 
     if (mode === 'subscribe' && token === verifyToken) {
       console.log('[WHATSAPP-WEBHOOK] Verification successful');
@@ -54,14 +79,36 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
 
-      const { data: integration } = await supabase
+      // To support multiple independent WhatsApp connections, we need to find the
+      // correct integration based on the `wa_id` (WhatsApp Business Account ID)
+      // or `phone_number_id` from the incoming payload.
+      const waId = body.entry?.[0]?.id; // This is the WhatsApp Business Account ID
+
+      if (!waId) {
+        console.log('[WHATSAPP-WEBHOOK] Missing WhatsApp Business Account ID in payload');
+        return new Response('OK', { status: 200 });
+      }
+
+      const { data: integrations } = await supabase
         .from('channel_integrations')
-        .select('config')
-        .eq('channel', 'whatsapp')
-        .single();
+        .select('config, workspace_id')
+        .like('channel', 'whatsapp%');
+
+      let integration: any = null;
+      let workspaceId: string | null = null;
+
+      if (integrations && integrations.length > 0) {
+        for (const int of integrations) {
+          if ((int.config as any)?.wa_id === waId) {
+            integration = int;
+            workspaceId = int.workspace_id;
+            break;
+          }
+        }
+      }
 
       if (!integration) {
-        console.log('[WHATSAPP-WEBHOOK] No WhatsApp integration found');
+        console.log(`[WHATSAPP-WEBHOOK] No WhatsApp integration found for WA ID: ${waId}`);
         return new Response('OK', { status: 200 });
       }
 
@@ -93,6 +140,7 @@ serve(async (req) => {
               .select('id')
               .eq('customer_phone', senderId)
               .eq('channel', 'whatsapp')
+              .eq('workspace_id', workspaceId) // Filter by workspace_id
               .single();
 
             if (existingConv) {
@@ -122,6 +170,7 @@ serve(async (req) => {
                   thread_id: threadId,
                   status: 'جديد',
                   ai_enabled: false,
+                  workspace_id: workspaceId, // Add workspace_id
                   last_message_at: new Date(parseInt(timestamp) * 1000).toISOString()
                 })
                 .select('id')
