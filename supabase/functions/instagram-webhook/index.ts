@@ -116,11 +116,6 @@ serve(async (req) => {
           continue;
         }
 
-        if (!workspaceId) {
-          console.log('[INSTAGRAM-WEBHOOK] No workspace_id for integration, skipping');
-          continue;
-        }
-
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id;
           const messageRecipientId = messaging.recipient?.id;
@@ -180,7 +175,7 @@ serve(async (req) => {
             conversationId = convRecord.id;
             await supabase
               .from('conversations')
-              .update({ last_message_at: new Date(timestamp).toISOString() })
+              .update({ last_message_at: new Date(timestamp).toISOString(), workspace_id: workspaceId })
               .eq('id', conversationId);
             console.log('[INSTAGRAM-WEBHOOK] Updated existing conversation:', conversationId);
           } else {
