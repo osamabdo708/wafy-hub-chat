@@ -6,7 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Support both env variable names
 const META_APP_ID = Deno.env.get("META_APP_ID") || Deno.env.get("FACEBOOK_APP_ID") || "1749195285754662";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") || Deno.env.get("FACEBOOK_APP_SECRET");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -41,9 +40,6 @@ serve(async (req) => {
       );
     }
 
-    // Parse state - support formats:
-    // Simple: "facebook" or "instagram"
-    // Complex: "channelType|redirectUri|workspaceId"
     let channelType = "facebook";
     let redirectUri = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
     let workspaceId: string | null = null;
@@ -69,7 +65,6 @@ serve(async (req) => {
       );
     }
 
-    // Exchange code for access token
     const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${META_APP_SECRET}&code=${code}`;
     
     console.log("[OAUTH] Exchanging code for token...");
@@ -87,14 +82,12 @@ serve(async (req) => {
     const accessToken = tokenData.access_token;
     console.log("[OAUTH] Got access token");
 
-    // Get long-lived token
     const longLivedUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${accessToken}`;
     const longLivedResponse = await fetch(longLivedUrl);
     const longLivedData = await longLivedResponse.json();
     const longLivedToken = longLivedData.access_token || accessToken;
     console.log("[OAUTH] Got long-lived token");
 
-    // Get user pages
     const pagesResponse = await fetch(
       `https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedToken}`
     );
@@ -109,7 +102,7 @@ serve(async (req) => {
     let accountId = "";
 
     if (pagesData.data && pagesData.data.length > 0) {
-      const page = pagesData.data[0]; // Use first page
+      const page = pagesData.data[0];
       config.page_id = page.id;
       config.page_access_token = page.access_token;
       config.page_name = page.name;
@@ -120,7 +113,6 @@ serve(async (req) => {
       accountId = page.id;
       console.log("[OAUTH] Got page:", page.name, "with page access token");
 
-      // 🔥 AUTO-SUBSCRIBE PAGE TO WEBHOOK - This makes messages flow automatically!
       const subscribeFields = channelType === "instagram" 
         ? "messages,messaging_postbacks" 
         : "messages,messaging_postbacks,messaging_optins,message_deliveries,message_reads";
@@ -141,14 +133,12 @@ serve(async (req) => {
       
       if (subscribeData.error) {
         console.error("[OAUTH] Webhook subscription failed:", subscribeData.error);
-        // Continue anyway - page is connected but may need manual webhook setup
       } else {
-        console.log("[OAUTH] ✅ Page successfully subscribed to webhook - messages will flow automatically!");
+        console.log("[OAUTH] ✅ Page successfully subscribed to webhook");
         config.webhook_subscribed = true;
       }
 
       if (channelType === "instagram") {
-        // Get Instagram Business Account linked to this page
         const igResponse = await fetch(
           `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
         );
@@ -159,7 +149,6 @@ serve(async (req) => {
           config.instagram_account_id = igData.instagram_business_account.id;
           accountId = igData.instagram_business_account.id;
           
-          // Get Instagram username
           const igInfoResponse = await fetch(
             `https://graph.facebook.com/v19.0/${igData.instagram_business_account.id}?fields=username,name,profile_picture_url&access_token=${page.access_token}`
           );
@@ -174,41 +163,37 @@ serve(async (req) => {
           accountId = page.id;
         }
 
-        // Removed explicit disconnection to allow multiple independent connections.
-        // The `upsert` logic below will handle the connection status for the specific account.
-
-        // Check if this workspace already has a connection for this Instagram account
+        // 🔥 FIX: Ensure workspace_id is always included
         const { data: existingIgWorkspaceConnection } = await supabase
           .from("channel_integrations")
           .select("id")
-          .eq("channel", "instagram")
-          .eq("account_id", accountId)
+          .eq("channel", `instagram_${accountId}`)
           .eq("workspace_id", workspaceId)
-          .single();
+          .maybeSingle();
 
         let igSaveError: any = null;
         
         if (existingIgWorkspaceConnection) {
-          // Update existing connection for this workspace
           console.log("[OAUTH] Updating existing Instagram connection for workspace:", workspaceId);
           const { error } = await supabase
             .from("channel_integrations")
             .update({
               is_connected: true,
               config,
+              workspace_id: workspaceId, // 🔥 FIX: Explicitly set workspace_id
+              account_id: accountId, // 🔥 FIX: Ensure account_id is set
               updated_at: new Date().toISOString(),
             })
             .eq("id", existingIgWorkspaceConnection.id);
           igSaveError = error;
         } else {
-          // Insert new connection for this workspace (each workspace can have its own connection)
           console.log("[OAUTH] Creating new Instagram connection for workspace:", workspaceId);
           const { error } = await supabase
             .from("channel_integrations")
             .insert({
-              channel: `instagram_${accountId}`, // Use unique channel name
+              channel: `instagram_${accountId}`,
               account_id: accountId,
-              workspace_id: workspaceId,
+              workspace_id: workspaceId, // 🔥 FIX: Always include workspace_id
               is_connected: true,
               config,
             });
@@ -223,7 +208,7 @@ serve(async (req) => {
           );
         }
 
-        console.log("[OAUTH] Instagram connection saved successfully for workspace:", workspaceId);
+        console.log("[OAUTH] ✅ Instagram connection saved for workspace:", workspaceId);
         return new Response(
           `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'instagram',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
           { headers: { "Content-Type": "text/html" } }
@@ -231,7 +216,6 @@ serve(async (req) => {
       }
     } else {
       console.log("[OAUTH] No pages found, getting user info");
-      // Get user info as fallback
       const userResponse = await fetch(
         `https://graph.facebook.com/v19.0/me?fields=name,id&access_token=${longLivedToken}`
       );
@@ -245,46 +229,42 @@ serve(async (req) => {
       config.connected_via = "oauth";
     }
 
-    // Removed explicit disconnection to allow multiple independent connections.
-    // The `upsert` logic below will handle the connection status for the specific account.
-
-    // Check if this workspace already has a connection for this account
+    // 🔥 FIX: Ensure workspace_id is always included
     const { data: existingWorkspaceConnection } = await supabase
       .from("channel_integrations")
       .select("id")
-      .eq("channel", `facebook_${accountId}`) // Use unique channel name
-      .eq("account_id", accountId)
+      .eq("channel", `facebook_${accountId}`)
       .eq("workspace_id", workspaceId)
-      .single();
+      .maybeSingle();
 
     let saveError: any = null;
     
     if (existingWorkspaceConnection) {
-          // Update existing connection for this workspace
-          console.log("[OAUTH] Updating existing Facebook connection for workspace:", workspaceId);
-          const { error } = await supabase
-            .from("channel_integrations")
-            .update({
-              is_connected: true,
-              config,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existingWorkspaceConnection.id);
-          saveError = error;
-        } else {
-          // Insert new connection for this workspace (each workspace can have its own connection)
-          console.log("[OAUTH] Creating new Facebook connection for workspace:", workspaceId);
-          const { error } = await supabase
-            .from("channel_integrations")
-            .insert({
-              channel: `facebook_${accountId}`, // Use unique channel name
-              account_id: accountId,
-              workspace_id: workspaceId,
-              is_connected: true,
-              config,
-            });
-          saveError = error;
-        }
+      console.log("[OAUTH] Updating existing Facebook connection for workspace:", workspaceId);
+      const { error } = await supabase
+        .from("channel_integrations")
+        .update({
+          is_connected: true,
+          config,
+          workspace_id: workspaceId, // 🔥 FIX: Explicitly set workspace_id
+          account_id: accountId, // 🔥 FIX: Ensure account_id is set
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingWorkspaceConnection.id);
+      saveError = error;
+    } else {
+      console.log("[OAUTH] Creating new Facebook connection for workspace:", workspaceId);
+      const { error } = await supabase
+        .from("channel_integrations")
+        .insert({
+          channel: `facebook_${accountId}`,
+          account_id: accountId,
+          workspace_id: workspaceId, // 🔥 FIX: Always include workspace_id
+          is_connected: true,
+          config,
+        });
+      saveError = error;
+    }
 
     if (saveError) {
       console.error("[OAUTH] Database error:", saveError);
@@ -294,7 +274,7 @@ serve(async (req) => {
       );
     }
 
-    console.log("[OAUTH] Facebook connection saved successfully for workspace:", workspaceId);
+    console.log("[OAUTH] ✅ Facebook connection saved for workspace:", workspaceId);
     return new Response(
       `<html><body><script>window.opener.postMessage({type:'oauth_success',channel:'facebook',account:'${accountIdentifier}'},'*');window.close();</script></body></html>`,
       { headers: { "Content-Type": "text/html" } }
