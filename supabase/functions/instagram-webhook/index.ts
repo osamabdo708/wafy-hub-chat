@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { decryptToken } from "../_shared/crypto.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,65 +47,44 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
 
-      // Get ALL connected Instagram integrations from channel_integrations table (include workspace_id)
-      const { data: integrations } = await supabase
-        .from('channel_integrations')
-        .select('config, account_id, workspace_id, channel')
-        .like('channel', 'instagram%')
-        .eq('is_connected', true);
+      // Prefer new channel_connections (independent channel linking)
+      const { data: connections, error: connError } = await supabase
+        .from('channel_connections')
+        .select('id, workspace_id, provider, provider_channel_id, provider_entity_name, oauth_tokens(access_token_encrypted)')
+        .eq('status', 'connected')
+        .eq('provider', 'instagram');
 
-      if (!integrations || integrations.length === 0) {
-        console.log('[INSTAGRAM-WEBHOOK] No Instagram integrations found in database');
-        return new Response('OK', { status: 200 });
+      if (connError) {
+        console.error('[INSTAGRAM-WEBHOOK] Error loading channel connections:', connError);
       }
-
-      // Log all available integrations for debugging
-      console.log(`[INSTAGRAM-WEBHOOK] Found ${integrations.length} Instagram integrations:`, 
-        integrations.map(i => ({ 
-          account_id: i.account_id, 
-          workspace_id: i.workspace_id,
-          instagram_account_id: (i.config as any)?.instagram_account_id,
-          page_id: (i.config as any)?.page_id 
-        }))
-      );
 
       // Process each entry
       for (const entry of body.entry || []) {
-        // Get the recipient ID from the first messaging event to identify which integration to use
+        // Get the recipient ID from the first messaging event to identify which connection to use
         const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
-        console.log('[INSTAGRAM-WEBHOOK] Looking for integration matching recipient:', recipientId);
+        console.log('[INSTAGRAM-WEBHOOK] Looking for connection matching recipient:', recipientId);
 
-        // Find the matching integration based on instagram_account_id, page_id, or account_id
-        let matchingIntegration = integrations.find(integration => {
-          const config = integration.config as any;
-          const accountId = integration.account_id;
-          
-          // For Instagram, check instagram_account_id first, then page_id and account_id
-          const match = config?.instagram_account_id === recipientId || 
-                 config?.page_id === recipientId ||
-                 accountId === recipientId;
-          if (match) {
-            console.log('[INSTAGRAM-WEBHOOK] Integration matched:', { 
-              instagram_account_id: config?.instagram_account_id,
-              page_id: config?.page_id, 
-              account_id: accountId,
-              recipientId 
-            });
-          }
-          return match;
-        });
+        const matchingConnection = connections?.find((conn) => conn.provider_channel_id === recipientId);
 
-        if (!matchingIntegration) {
-          console.log('[INSTAGRAM-WEBHOOK] No matching integration found for recipient:', recipientId);
+        if (!matchingConnection) {
+          console.log('[INSTAGRAM-WEBHOOK] No matching connection found for recipient:', recipientId);
           continue;
         }
 
-        const config = matchingIntegration.config as any;
-        const workspaceId = matchingIntegration.workspace_id;
-        const myAccountId = config?.instagram_account_id || matchingIntegration.account_id;
-        const accessToken = config?.page_access_token;
+        const workspaceId = matchingConnection.workspace_id;
+        const myAccountId = matchingConnection.provider_channel_id;
 
-        console.log('[INSTAGRAM-WEBHOOK] Using integration with account ID:', myAccountId, 'workspace:', workspaceId);
+        let accessToken: string | null = null;
+        const tokenRecord = matchingConnection.oauth_tokens?.[0];
+        if (tokenRecord?.access_token_encrypted) {
+          try {
+            accessToken = await decryptToken(tokenRecord.access_token_encrypted);
+          } catch (e) {
+            console.log('[INSTAGRAM-WEBHOOK] Failed to decrypt token, continuing without it');
+          }
+        }
+
+        console.log('[INSTAGRAM-WEBHOOK] Using connection with account ID:', myAccountId, 'workspace:', workspaceId);
 
         if (!workspaceId) {
           console.log('[INSTAGRAM-WEBHOOK] No workspace_id for integration, skipping');
@@ -142,7 +122,8 @@ serve(async (req) => {
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
-            .like('channel', 'instagram%')
+            .eq('channel', 'instagram')
+            .eq('workspace_id', workspaceId)
             .eq('thread_id', threadId)
             .maybeSingle();
 
@@ -180,7 +161,7 @@ serve(async (req) => {
                 workspace_id: workspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
-                channel: matchingIntegration.channel,
+                channel: 'instagram',
                 platform: `instagram_${myAccountId}`,
                 thread_id: threadId,
                 status: 'جديد',
