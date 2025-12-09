@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { decryptToken } from "../_shared/crypto.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -47,18 +48,16 @@ serve(async (req) => {
 
       console.log('[WEBHOOK] Object type:', objectType, '- Channel:', channel);
 
-      // 🔥 FIX: Get ALL integrations without workspace filter first
-      const { data: allIntegrations } = await supabase
-        .from('channel_integrations')
-        .select('config, account_id, workspace_id, channel')
-        .eq('is_connected', true);
+      // Prefer the new channel_connections table (respond.io-style: independent channels)
+      const { data: connections, error: connError } = await supabase
+        .from('channel_connections')
+        .select('id, workspace_id, provider, provider_channel_id, provider_entity_name, oauth_tokens(access_token_encrypted)')
+        .eq('status', 'connected')
+        .eq('provider', channel);
 
-      if (!allIntegrations || allIntegrations.length === 0) {
-        console.log(`[WEBHOOK] No integrations found in database`);
-        return new Response('OK', { status: 200 });
+      if (connError) {
+        console.error('[WEBHOOK] Error loading channel connections:', connError);
       }
-
-      console.log(`[WEBHOOK] Found ${allIntegrations.length} total integrations`);
 
       for (const entry of body.entry || []) {
         for (const messaging of entry.messaging || []) {
@@ -80,44 +79,32 @@ serve(async (req) => {
             continue;
           }
 
-          // 🔥 FIX: Find matching integration by checking account_id, page_id, and instagram_account_id
-          let matchingIntegration = allIntegrations.find(integration => {
-            const config = integration.config as any;
-            const accountId = integration.account_id;
-            
-            // Check if this integration matches the recipient
-            if (isInstagram) {
-              return config?.instagram_account_id === recipientId || 
-                     config?.page_id === recipientId ||
-                     accountId === recipientId;
-            } else {
-              return config?.page_id === recipientId || 
-                     accountId === recipientId;
-            }
-          });
+          // Match connection by provider_channel_id (page id for FB, page/ig account id for IG)
+          const matchingConnection = connections?.find((conn) => conn.provider_channel_id === recipientId);
 
-          if (!matchingIntegration) {
-            console.log('[WEBHOOK] ❌ No matching integration found for recipient:', recipientId);
-            console.log('[WEBHOOK] Available integrations:', allIntegrations.map(i => ({
-              account_id: i.account_id,
-              page_id: (i.config as any)?.page_id,
-              instagram_account_id: (i.config as any)?.instagram_account_id,
-              channel: i.channel
-            })));
+          if (!matchingConnection) {
+            console.log('[WEBHOOK] ❌ No matching connection found for recipient:', recipientId);
             continue;
           }
 
-          const config = matchingIntegration.config as any;
-          const workspaceId = matchingIntegration.workspace_id;
-          const myAccountId = isInstagram 
-            ? (config?.instagram_account_id || matchingIntegration.account_id)
-            : (config?.page_id || matchingIntegration.account_id);
-          const accessToken = config?.page_access_token;
+          const workspaceId = matchingConnection.workspace_id;
+          const myAccountId = matchingConnection.provider_channel_id;
 
-          console.log('[WEBHOOK] ✅ Matched integration:', {
+          // Decrypt access token if available (used for name lookup)
+          let accessToken: string | null = null;
+          const tokenRecord = matchingConnection.oauth_tokens?.[0];
+          if (tokenRecord?.access_token_encrypted) {
+            try {
+              accessToken = await decryptToken(tokenRecord.access_token_encrypted);
+            } catch (e) {
+              console.log('[WEBHOOK] Failed to decrypt token, continuing without it');
+            }
+          }
+
+          console.log('[WEBHOOK] ✅ Matched connection:', {
             account_id: myAccountId,
             workspace: workspaceId,
-            channel: matchingIntegration.channel
+            channel: matchingConnection.provider
           });
 
           // 🔥 FIX: Ensure workspace_id exists
@@ -144,6 +131,7 @@ serve(async (req) => {
             .eq('customer_phone', senderId)
             .eq('workspace_id', workspaceId)
             .eq('thread_id', threadId)
+            .eq('channel', matchingConnection.provider)
             .maybeSingle();
 
           if (existingConv) {
@@ -182,7 +170,7 @@ serve(async (req) => {
                 workspace_id: workspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
-                channel: matchingIntegration.channel,
+                channel: matchingConnection.provider,
                 platform: `${channel}_${myAccountId}`,
                 thread_id: threadId,
                 status: 'جديد',
