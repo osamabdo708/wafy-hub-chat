@@ -6,18 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Single unified verify token for all channels
 const UNIFIED_VERIFY_TOKEN = "almared_unified_webhook_2024";
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   const url = new URL(req.url);
 
-  // Handle webhook verification (GET request from Meta)
   if (req.method === 'GET') {
     const mode = url.searchParams.get('hub.mode');
     const token = url.searchParams.get('hub.verify_token');
@@ -25,7 +22,6 @@ serve(async (req) => {
 
     console.log('[WEBHOOK] Verification request:', { mode, token, challenge });
 
-    // Use single unified token for all channels
     if (mode === 'subscribe' && token === UNIFIED_VERIFY_TOKEN) {
       console.log('[WEBHOOK] Verification successful with unified token');
       return new Response(challenge, { status: 200 });
@@ -35,7 +31,6 @@ serve(async (req) => {
     }
   }
 
-  // Handle incoming messages (POST request from Meta)
   if (req.method === 'POST') {
     try {
       const body = await req.json();
@@ -46,103 +41,94 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
 
-      // Determine if this is Facebook or Instagram based on the object type
       const objectType = body.object;
       const isInstagram = objectType === 'instagram';
       const channel = isInstagram ? 'instagram' : 'facebook';
 
       console.log('[WEBHOOK] Object type:', objectType, '- Channel:', channel);
 
-      // Get ALL connected integrations from channel_integrations table (include workspace_id)
-      const { data: legacyIntegrations } = await supabase
+      // 🔥 FIX: Get ALL integrations without workspace filter first
+      const { data: allIntegrations } = await supabase
         .from('channel_integrations')
         .select('config, account_id, workspace_id, channel')
-        .like('channel', `${channel}%`)
         .eq('is_connected', true);
 
-      const integrations = legacyIntegrations || [];
-
-      if (integrations.length === 0) {
-        console.log(`[WEBHOOK] No ${channel} integrations found in database`);
+      if (!allIntegrations || allIntegrations.length === 0) {
+        console.log(`[WEBHOOK] No integrations found in database`);
         return new Response('OK', { status: 200 });
       }
 
-      // Log all available integrations for debugging
-      console.log(`[WEBHOOK] Found ${integrations.length} ${channel} integrations:`, 
-        integrations.map(i => ({ 
-          account_id: i.account_id, 
-          workspace_id: i.workspace_id,
-          instagram_account_id: (i.config as any)?.instagram_account_id,
-          page_id: (i.config as any)?.page_id 
-        }))
-      );
+      console.log(`[WEBHOOK] Found ${allIntegrations.length} total integrations`);
 
-      // Process each entry
       for (const entry of body.entry || []) {
-        // Get the recipient ID from the first messaging event to identify which integration to use
-        const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
-        console.log('[WEBHOOK] Looking for integration matching recipient:', recipientId);
-
-        // Find the matching integration based on page_id, instagram_account_id, or account_id
-        let matchingIntegration = integrations.find(integration => {
-          const config = integration.config as any;
-          const accountId = integration.account_id;
-          
-          // For Instagram, check instagram_account_id first, then page_id and account_id
-          if (isInstagram) {
-            const match = config?.instagram_account_id === recipientId || 
-                   config?.page_id === recipientId ||
-                   accountId === recipientId;
-            if (match) {
-              console.log('[WEBHOOK] Instagram integration matched:', { 
-                instagram_account_id: config?.instagram_account_id,
-                page_id: config?.page_id, 
-                account_id: accountId,
-                recipientId 
-              });
-            }
-            return match;
-          }
-          return config?.page_id === recipientId || accountId === recipientId;
-        });
-
-        if (!matchingIntegration) {
-          console.log('[WEBHOOK] No matching integration found for recipient:', recipientId);
-          continue;
-        }
-
-        const config = matchingIntegration.config as any;
-        const workspaceId = matchingIntegration.workspace_id;
-        const myAccountId = isInstagram 
-          ? (config?.instagram_account_id || matchingIntegration.account_id)
-          : (config?.page_id || matchingIntegration.account_id);
-        const accessToken = config?.page_access_token;
-
-        console.log('[WEBHOOK] Using integration with account ID:', myAccountId, 'workspace:', workspaceId);
-
-        if (!workspaceId) {
-          console.log('[WEBHOOK] No workspace_id for integration, skipping');
-          continue;
-        }
-
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id;
-          const messageRecipientId = messaging.recipient?.id;
+          const recipientId = messaging.recipient?.id;
           const messageText = messaging.message?.text;
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
           console.log('[WEBHOOK] Message details:', {
             senderId,
-            recipientId: messageRecipientId,
-            myAccountId,
+            recipientId,
             messageText,
             messageId
           });
 
-          // Skip if no message text or if sender is our account
-          if (!messageText || senderId === myAccountId) {
-            console.log('[WEBHOOK] Skipping - no text or self message');
+          if (!messageText || !recipientId) {
+            console.log('[WEBHOOK] Skipping - no text or recipient');
+            continue;
+          }
+
+          // 🔥 FIX: Find matching integration by checking account_id, page_id, and instagram_account_id
+          let matchingIntegration = allIntegrations.find(integration => {
+            const config = integration.config as any;
+            const accountId = integration.account_id;
+            
+            // Check if this integration matches the recipient
+            if (isInstagram) {
+              return config?.instagram_account_id === recipientId || 
+                     config?.page_id === recipientId ||
+                     accountId === recipientId;
+            } else {
+              return config?.page_id === recipientId || 
+                     accountId === recipientId;
+            }
+          });
+
+          if (!matchingIntegration) {
+            console.log('[WEBHOOK] ❌ No matching integration found for recipient:', recipientId);
+            console.log('[WEBHOOK] Available integrations:', allIntegrations.map(i => ({
+              account_id: i.account_id,
+              page_id: (i.config as any)?.page_id,
+              instagram_account_id: (i.config as any)?.instagram_account_id,
+              channel: i.channel
+            })));
+            continue;
+          }
+
+          const config = matchingIntegration.config as any;
+          const workspaceId = matchingIntegration.workspace_id;
+          const myAccountId = isInstagram 
+            ? (config?.instagram_account_id || matchingIntegration.account_id)
+            : (config?.page_id || matchingIntegration.account_id);
+          const accessToken = config?.page_access_token;
+
+          console.log('[WEBHOOK] ✅ Matched integration:', {
+            account_id: myAccountId,
+            workspace: workspaceId,
+            channel: matchingIntegration.channel
+          });
+
+          // 🔥 FIX: Ensure workspace_id exists
+          if (!workspaceId) {
+            console.log('[WEBHOOK] ❌ No workspace_id for integration, skipping');
+            continue;
+          }
+
+          // Skip if sender is our account
+          if (senderId === myAccountId) {
+            console.log('[WEBHOOK] Skipping - self message');
             continue;
           }
 
@@ -150,13 +136,13 @@ serve(async (req) => {
 
           // Find or create conversation
           let conversationId: string;
-          const threadId = isInstagram ? `ig_${senderId}_${messageRecipientId}` : `t_${senderId}_${messageRecipientId}`;
+          const threadId = isInstagram ? `ig_${senderId}_${recipientId}` : `t_${senderId}_${recipientId}`;
 
           const { data: existingConv } = await supabase
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
-            .like('channel', `${channel}%`)
+            .eq('workspace_id', workspaceId)
             .eq('thread_id', threadId)
             .maybeSingle();
 
@@ -243,9 +229,8 @@ serve(async (req) => {
           if (msgError) {
             console.error('[WEBHOOK] Error inserting message:', msgError);
           } else {
-            console.log('[WEBHOOK] Message saved successfully for', channel);
+            console.log('[WEBHOOK] ✅ Message saved successfully for', channel);
 
-            // Trigger AI auto-reply if enabled
             try {
               await supabase.functions.invoke('auto-reply-messages');
             } catch (e) {
