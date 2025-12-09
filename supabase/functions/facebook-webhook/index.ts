@@ -64,6 +64,8 @@ serve(async (req) => {
           const senderId = messaging.sender?.id;
           const recipientId = messaging.recipient?.id;
           const messageText = messaging.message?.text;
+          const attachmentUrl = messaging.message?.attachments?.[0]?.payload?.url;
+          const content = messageText || attachmentUrl || '[Media]';
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
@@ -74,17 +76,20 @@ serve(async (req) => {
             messageId
           });
 
-          if (!messageText || !recipientId) {
-            console.log('[WEBHOOK] Skipping - no text or recipient');
+          if (!recipientId) {
+            console.log('[WEBHOOK] Skipping - no recipient');
             continue;
           }
 
-          // Match connection by provider_channel_id (page id for FB)
+          // Match connection by provider_channel_id (page id for FB, ig account/page id for IG)
           let matchingWorkspaceId: string | null = null;
           let myAccountId: string | null = null;
           let accessToken: string | null = null;
+          const potentialIds = [recipientId, entry.id].filter(Boolean);
 
-          const matchingConnection = connections?.find((conn) => conn.provider_channel_id === recipientId);
+          const matchingConnection = connections?.find((conn) =>
+            potentialIds.includes(conn.provider_channel_id || '')
+          );
           if (matchingConnection) {
             matchingWorkspaceId = matchingConnection.workspace_id;
             myAccountId = matchingConnection.provider_channel_id;
@@ -113,7 +118,11 @@ serve(async (req) => {
 
             const legacyMatch = legacyIntegrations?.find((integration) => {
               const cfg = integration.config as any;
-              return cfg?.page_id === recipientId || integration.account_id === recipientId;
+              return potentialIds.some((id) =>
+                cfg?.page_id === id ||
+                cfg?.instagram_account_id === id ||
+                integration.account_id === id
+              );
             });
 
             if (!legacyMatch) {
@@ -122,7 +131,10 @@ serve(async (req) => {
             }
 
             matchingWorkspaceId = legacyMatch.workspace_id;
-            myAccountId = legacyMatch.account_id || (legacyMatch.config as any)?.page_id || recipientId;
+            myAccountId = legacyMatch.account_id ||
+              (legacyMatch.config as any)?.instagram_account_id ||
+              (legacyMatch.config as any)?.page_id ||
+              recipientId;
             accessToken = (legacyMatch.config as any)?.page_access_token || null;
 
             console.log('[WEBHOOK] ✅ Matched legacy integration:', {
@@ -143,9 +155,13 @@ serve(async (req) => {
             continue;
           }
 
-          // Skip if sender is our account
+          // Skip if sender is our account or missing message id
           if (senderId === myAccountId) {
             console.log('[WEBHOOK] Skipping - self message');
+            continue;
+          }
+          if (!messageId) {
+            console.log('[WEBHOOK] Skipping - no messageId');
             continue;
           }
 
@@ -274,7 +290,7 @@ serve(async (req) => {
             .from('messages')
             .insert({
               conversation_id: conversationId,
-              content: messageText,
+              content,
               sender_type: 'customer',
               message_id: messageId,
               is_old: false,
