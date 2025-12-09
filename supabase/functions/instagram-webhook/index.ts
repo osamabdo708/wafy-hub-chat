@@ -50,7 +50,7 @@ serve(async (req) => {
       const { data: integrations } = await supabase
         .from('channel_integrations')
         .select('config, account_id, workspace_id')
-        .eq('channel', 'instagram')
+        .like('channel', 'instagram%')
         .eq('is_connected', true);
 
       if (!integrations || integrations.length === 0) {
@@ -142,7 +142,7 @@ serve(async (req) => {
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
-            .eq('channel', 'instagram')
+            .like('channel', 'instagram%')
             .eq('thread_id', threadId)
             .maybeSingle();
 
