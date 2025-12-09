@@ -368,19 +368,43 @@ const Inbox = () => {
     return getChannelIconComponent(channel, "w-4 h-4");
   };
 
-  // Auto-reply check every 15 seconds (only if channels are connected)
+  // Background polling for messages - ensures messages are always fetched
+  // This runs alongside webhooks as a fallback mechanism
   useEffect(() => {
     if (connectedChannels.length === 0) return;
 
+    // Initial import on page load
+    const initialImport = async () => {
+      try {
+        console.log('[INBOX] Running initial message import...');
+        await supabase.functions.invoke('auto-import-messages');
+      } catch (error) {
+        console.error('[INBOX] Initial import error:', error);
+      }
+    };
+    initialImport();
+
+    // Poll for new messages every 30 seconds as fallback to webhooks
+    const importInterval = setInterval(async () => {
+      try {
+        console.log('[INBOX] Polling for new messages...');
+        await supabase.functions.invoke('auto-import-messages');
+      } catch (error) {
+        console.error('[INBOX] Import poll error:', error);
+      }
+    }, 30000); // 30 seconds
+
+    // Auto-reply check every 15 seconds
     const autoReplyInterval = setInterval(async () => {
       try {
         await supabase.functions.invoke('auto-reply-messages');
       } catch (error) {
-        console.error('Auto-reply error:', error);
+        console.error('[INBOX] Auto-reply error:', error);
       }
     }, 15000); // 15 seconds
 
     return () => {
+      clearInterval(importInterval);
       clearInterval(autoReplyInterval);
     };
   }, [connectedChannels]);
