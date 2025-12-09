@@ -274,10 +274,12 @@ serve(async (req) => {
     // or modified to support multiple connections. For a quick fix, we will update it
     // to use the new channel ID as the conflict target, effectively allowing multiple
     // entries in this table, one for each connected channel.
+    // Legacy table expects channel enum (facebook/instagram/whatsapp...), so store provider only.
+    // We keep the unique channelId in account_id/config for matching.
     await supabase
       .from("channel_integrations")
       .upsert({
-        channel: `${provider}_${channelId}`, // Use a unique key for the channel
+        channel: provider,
         is_connected: true,
         account_id: channelId,
         workspace_id: workspaceId, // ensure legacy row is scoped to the workspace
