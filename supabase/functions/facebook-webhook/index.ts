@@ -79,33 +79,63 @@ serve(async (req) => {
             continue;
           }
 
-          // Match connection by provider_channel_id (page id for FB, page/ig account id for IG)
-          const matchingConnection = connections?.find((conn) => conn.provider_channel_id === recipientId);
+          // Match connection by provider_channel_id (page id for FB)
+          let matchingWorkspaceId: string | null = null;
+          let myAccountId: string | null = null;
+          let accessToken: string | null = null;
 
-          if (!matchingConnection) {
-            console.log('[WEBHOOK] ❌ No matching connection found for recipient:', recipientId);
+          const matchingConnection = connections?.find((conn) => conn.provider_channel_id === recipientId);
+          if (matchingConnection) {
+            matchingWorkspaceId = matchingConnection.workspace_id;
+            myAccountId = matchingConnection.provider_channel_id;
+
+            const tokenRecord = matchingConnection.oauth_tokens?.[0];
+            if (tokenRecord?.access_token_encrypted) {
+              try {
+                accessToken = await decryptToken(tokenRecord.access_token_encrypted);
+              } catch (e) {
+                console.log('[WEBHOOK] Failed to decrypt token, continuing without it');
+              }
+            }
+
+            console.log('[WEBHOOK] ✅ Matched connection:', {
+              account_id: myAccountId,
+              workspace: matchingWorkspaceId,
+              channel: matchingConnection.provider
+            });
+          } else {
+            // Fallback to legacy channel_integrations if no connection found
+            const { data: legacyIntegrations } = await supabase
+              .from('channel_integrations')
+              .select('config, account_id, workspace_id, channel')
+              .eq('is_connected', true)
+              .eq('channel', channel);
+
+            const legacyMatch = legacyIntegrations?.find((integration) => {
+              const cfg = integration.config as any;
+              return cfg?.page_id === recipientId || integration.account_id === recipientId;
+            });
+
+            if (!legacyMatch) {
+              console.log('[WEBHOOK] ❌ No matching connection found for recipient:', recipientId);
+              continue;
+            }
+
+            matchingWorkspaceId = legacyMatch.workspace_id;
+            myAccountId = legacyMatch.account_id || (legacyMatch.config as any)?.page_id || recipientId;
+            accessToken = (legacyMatch.config as any)?.page_access_token || null;
+
+            console.log('[WEBHOOK] ✅ Matched legacy integration:', {
+              account_id: myAccountId,
+              workspace: matchingWorkspaceId,
+              channel: legacyMatch.channel
+            });
+          }
+
+          if (!matchingWorkspaceId || !myAccountId) {
+            console.log('[WEBHOOK] ❌ Missing workspace/account for recipient:', recipientId);
             continue;
           }
-
-          const workspaceId = matchingConnection.workspace_id;
-          const myAccountId = matchingConnection.provider_channel_id;
-
-          // Decrypt access token if available (used for name lookup)
-          let accessToken: string | null = null;
-          const tokenRecord = matchingConnection.oauth_tokens?.[0];
-          if (tokenRecord?.access_token_encrypted) {
-            try {
-              accessToken = await decryptToken(tokenRecord.access_token_encrypted);
-            } catch (e) {
-              console.log('[WEBHOOK] Failed to decrypt token, continuing without it');
-            }
-          }
-
-          console.log('[WEBHOOK] ✅ Matched connection:', {
-            account_id: myAccountId,
-            workspace: workspaceId,
-            channel: matchingConnection.provider
-          });
 
           // 🔥 FIX: Ensure workspace_id exists
           if (!workspaceId) {
@@ -125,14 +155,32 @@ serve(async (req) => {
           let conversationId: string;
           const threadId = isInstagram ? `ig_${senderId}_${recipientId}` : `t_${senderId}_${recipientId}`;
 
-          const { data: existingConv } = await supabase
+          // Try to find an existing conversation scoped to workspace
+          let { data: existingConv } = await supabase
             .from('conversations')
             .select('id')
             .eq('customer_phone', senderId)
-            .eq('workspace_id', workspaceId)
+            .eq('workspace_id', matchingWorkspaceId)
             .eq('thread_id', threadId)
-            .eq('channel', matchingConnection.provider)
+            .eq('channel', channel)
             .maybeSingle();
+
+          // Fallback: find by phone+channel without workspace, then backfill workspace/thread
+          if (!existingConv) {
+            const { data: convByPhone } = await supabase
+              .from('conversations')
+              .select('id, workspace_id, thread_id')
+              .eq('customer_phone', senderId)
+              .eq('channel', channel)
+              .maybeSingle();
+            if (convByPhone) {
+              existingConv = convByPhone;
+              await supabase
+                .from('conversations')
+                .update({ workspace_id: matchingWorkspaceId, thread_id: threadId })
+                .eq('id', convByPhone.id);
+            }
+          }
 
           if (existingConv) {
             conversationId = existingConv.id;
@@ -170,7 +218,7 @@ serve(async (req) => {
                 workspace_id: workspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
-                channel: matchingConnection.provider,
+                channel: channel,
                 platform: `${channel}_${myAccountId}`,
                 thread_id: threadId,
                 status: 'جديد',
@@ -181,8 +229,29 @@ serve(async (req) => {
               .single();
 
             if (convError) {
-              console.error('[WEBHOOK] Error creating conversation:', convError);
-              continue;
+              // Handle duplicate key (customer_phone, channel) by reusing the existing conversation
+              if ((convError as any).code === '23505') {
+                const { data: dupConv } = await supabase
+                  .from('conversations')
+                  .select('id')
+                  .eq('customer_phone', senderId)
+                  .eq('channel', channel)
+                  .maybeSingle();
+                if (dupConv) {
+                  conversationId = dupConv.id;
+                  await supabase
+                    .from('conversations')
+                    .update({ workspace_id: matchingWorkspaceId, thread_id: threadId, last_message_at: new Date(timestamp).toISOString() })
+                    .eq('id', dupConv.id);
+                  console.log('[WEBHOOK] Reused existing conversation after duplicate key:', dupConv.id);
+                } else {
+                  console.error('[WEBHOOK] Error creating conversation (no dup conv found):', convError);
+                  continue;
+                }
+              } else {
+                console.error('[WEBHOOK] Error creating conversation:', convError);
+                continue;
+              }
             }
             conversationId = newConv.id;
             console.log('[WEBHOOK] Created new conversation:', conversationId);
