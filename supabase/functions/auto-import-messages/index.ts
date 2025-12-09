@@ -21,7 +21,7 @@ serve(async (req) => {
     // Fetch all connected integrations dynamically
     const { data: integrations, error: integrationsError } = await supabase
       .from('channel_integrations')
-      .select('*')
+      .select('*, workspace_id')
       .eq('is_connected', true);
 
     if (integrationsError) {
@@ -118,7 +118,7 @@ serve(async (req) => {
               // Get or create conversation
               let { data: existingConv } = await supabase
                 .from('conversations')
-                .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                .select('id, ai_enabled, thread_id, customer_name, customer_phone, workspace_id')
                 .eq('customer_phone', senderId)
                 .eq('channel', 'facebook')
                 .maybeSingle();
@@ -126,7 +126,7 @@ serve(async (req) => {
               if (!existingConv) {
                 const { data: convByThread } = await supabase
                   .from('conversations')
-                  .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                  .select('id, ai_enabled, thread_id, customer_name, customer_phone, workspace_id')
                   .eq('thread_id', threadId)
                   .eq('channel', 'facebook')
                   .maybeSingle();
@@ -134,10 +134,13 @@ serve(async (req) => {
                 existingConv = convByThread;
               }
               
-              if (existingConv && existingConv.thread_id !== threadId) {
+              if (existingConv && (existingConv.thread_id !== threadId || !existingConv.workspace_id)) {
                 await supabase
                   .from('conversations')
-                  .update({ thread_id: threadId })
+                  .update({ 
+                    thread_id: threadId,
+                    workspace_id: integration.workspace_id || null
+                  })
                   .eq('id', existingConv.id);
                 existingConv.thread_id = threadId;
               }
@@ -150,6 +153,7 @@ serve(async (req) => {
                   .from('conversations')
                   .update({ 
                     last_message_at: messages[0].created_time,
+                    workspace_id: integration.workspace_id || null,
                     updated_at: new Date().toISOString()
                   })
                   .eq('id', conversationId);
@@ -169,7 +173,8 @@ serve(async (req) => {
                     platform: 'facebook',
                     status: 'جديد',
                     last_message_at: messages[0].created_time,
-                    ai_enabled: false
+                    ai_enabled: false,
+                    workspace_id: integration.workspace_id || null
                   })
                   .select()
                   .single();
@@ -285,7 +290,7 @@ serve(async (req) => {
               // Get or create conversation
               let { data: existingConv } = await supabase
                 .from('conversations')
-                .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                .select('id, ai_enabled, thread_id, customer_name, customer_phone, workspace_id')
                 .eq('customer_phone', senderId)
                 .eq('channel', 'instagram')
                 .maybeSingle();
@@ -293,7 +298,7 @@ serve(async (req) => {
               if (!existingConv) {
                 const { data: convByThread } = await supabase
                   .from('conversations')
-                  .select('id, ai_enabled, thread_id, customer_name, customer_phone')
+                  .select('id, ai_enabled, thread_id, customer_name, customer_phone, workspace_id')
                   .eq('thread_id', threadId)
                   .eq('channel', 'instagram')
                   .maybeSingle();
@@ -301,10 +306,13 @@ serve(async (req) => {
                 existingConv = convByThread;
               }
               
-              if (existingConv && existingConv.thread_id !== threadId) {
+              if (existingConv && (existingConv.thread_id !== threadId || !existingConv.workspace_id)) {
                 await supabase
                   .from('conversations')
-                  .update({ thread_id: threadId })
+                  .update({ 
+                    thread_id: threadId,
+                    workspace_id: integration.workspace_id || null
+                  })
                   .eq('id', existingConv.id);
                 existingConv.thread_id = threadId;
               }
@@ -323,19 +331,20 @@ serve(async (req) => {
                       .from('conversations')
                       .update({ 
                         customer_name: userData.username,
-                        last_message_at: messages[0].created_time 
+                        last_message_at: messages[0].created_time,
+                        workspace_id: integration.workspace_id || null
                       })
                       .eq('id', conversationId);
                   } else {
                     await supabase
                       .from('conversations')
-                      .update({ last_message_at: messages[0].created_time })
+                      .update({ last_message_at: messages[0].created_time, workspace_id: integration.workspace_id || null })
                       .eq('id', conversationId);
                   }
                 } else {
                   await supabase
                     .from('conversations')
-                    .update({ last_message_at: messages[0].created_time })
+                    .update({ last_message_at: messages[0].created_time, workspace_id: integration.workspace_id || null })
                     .eq('id', conversationId);
                 }
               } else {
@@ -354,7 +363,8 @@ serve(async (req) => {
                     platform: 'instagram',
                     status: 'جديد',
                     last_message_at: messages[0].created_time,
-                    ai_enabled: false
+                    ai_enabled: false,
+                    workspace_id: integration.workspace_id || null
                   })
                   .select()
                   .single();
