@@ -60,15 +60,18 @@ serve(async (req) => {
 
       // Process each entry
       for (const entry of body.entry || []) {
-        // Get the recipient ID from the first messaging event to identify which connection to use
+        // Resolve recipient/entry ids for matching (IG can send recipient or entry.id)
         const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
-        console.log('[INSTAGRAM-WEBHOOK] Looking for connection matching recipient:', recipientId);
+        const potentialIds = [recipientId, entry.id].filter(Boolean);
+        console.log('[INSTAGRAM-WEBHOOK] Looking for connection matching:', potentialIds);
 
         let workspaceId: string | null = null;
         let myAccountId: string | null = null;
         let accessToken: string | null = null;
 
-        const matchingConnection = connections?.find((conn) => conn.provider_channel_id === recipientId);
+        const matchingConnection = connections?.find((conn) =>
+          potentialIds.includes(conn.provider_channel_id || '')
+        );
 
         if (matchingConnection) {
           workspaceId = matchingConnection.workspace_id;
@@ -94,25 +97,27 @@ serve(async (req) => {
 
           const legacyMatch = legacyIntegrations?.find((integration) => {
             const cfg = integration.config as any;
-            return cfg?.instagram_account_id === recipientId ||
-                   cfg?.page_id === recipientId ||
-                   integration.account_id === recipientId;
+            return potentialIds.some((id) =>
+              cfg?.instagram_account_id === id ||
+              cfg?.page_id === id ||
+              integration.account_id === id
+            );
           });
 
           if (!legacyMatch) {
-            console.log('[INSTAGRAM-WEBHOOK] No matching connection found for recipient:', recipientId);
+            console.log('[INSTAGRAM-WEBHOOK] No matching connection found for recipient:', potentialIds);
             continue;
           }
 
           workspaceId = legacyMatch.workspace_id;
-          myAccountId = legacyMatch.account_id || (legacyMatch.config as any)?.instagram_account_id || recipientId;
+          myAccountId = legacyMatch.account_id || (legacyMatch.config as any)?.instagram_account_id || recipientId || entry.id;
           accessToken = (legacyMatch.config as any)?.page_access_token || null;
 
           console.log('[INSTAGRAM-WEBHOOK] Using legacy integration with account ID:', myAccountId, 'workspace:', workspaceId);
         }
 
         if (!workspaceId || !myAccountId) {
-          console.log('[INSTAGRAM-WEBHOOK] Missing workspace/account for recipient:', recipientId);
+          console.log('[INSTAGRAM-WEBHOOK] Missing workspace/account for recipient:', potentialIds);
           continue;
         }
 
