@@ -174,14 +174,8 @@ serve(async (req) => {
           accountId = page.id;
         }
 
-        // First disconnect any existing Instagram connection for this workspace (different account)
-        await supabase
-          .from("channel_integrations")
-          .update({ is_connected: false, updated_at: new Date().toISOString() })
-          .eq("channel", "instagram")
-          .eq("workspace_id", workspaceId)
-          .neq("account_id", accountId)
-          .eq("is_connected", true);
+        // Removed explicit disconnection to allow multiple independent connections.
+        // The `upsert` logic below will handle the connection status for the specific account.
 
         // Check if this workspace already has a connection for this Instagram account
         const { data: existingIgWorkspaceConnection } = await supabase
@@ -212,7 +206,7 @@ serve(async (req) => {
           const { error } = await supabase
             .from("channel_integrations")
             .insert({
-              channel: "instagram",
+              channel: `instagram_${accountId}`, // Use unique channel name
               account_id: accountId,
               workspace_id: workspaceId,
               is_connected: true,
@@ -251,20 +245,14 @@ serve(async (req) => {
       config.connected_via = "oauth";
     }
 
-    // First disconnect any existing Facebook connection for this workspace (different account)
-    await supabase
-      .from("channel_integrations")
-      .update({ is_connected: false, updated_at: new Date().toISOString() })
-      .eq("channel", "facebook")
-      .eq("workspace_id", workspaceId)
-      .neq("account_id", accountId)
-      .eq("is_connected", true);
+    // Removed explicit disconnection to allow multiple independent connections.
+    // The `upsert` logic below will handle the connection status for the specific account.
 
     // Check if this workspace already has a connection for this account
     const { data: existingWorkspaceConnection } = await supabase
       .from("channel_integrations")
       .select("id")
-      .eq("channel", "facebook")
+      .eq("channel", `facebook_${accountId}`) // Use unique channel name
       .eq("account_id", accountId)
       .eq("workspace_id", workspaceId)
       .single();
@@ -272,31 +260,31 @@ serve(async (req) => {
     let saveError: any = null;
     
     if (existingWorkspaceConnection) {
-      // Update existing connection for this workspace
-      console.log("[OAUTH] Updating existing connection for workspace:", workspaceId);
-      const { error } = await supabase
-        .from("channel_integrations")
-        .update({
-          is_connected: true,
-          config,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingWorkspaceConnection.id);
-      saveError = error;
-    } else {
-      // Insert new connection for this workspace (each workspace can have its own connection to same page)
-      console.log("[OAUTH] Creating new connection for workspace:", workspaceId);
-      const { error } = await supabase
-        .from("channel_integrations")
-        .insert({
-          channel: "facebook",
-          account_id: accountId,
-          workspace_id: workspaceId,
-          is_connected: true,
-          config,
-        });
-      saveError = error;
-    }
+          // Update existing connection for this workspace
+          console.log("[OAUTH] Updating existing Facebook connection for workspace:", workspaceId);
+          const { error } = await supabase
+            .from("channel_integrations")
+            .update({
+              is_connected: true,
+              config,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingWorkspaceConnection.id);
+          saveError = error;
+        } else {
+          // Insert new connection for this workspace (each workspace can have its own connection)
+          console.log("[OAUTH] Creating new Facebook connection for workspace:", workspaceId);
+          const { error } = await supabase
+            .from("channel_integrations")
+            .insert({
+              channel: `facebook_${accountId}`, // Use unique channel name
+              account_id: accountId,
+              workspace_id: workspaceId,
+              is_connected: true,
+              config,
+            });
+          saveError = error;
+        }
 
     if (saveError) {
       console.error("[OAUTH] Database error:", saveError);
