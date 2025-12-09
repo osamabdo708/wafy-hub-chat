@@ -41,7 +41,7 @@ interface Conversation {
   assigned_agent?: Agent | null;
 }
 
-type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email';
+type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email' | 'tiktok';
 type FilterType = 'all' | 'facebook' | 'instagram' | 'whatsapp' | 'tiktok';
 
 interface ConnectedChannel {
@@ -57,6 +57,7 @@ const Inbox = () => {
   const [connectedChannels, setConnectedChannels] = useState<ChannelType[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
 
   // Fetch connected channels first
   useEffect(() => {
@@ -169,6 +170,8 @@ const Inbox = () => {
         return;
       }
 
+      setWorkspaceId(workspace.id);
+
       // Fetch from legacy channel_integrations for THIS workspace only
       const { data: legacyData, error: legacyError } = await supabase
         .from('channel_integrations')
@@ -191,9 +194,16 @@ const Inbox = () => {
         console.error('Error fetching channel connections:', connectionsError);
       }
 
+      // Normalize legacy channel names: new OAuth flow stores channel as `${provider}_${provider_channel_id}`
+      // but conversations still use the base provider name (facebook/instagram/whatsapp/tiktok).
+      const normalizeChannel = (channel: string): ChannelType => {
+        const base = channel.split('_')[0] as ChannelType;
+        return base;
+      };
+
       // Combine channels from both sources (deduplicated)
-      const legacyChannels = (legacyData || []).map((ch: ConnectedChannel) => ch.channel);
-      const newChannels = (connectionsData || []).map((conn: { provider: string }) => conn.provider as ChannelType);
+      const legacyChannels = (legacyData || []).map((ch: ConnectedChannel) => normalizeChannel(ch.channel));
+      const newChannels = (connectionsData || []).map((conn: { provider: string }) => normalizeChannel(conn.provider));
       
       const allChannels = [...new Set([...legacyChannels, ...newChannels])];
       setConnectedChannels(allChannels);
@@ -207,6 +217,13 @@ const Inbox = () => {
 
   const fetchConversations = async () => {
     try {
+      // We need a workspace id to scope conversations
+      if (!workspaceId) {
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+
       // If no channels are connected, show empty state
       if (connectedChannels.length === 0) {
         setConversations([]);
@@ -219,6 +236,7 @@ const Inbox = () => {
         .from('conversations')
         .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled, assigned_agent_id')
         .in('channel', connectedChannels)
+        .eq('workspace_id', workspaceId)
         .order('last_message_at', { ascending: false });
 
       if (conversationsError) throw conversationsError;
