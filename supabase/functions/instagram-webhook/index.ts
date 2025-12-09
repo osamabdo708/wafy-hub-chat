@@ -64,27 +64,57 @@ serve(async (req) => {
         const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
         console.log('[INSTAGRAM-WEBHOOK] Looking for connection matching recipient:', recipientId);
 
+        let workspaceId: string | null = null;
+        let myAccountId: string | null = null;
+        let accessToken: string | null = null;
+
         const matchingConnection = connections?.find((conn) => conn.provider_channel_id === recipientId);
 
-        if (!matchingConnection) {
-          console.log('[INSTAGRAM-WEBHOOK] No matching connection found for recipient:', recipientId);
+        if (matchingConnection) {
+          workspaceId = matchingConnection.workspace_id;
+          myAccountId = matchingConnection.provider_channel_id;
+
+          const tokenRecord = matchingConnection.oauth_tokens?.[0];
+          if (tokenRecord?.access_token_encrypted) {
+            try {
+              accessToken = await decryptToken(tokenRecord.access_token_encrypted);
+            } catch (e) {
+              console.log('[INSTAGRAM-WEBHOOK] Failed to decrypt token, continuing without it');
+            }
+          }
+
+          console.log('[INSTAGRAM-WEBHOOK] Using connection with account ID:', myAccountId, 'workspace:', workspaceId);
+        } else {
+          // Fallback to legacy channel_integrations if no connection found
+          const { data: legacyIntegrations } = await supabase
+            .from('channel_integrations')
+            .select('config, account_id, workspace_id, channel')
+            .eq('is_connected', true)
+            .like('channel', 'instagram%');
+
+          const legacyMatch = legacyIntegrations?.find((integration) => {
+            const cfg = integration.config as any;
+            return cfg?.instagram_account_id === recipientId ||
+                   cfg?.page_id === recipientId ||
+                   integration.account_id === recipientId;
+          });
+
+          if (!legacyMatch) {
+            console.log('[INSTAGRAM-WEBHOOK] No matching connection found for recipient:', recipientId);
+            continue;
+          }
+
+          workspaceId = legacyMatch.workspace_id;
+          myAccountId = legacyMatch.account_id || (legacyMatch.config as any)?.instagram_account_id || recipientId;
+          accessToken = (legacyMatch.config as any)?.page_access_token || null;
+
+          console.log('[INSTAGRAM-WEBHOOK] Using legacy integration with account ID:', myAccountId, 'workspace:', workspaceId);
+        }
+
+        if (!workspaceId || !myAccountId) {
+          console.log('[INSTAGRAM-WEBHOOK] Missing workspace/account for recipient:', recipientId);
           continue;
         }
-
-        const workspaceId = matchingConnection.workspace_id;
-        const myAccountId = matchingConnection.provider_channel_id;
-
-        let accessToken: string | null = null;
-        const tokenRecord = matchingConnection.oauth_tokens?.[0];
-        if (tokenRecord?.access_token_encrypted) {
-          try {
-            accessToken = await decryptToken(tokenRecord.access_token_encrypted);
-          } catch (e) {
-            console.log('[INSTAGRAM-WEBHOOK] Failed to decrypt token, continuing without it');
-          }
-        }
-
-        console.log('[INSTAGRAM-WEBHOOK] Using connection with account ID:', myAccountId, 'workspace:', workspaceId);
 
         if (!workspaceId) {
           console.log('[INSTAGRAM-WEBHOOK] No workspace_id for integration, skipping');
@@ -127,8 +157,27 @@ serve(async (req) => {
             .eq('thread_id', threadId)
             .maybeSingle();
 
-          if (existingConv) {
-            conversationId = existingConv.id;
+          // Fallback: by phone+channel without workspace, then backfill workspace/thread
+          let conversationId: string;
+          let convRecord = existingConv;
+          if (!convRecord) {
+            const { data: convByPhone } = await supabase
+              .from('conversations')
+              .select('id, workspace_id, thread_id')
+              .eq('customer_phone', senderId)
+              .eq('channel', 'instagram')
+              .maybeSingle();
+            if (convByPhone) {
+              convRecord = convByPhone;
+              await supabase
+                .from('conversations')
+                .update({ workspace_id: workspaceId, thread_id: threadId })
+                .eq('id', convByPhone.id);
+            }
+          }
+
+          if (convRecord) {
+            conversationId = convRecord.id;
             await supabase
               .from('conversations')
               .update({ last_message_at: new Date(timestamp).toISOString() })
@@ -172,11 +221,32 @@ serve(async (req) => {
               .single();
 
             if (convError) {
-              console.error('[INSTAGRAM-WEBHOOK] Error creating conversation:', convError);
-              continue;
+              if ((convError as any).code === '23505') {
+                const { data: dupConv } = await supabase
+                  .from('conversations')
+                  .select('id')
+                  .eq('customer_phone', senderId)
+                  .eq('channel', 'instagram')
+                  .maybeSingle();
+                if (dupConv) {
+                  conversationId = dupConv.id;
+                  await supabase
+                    .from('conversations')
+                    .update({ workspace_id: workspaceId, thread_id: threadId, last_message_at: new Date(timestamp).toISOString() })
+                    .eq('id', dupConv.id);
+                  console.log('[INSTAGRAM-WEBHOOK] Reused existing conversation after duplicate key:', dupConv.id);
+                } else {
+                  console.error('[INSTAGRAM-WEBHOOK] Error creating conversation (no dup found):', convError);
+                  continue;
+                }
+              } else {
+                console.error('[INSTAGRAM-WEBHOOK] Error creating conversation:', convError);
+                continue;
+              }
+            } else {
+              conversationId = newConv!.id;
+              console.log('[INSTAGRAM-WEBHOOK] Created new conversation:', conversationId);
             }
-            conversationId = newConv.id;
-            console.log('[INSTAGRAM-WEBHOOK] Created new conversation:', conversationId);
           }
 
           // Check if message already exists
