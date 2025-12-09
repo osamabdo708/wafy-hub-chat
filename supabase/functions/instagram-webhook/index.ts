@@ -49,7 +49,7 @@ serve(async (req) => {
       // Get ALL connected Instagram integrations from channel_integrations table (include workspace_id)
       const { data: integrations } = await supabase
         .from('channel_integrations')
-        .select('config, account_id, workspace_id')
+        .select('config, account_id, workspace_id, channel')
         .like('channel', 'instagram%')
         .eq('is_connected', true);
 
@@ -180,7 +180,7 @@ serve(async (req) => {
                 workspace_id: workspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
-                channel: 'instagram',
+                channel: matchingIntegration.channel,
                 platform: `instagram_${myAccountId}`,
                 thread_id: threadId,
                 status: 'جديد',
