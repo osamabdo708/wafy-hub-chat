@@ -56,7 +56,7 @@ serve(async (req) => {
       // Get ALL connected integrations from channel_integrations table (include workspace_id)
       const { data: legacyIntegrations } = await supabase
         .from('channel_integrations')
-        .select('config, account_id, workspace_id')
+        .select('config, account_id, workspace_id, channel')
         .like('channel', `${channel}%`)
         .eq('is_connected', true);
 
@@ -196,7 +196,7 @@ serve(async (req) => {
                 workspace_id: workspaceId,
                 customer_name: customerName,
                 customer_phone: senderId,
-                channel: channel,
+                channel: matchingIntegration.channel,
                 platform: `${channel}_${myAccountId}`,
                 thread_id: threadId,
                 status: 'جديد',
