@@ -121,38 +121,35 @@ serve(async (req) => {
           continue;
         }
 
-        for (const messaging of entry.messaging || []) {
-          const senderId = messaging.sender?.id;
-          const messageRecipientId = messaging.recipient?.id;
-          const messageText = messaging.message?.text;
-          const attachmentUrl = messaging.message?.attachments?.[0]?.payload?.url;
-          const content = messageText || attachmentUrl || '[Media]';
-          const messageId = messaging.message?.mid;
-          const timestamp = messaging.timestamp;
+// Instagram uses entry.changes[], not entry.messaging[]
+for (const change of entry.changes || []) {
 
-          console.log('[INSTAGRAM-WEBHOOK] Message details:', {
-            senderId,
-            recipientId: messageRecipientId,
-            myAccountId,
-            messageText,
-            messageId
-          });
+  const value = change.value;
+  if (!value || value.messaging_product !== "instagram") continue;
 
-          // Skip if sender is our account or missing message id
-          if (senderId === myAccountId) {
-            console.log('[INSTAGRAM-WEBHOOK] Skipping - self message');
-            continue;
-          }
-          if (!messageId) {
-            console.log('[INSTAGRAM-WEBHOOK] Skipping - no messageId');
-            continue;
-          }
+  const senderId = value.sender?.id;
+  const recipientId = value.recipient?.id;
+  const timestamp = value.timestamp;
+  const messageId = value.message?.mid;
 
-          console.log('[INSTAGRAM-WEBHOOK] Processing message from:', senderId);
+  const messageText = value.message?.text;
+  const attachmentUrl = value.message?.attachments?.[0]?.payload?.url;
 
-          // Find or create conversation
-          let conversationId: string;
-          const threadId = `ig_${senderId}_${messageRecipientId}`;
+  const content = messageText || attachmentUrl || "[Media]";
+
+  console.log("[INSTAGRAM-WEBHOOK] Processed IG message:", {
+    senderId,
+    recipientId,
+    messageId,
+    content
+  });
+
+  // SKIP SELF MESSAGES
+  if (senderId === myAccountId) continue;
+  if (!messageId) continue;
+
+  const threadId = `ig_${senderId}_${recipientId}`;
+
 
           const { data: existingConv } = await supabase
             .from('conversations')
