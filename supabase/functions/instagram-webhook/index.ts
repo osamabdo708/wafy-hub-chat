@@ -61,6 +61,7 @@ serve(async (req) => {
       // Process each entry
       for (const entry of body.entry || []) {
         // Resolve recipient/entry ids for matching (IG can send recipient or entry.id)
+        // NOTE: entry.messaging is for Facebook Messenger, IG uses entry.changes
         const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
         const potentialIds = [recipientId, entry.id].filter(Boolean);
         console.log('[INSTAGRAM-WEBHOOK] Looking for connection matching:', potentialIds);
@@ -121,34 +122,40 @@ serve(async (req) => {
           continue;
         }
 
-// Instagram uses entry.changes[], not entry.messaging[]
-for (const change of entry.changes || []) {
+        // Instagram uses entry.changes[], not entry.messaging[]
+        for (const change of entry.changes || []) {
 
-  const value = change.value;
-  if (!value || value.messaging_product !== "instagram") continue;
+          const value = change.value;
+          if (!value || value.messaging_product !== "instagram") continue;
 
-  const senderId = value.sender?.id;
-  const recipientId = value.recipient?.id;
-  const timestamp = value.timestamp;
-  const messageId = value.message?.mid;
+          // Check for message data
+          if (!value.message) {
+            console.log('[INSTAGRAM-WEBHOOK] Skipping non-message change event:', change.field);
+            continue;
+          }
 
-  const messageText = value.message?.text;
-  const attachmentUrl = value.message?.attachments?.[0]?.payload?.url;
+          const senderId = value.sender?.id;
+          const recipientId = value.recipient?.id;
+          const timestamp = value.timestamp;
+          const messageId = value.message?.mid;
 
-  const content = messageText || attachmentUrl || "[Media]";
+          const messageText = value.message?.text;
+          const attachmentUrl = value.message?.attachments?.[0]?.payload?.url;
 
-  console.log("[INSTAGRAM-WEBHOOK] Processed IG message:", {
-    senderId,
-    recipientId,
-    messageId,
-    content
-  });
+          const content = messageText || attachmentUrl || "[Media]";
 
-  // SKIP SELF MESSAGES
-  if (senderId === myAccountId) continue;
-  if (!messageId) continue;
+          console.log("[INSTAGRAM-WEBHOOK] Processed IG message:", {
+            senderId,
+            recipientId,
+            messageId,
+            content
+          });
 
-  const threadId = `ig_${senderId}_${recipientId}`;
+          // SKIP SELF MESSAGES
+          if (senderId === myAccountId) continue;
+          if (!messageId) continue;
+
+          const threadId = `ig_${senderId}_${recipientId}`;
 
 
           const { data: existingConv } = await supabase
@@ -172,19 +179,27 @@ for (const change of entry.changes || []) {
               .maybeSingle();
             if (convByPhone) {
               convRecord = convByPhone;
-              await supabase
+              // NOTE: Added error logging for update
+              const { error: updateError } = await supabase
                 .from('conversations')
                 .update({ workspace_id: workspaceId, thread_id: threadId })
                 .eq('id', convByPhone.id);
+              if (updateError) {
+                console.error('[INSTAGRAM-WEBHOOK] Error updating conversation on fallback:', updateError);
+              }
             }
           }
 
           if (convRecord) {
             conversationId = convRecord.id;
-            await supabase
+            // NOTE: Added error logging for update
+            const { error: updateError } = await supabase
               .from('conversations')
               .update({ last_message_at: new Date(timestamp).toISOString(), workspace_id: workspaceId })
               .eq('id', conversationId);
+            if (updateError) {
+              console.error('[INSTAGRAM-WEBHOOK] Error updating existing conversation timestamp:', updateError);
+            }
             console.log('[INSTAGRAM-WEBHOOK] Updated existing conversation:', conversationId);
           } else {
             // Get customer name
@@ -233,10 +248,14 @@ for (const change of entry.changes || []) {
                   .maybeSingle();
                 if (dupConv) {
                   conversationId = dupConv.id;
-                  await supabase
+                  // NOTE: Added error logging for update
+                  const { error: updateError } = await supabase
                     .from('conversations')
                     .update({ workspace_id: workspaceId, thread_id: threadId, last_message_at: new Date(timestamp).toISOString() })
                     .eq('id', dupConv.id);
+                  if (updateError) {
+                    console.error('[INSTAGRAM-WEBHOOK] Error updating conversation after duplicate key:', updateError);
+                  }
                   console.log('[INSTAGRAM-WEBHOOK] Reused existing conversation after duplicate key:', dupConv.id);
                 } else {
                   console.error('[INSTAGRAM-WEBHOOK] Error creating conversation (no dup found):', convError);
@@ -279,13 +298,18 @@ for (const change of entry.changes || []) {
             });
 
           if (msgError) {
+            // NOTE: Added error logging for message insertion
             console.error('[INSTAGRAM-WEBHOOK] Error inserting message:', msgError);
           } else {
             console.log('[INSTAGRAM-WEBHOOK] Message saved successfully for instagram');
 
             // Trigger AI auto-reply if enabled
             try {
-              await supabase.functions.invoke('auto-reply-messages');
+              // NOTE: Added error logging for function invocation
+              const { error: invokeError } = await supabase.functions.invoke('auto-reply-messages');
+              if (invokeError) {
+                console.error('[INSTAGRAM-WEBHOOK] Auto-reply trigger failed:', invokeError);
+              }
             } catch (e) {
               console.log('[INSTAGRAM-WEBHOOK] Auto-reply trigger failed:', e);
             }
