@@ -280,6 +280,7 @@ serve(async (req) => {
         channel: `${provider}_${channelId}`, // Use a unique key for the channel
         is_connected: true,
         account_id: channelId,
+        workspace_id: workspaceId, // ensure legacy row is scoped to the workspace
         config: {
           page_id: pageId,
           page_access_token: pageAccessToken,
