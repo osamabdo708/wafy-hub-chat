@@ -73,12 +73,14 @@ serve(async (req) => {
 
         console.log(`[${channelName}] Config - page_id: ${page_id}`);
 
+        // Use a more generous lookback window - at least 5 minutes back
         let lastFetchTime = integration.last_fetch_timestamp 
           ? new Date(integration.last_fetch_timestamp)
           : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-        lastFetchTime = new Date(lastFetchTime.getTime() - 30000);
-        console.log(`[${channelName}] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
+        // Add 5 minute buffer to avoid missing messages
+        lastFetchTime = new Date(lastFetchTime.getTime() - 5 * 60 * 1000);
+        console.log(`[${channelName}] Last fetch (with 5min buffer): ${lastFetchTime.toISOString()}`);
         
         // Use the exact endpoint format from the working Python code
         let conversationsUrl = `https://graph.facebook.com/v17.0/${page_id}/conversations?fields=id,participants,updated_time,messages{id,message,from,created_time}&limit=100&access_token=${page_access_token}`;
@@ -229,12 +231,14 @@ serve(async (req) => {
 
         console.log(`[${channelName}] Config - account_id: ${instagram_account_id}, page_id: ${page_id}`);
         
+        // Use a more generous lookback window - at least 5 minutes back
         let lastFetchTime = integration.last_fetch_timestamp 
           ? new Date(integration.last_fetch_timestamp)
           : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-        lastFetchTime = new Date(lastFetchTime.getTime() - 30000);
-        console.log(`[${channelName}] Last fetch (with 30s buffer): ${lastFetchTime.toISOString()}`);
+        // Add 5 minute buffer to avoid missing messages
+        lastFetchTime = new Date(lastFetchTime.getTime() - 5 * 60 * 1000);
+        console.log(`[${channelName}] Last fetch (with 5min buffer): ${lastFetchTime.toISOString()}`);
 
         // Use Facebook Page inbox to fetch Instagram messages (more reliable)
         let conversationsUrl = page_id 

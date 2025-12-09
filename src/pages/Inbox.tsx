@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Clock, User, Trash2, Wifi, WifiOff } from "lucide-react";
+import { MessageSquare, Clock, User, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -19,16 +19,6 @@ import {
   TikTokChannelIcon,
   getChannelIconComponent 
 } from "@/components/ChannelIcons";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 interface Agent {
   id: string;
@@ -63,7 +53,7 @@ const Inbox = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [connectedChannels, setConnectedChannels] = useState<ChannelType[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
@@ -409,32 +399,41 @@ const Inbox = () => {
     };
   }, [connectedChannels]);
 
-  const handleDeleteAll = async () => {
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
     try {
-      // First delete all messages associated with conversations
-      const { error: messagesError } = await supabase
-        .from('messages')
-        .delete()
-        .gte('created_at', '1970-01-01'); // Match all rows
+      console.log('[INBOX] Manual refresh triggered...');
+      toast.info("جاري جلب الرسائل الجديدة...");
+      
+      // Reset last_fetch_timestamp to fetch older messages
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('id')
+          .eq('owner_user_id', user.id)
+          .limit(1)
+          .single();
 
-      if (messagesError) throw messagesError;
+        if (workspace) {
+          // Reset timestamp to 24 hours ago to force re-fetch
+          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          await supabase
+            .from('channel_integrations')
+            .update({ last_fetch_timestamp: yesterday })
+            .eq('workspace_id', workspace.id)
+            .eq('is_connected', true);
+        }
+      }
 
-      // Then delete all conversations
-      const { error: conversationsError } = await supabase
-        .from('conversations')
-        .delete()
-        .gte('created_at', '1970-01-01'); // Match all rows
-
-      if (conversationsError) throw conversationsError;
-
-      setConversations([]);
-      setSelectedConversation(null);
-      toast.success("تم حذف جميع المحادثات والرسائل بنجاح");
+      await supabase.functions.invoke('auto-import-messages');
+      await fetchConversations();
+      toast.success("تم تحديث الرسائل بنجاح");
     } catch (error) {
-      console.error('Error deleting conversations:', error);
-      toast.error("فشل في حذف المحادثات");
+      console.error('[INBOX] Refresh error:', error);
+      toast.error("فشل في جلب الرسائل");
     } finally {
-      setShowDeleteDialog(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -502,12 +501,12 @@ const Inbox = () => {
         </div>
         <div className="flex gap-2">
           <Button 
-            variant="destructive" 
-            onClick={() => setShowDeleteDialog(true)}
-            disabled={conversations.length === 0}
+            variant="outline" 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
           >
-            <Trash2 className="w-4 h-4 ml-2" />
-            حذف الكل
+            <RefreshCw className={`w-4 h-4 ml-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'جاري التحديث...' : 'تحديث'}
           </Button>
         </div>
       </div>
@@ -663,22 +662,6 @@ const Inbox = () => {
         </div>
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>هل أنت متأكد من حذف جميع المحادثات؟</AlertDialogTitle>
-            <AlertDialogDescription>
-              سيتم حذف جميع المحادثات والرسائل نهائياً. لا يمكن التراجع عن هذا الإجراء.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>إلغاء</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              حذف الكل
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };
