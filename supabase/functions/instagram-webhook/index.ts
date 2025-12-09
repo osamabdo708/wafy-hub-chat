@@ -125,6 +125,8 @@ serve(async (req) => {
           const senderId = messaging.sender?.id;
           const messageRecipientId = messaging.recipient?.id;
           const messageText = messaging.message?.text;
+          const attachmentUrl = messaging.message?.attachments?.[0]?.payload?.url;
+          const content = messageText || attachmentUrl || '[Media]';
           const messageId = messaging.message?.mid;
           const timestamp = messaging.timestamp;
 
@@ -136,9 +138,13 @@ serve(async (req) => {
             messageId
           });
 
-          // Skip if no message text or if sender is our account
-          if (!messageText || senderId === myAccountId) {
-            console.log('[INSTAGRAM-WEBHOOK] Skipping - no text or self message');
+          // Skip if sender is our account or missing message id
+          if (senderId === myAccountId) {
+            console.log('[INSTAGRAM-WEBHOOK] Skipping - self message');
+            continue;
+          }
+          if (!messageId) {
+            console.log('[INSTAGRAM-WEBHOOK] Skipping - no messageId');
             continue;
           }
 
@@ -266,7 +272,7 @@ serve(async (req) => {
             .from('messages')
             .insert({
               conversation_id: conversationId,
-              content: messageText,
+              content,
               sender_type: 'customer',
               message_id: messageId,
               is_old: false,
