@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Users, Building2, Shield, Trash2, UserPlus } from "lucide-react";
+import { Users, Building2, Shield, Trash2, UserPlus, LogOut } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -141,6 +141,27 @@ const SuperAdmin = () => {
     }
   };
 
+  const handleClearAllSessions = async () => {
+    try {
+      toast.loading("جاري إنهاء جميع الجلسات...");
+      
+      const { data, error } = await supabase.functions.invoke('clear-all-sessions');
+
+      if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      toast.dismiss();
+      toast.success(`تم إنهاء ${data.clearedCount} جلسة بنجاح`);
+    } catch (error) {
+      console.error('Error clearing sessions:', error);
+      toast.dismiss();
+      toast.error("فشل في إنهاء الجلسات");
+    }
+  };
+
   const stats = [
     { label: "إجمالي المستخدمين", value: users.length, icon: Users },
     { label: "مساحات العمل", value: workspaces.length, icon: Building2 },
@@ -187,6 +208,14 @@ const SuperAdmin = () => {
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">المستخدمين</h2>
+          <Button
+            variant="outline"
+            onClick={handleClearAllSessions}
+            className="gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            إنهاء جميع الجلسات
+          </Button>
         </div>
 
         <ScrollArea className="h-[400px]">
