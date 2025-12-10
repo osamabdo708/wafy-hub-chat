@@ -123,33 +123,31 @@ serve(async (req) => {
         }
 
         // Instagram uses entry.changes[], not entry.messaging[]
-        for (const change of entry.changes || []) {
+for (const change of entry.changes || []) {
+  const value = change.value;
+  if (!value || value.messaging_product !== "instagram") continue;
 
-          const value = change.value;
-          if (!value || value.messaging_product !== "instagram") continue;
+  // Ensure we capture all messages, including requests
+  const msg = value.message;
+  if (!msg) continue;
 
-          // Check for message data
-          if (!value.message) {
-            console.log('[INSTAGRAM-WEBHOOK] Skipping non-message change event:', change.field);
-            continue;
-          }
+  const senderId = value.sender?.id;
+  const recipientId = value.recipient?.id;
+  const timestamp = value.timestamp;
+  const messageId = msg.mid;
+  const messageText = msg.text;
+  const attachmentUrl = msg.attachments?.[0]?.payload?.url;
+  const threadType = msg.thread_type || "INBOX"; // INBOX / PENDING / etc.
 
-          const senderId = value.sender?.id;
-          const recipientId = value.recipient?.id;
-          const timestamp = value.timestamp;
-          const messageId = value.message?.mid;
+  const content = messageText || attachmentUrl || "[Media]";
 
-          const messageText = value.message?.text;
-          const attachmentUrl = value.message?.attachments?.[0]?.payload?.url;
-
-          const content = messageText || attachmentUrl || "[Media]";
-
-          console.log("[INSTAGRAM-WEBHOOK] Processed IG message:", {
-            senderId,
-            recipientId,
-            messageId,
-            content
-          });
+  console.log("[INSTAGRAM-WEBHOOK] Processed IG message:", {
+    senderId,
+    recipientId,
+    messageId,
+    threadType,
+    content
+  });
 
           // SKIP SELF MESSAGES
           if (senderId === myAccountId) continue;
