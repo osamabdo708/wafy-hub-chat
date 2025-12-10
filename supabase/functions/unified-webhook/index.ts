@@ -109,8 +109,8 @@ async function handleFacebookMessage(body: any, supabase: any) {
       // Skip if missing required data
       if (!senderId || !messageId) continue;
 
-      // Find the integration by page_id (account_id) - workspace-scoped lookup
-      const integration = await findIntegration(supabase, 'facebook', [pageId, recipientId]);
+      // Find the integration by page_id - STRICT workspace-scoped lookup
+      const integration = await findIntegrationStrict(supabase, 'facebook', pageId);
       if (!integration) {
         console.log('[UNIFIED-WEBHOOK] ❌ No Facebook integration found for page:', pageId);
         continue;
@@ -163,7 +163,8 @@ async function handleInstagramMessage(body: any, supabase: any) {
 
       if (!senderId || !messageId) continue;
 
-      const integration = await findIntegration(supabase, 'instagram', [recipientId, entry.id]);
+      // Find integration by recipient ID (Instagram account ID)
+      const integration = await findIntegrationStrict(supabase, 'instagram', recipientId);
       if (!integration) {
         console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integration found for:', recipientId);
         continue;
@@ -208,7 +209,7 @@ async function handleInstagramMessage(body: any, supabase: any) {
 
       if (!senderId || !messageId) continue;
 
-      const integration = await findIntegration(supabase, 'instagram', [recipientId, entry.id]);
+      const integration = await findIntegrationStrict(supabase, 'instagram', recipientId);
       if (!integration) {
         console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integration found for:', recipientId);
         continue;
@@ -264,10 +265,10 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
 
         if (!senderId || !messageId) continue;
 
-        // Find integration by wa_id or phone_number_id
-        const integration = await findIntegration(supabase, 'whatsapp', [waId, phoneNumberId]);
+        // Find integration by phone_number_id or wa_id - STRICT lookup
+        const integration = await findIntegrationStrict(supabase, 'whatsapp', phoneNumberId, waId);
         if (!integration) {
-          console.log('[UNIFIED-WEBHOOK] ❌ No WhatsApp integration found for:', waId);
+          console.log('[UNIFIED-WEBHOOK] ❌ No WhatsApp integration found for:', phoneNumberId || waId);
           continue;
         }
 
@@ -300,16 +301,22 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
 }
 
 // ============================================
-// HELPER: Find Integration by Account Identifiers
+// HELPER: Find Integration STRICTLY by Account ID
+// This is the KEY FIX for multi-tenant routing
 // ============================================
-async function findIntegration(
+async function findIntegrationStrict(
   supabase: any,
   channel: string,
-  potentialIds: (string | undefined)[]
+  primaryId: string,
+  secondaryId?: string
 ): Promise<ChannelIntegration | null> {
-  const validIds = potentialIds.filter(Boolean);
+  console.log(`[UNIFIED-WEBHOOK] Looking for ${channel} integration with ID: ${primaryId}${secondaryId ? ` or ${secondaryId}` : ''}`);
 
-  // Query channel_integrations for this channel
+  // Build list of IDs to search for
+  const searchIds = [primaryId];
+  if (secondaryId) searchIds.push(secondaryId);
+
+  // STRICT QUERY: Only match integrations where account_id OR config contains the exact ID
   const { data: integrations, error } = await supabase
     .from('channel_integrations')
     .select('id, channel, account_id, workspace_id, config')
@@ -322,14 +329,18 @@ async function findIntegration(
   }
 
   if (!integrations || integrations.length === 0) {
+    console.log(`[UNIFIED-WEBHOOK] No ${channel} integrations found in database`);
     return null;
   }
 
-  // Match by account identifiers stored in config or account_id
+  console.log(`[UNIFIED-WEBHOOK] Found ${integrations.length} ${channel} integrations, checking for match...`);
+
+  // Find EXACT match by account_id or config identifiers
   for (const integration of integrations) {
     const config = integration.config as any;
     
-    const matchIds = [
+    // Build list of all identifiers for this integration
+    const integrationIds = [
       integration.account_id,
       config?.page_id,
       config?.instagram_account_id,
@@ -337,13 +348,18 @@ async function findIntegration(
       config?.wa_id
     ].filter(Boolean);
 
-    for (const id of validIds) {
-      if (matchIds.includes(id)) {
+    console.log(`[UNIFIED-WEBHOOK] Integration ${integration.id} (workspace: ${integration.workspace_id}) has IDs:`, integrationIds);
+
+    // Check if any of our search IDs match this integration
+    for (const searchId of searchIds) {
+      if (integrationIds.includes(searchId)) {
+        console.log(`[UNIFIED-WEBHOOK] ✅ MATCH FOUND - Routing to workspace: ${integration.workspace_id}`);
         return integration as ChannelIntegration;
       }
     }
   }
 
+  console.log(`[UNIFIED-WEBHOOK] ❌ No matching integration found for IDs:`, searchIds);
   return null;
 }
 
@@ -379,11 +395,11 @@ async function saveIncomingMessage(
     return;
   }
 
-  // Find or create conversation
+  // Find or create conversation - SCOPED TO THIS WORKSPACE
   const threadId = `${channel}_${senderId}_${recipientId}`;
   const messageTime = typeof timestamp === 'number' ? new Date(timestamp).toISOString() : new Date(parseInt(timestamp as string)).toISOString();
 
-  // Look for existing conversation in THIS workspace
+  // Look for existing conversation in THIS workspace ONLY
   let { data: conversation } = await supabase
     .from('conversations')
     .select('id')
@@ -426,7 +442,7 @@ async function saveIncomingMessage(
     
     name = name || `${channel.charAt(0).toUpperCase() + channel.slice(1)} User ${senderId.slice(-8)}`;
 
-    // Create new conversation
+    // Create new conversation IN THIS WORKSPACE
     const { data: newConv, error: convError } = await supabase
       .from('conversations')
       .insert({
@@ -444,7 +460,7 @@ async function saveIncomingMessage(
       .single();
 
     if (convError) {
-      // Handle duplicate key error
+      // Handle duplicate key error - conversation might have been created by another request
       if ((convError as any).code === '23505') {
         const { data: dupConv } = await supabase
           .from('conversations')
@@ -467,7 +483,7 @@ async function saveIncomingMessage(
       }
     } else {
       conversationId = newConv.id;
-      console.log('[UNIFIED-WEBHOOK] Created new conversation:', conversationId);
+      console.log('[UNIFIED-WEBHOOK] Created new conversation:', conversationId, 'in workspace:', workspaceId);
     }
   }
 
@@ -488,7 +504,7 @@ async function saveIncomingMessage(
   if (msgError) {
     console.error('[UNIFIED-WEBHOOK] Error inserting message:', msgError);
   } else {
-    console.log('[UNIFIED-WEBHOOK] ✅ Message saved successfully for', channel);
+    console.log('[UNIFIED-WEBHOOK] ✅ Message saved successfully for', channel, 'in workspace:', workspaceId);
 
     // Trigger AI auto-reply
     try {

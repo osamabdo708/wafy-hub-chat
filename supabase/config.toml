@@ -1,49 +1,58 @@
 project_id = "pegkzuxbgswqouieordl"
 
+# ============================================
+# UNIFIED WEBHOOK (Single endpoint for all Meta channels)
+# ============================================
 [functions.unified-webhook]
 verify_jwt = false
 
+# ============================================
+# UNIFIED OAUTH (Single callback for all Meta channels)
+# ============================================
 [functions.channel-oauth-callback]
 verify_jwt = false
 
+# ============================================
+# MESSAGE SENDING
+# ============================================
 [functions.send-channel-message]
 verify_jwt = true
 
-[functions.whatsapp-webhook]
-verify_jwt = false
-
-[functions.facebook-webhook]
-verify_jwt = false
-
-[functions.facebook-oauth-callback]
-verify_jwt = false
-
-[functions.instagram-webhook]
-verify_jwt = false
-
-[functions.oauth-connect]
-verify_jwt = false
-
-[functions.oauth-callback]
-verify_jwt = false
-
-[functions.webhooks-meta]
-verify_jwt = false
-
-[functions.unified-send-message]
+# ============================================
+# AUTO-IMPORT & AUTO-REPLY
+# ============================================
+[functions.auto-import-messages]
 verify_jwt = true
 
-[functions.token-refresh-worker]
+[functions.auto-reply-messages]
 verify_jwt = true
 
+# ============================================
+# OTHER FUNCTIONS
+# ============================================
 [functions.delete-user]
 verify_jwt = false
 
 [functions.super-admin-data]
 verify_jwt = false
 
-[functions.auto-reply-messages]
+[functions.ai-chat-handler]
 verify_jwt = true
 
-[functions.auto-import-messages]
+[functions.check-ai-responses]
+verify_jwt = true
+
+[functions.test-openai-connection]
+verify_jwt = true
+
+[functions.test-instagram-connection]
+verify_jwt = true
+
+[functions.clear-all-sessions]
+verify_jwt = true
+
+[functions.token-refresh-worker]
+verify_jwt = true
+
+[functions.import-facebook-conversations]
 verify_jwt = true
