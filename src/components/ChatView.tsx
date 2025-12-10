@@ -141,56 +141,20 @@ const ChatView = ({
 
     setSending(true);
     try {
-      // Get current conversation to check thread_id
-      const { data: conversation } = await supabase
-        .from('conversations')
-        .select('thread_id, platform')
-        .eq('id', conversationId)
-        .single();
-
-      // Send message to platform FIRST to get message_id
-      let platformMessageId = null;
-      if ((channel === 'facebook' || channel === 'instagram') && conversation?.thread_id) {
-        const functionName = channel === 'instagram' ? 'send-instagram-message' : 'send-facebook-message';
-        const { data: platformResponse, error: sendError } = await supabase.functions.invoke(functionName, {
-          body: {
-            recipientId: customerPhone,
-            message: newMessage.trim()
-          }
-        });
-
-        if (sendError) {
-          console.error(`Error sending to ${channel}:`, sendError);
-          toast.error(`فشل إرسال الرسالة إلى ${channel === 'instagram' ? 'إنستغرام' : 'فيسبوك'}`);
-          setSending(false);
-          return;
+      // Use unified send-channel-message function for ALL channels
+      const { data: response, error: sendError } = await supabase.functions.invoke('send-channel-message', {
+        body: {
+          conversationId,
+          message: newMessage.trim()
         }
+      });
 
-        platformMessageId = platformResponse?.messageId;
+      if (sendError || !response?.success) {
+        console.error(`Error sending message:`, sendError || response?.error);
+        toast.error(response?.error || 'فشل إرسال الرسالة');
+        setSending(false);
+        return;
       }
-
-      // Insert message to database with platform message_id to prevent duplicate imports
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          content: newMessage.trim(),
-          sender_type: 'employee',
-          message_id: platformMessageId, // Save platform message_id
-          is_old: false,
-          reply_sent: true // Mark as already sent since employee sent it
-        });
-
-      if (error) throw error;
-
-      // Update conversation's last_message_at (do NOT create new conversation)
-      await supabase
-        .from('conversations')
-        .update({ 
-          last_message_at: new Date().toISOString(),
-          status: 'مفتوح'
-        })
-        .eq('id', conversationId);
 
       setNewMessage("");
       toast.success('تم إرسال الرسالة');
