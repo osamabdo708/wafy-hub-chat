@@ -113,6 +113,7 @@ serve(async (req) => {
       accountId = page.id;
       console.log("[OAUTH] Got page:", page.name, "with page access token");
 
+      // Subscribe to webhook
       const subscribeFields = channelType === "instagram" 
         ? "messages,messaging_postbacks" 
         : "messages,messaging_postbacks,messaging_optins,message_deliveries,message_reads";
@@ -138,6 +139,7 @@ serve(async (req) => {
         config.webhook_subscribed = true;
       }
 
+      // Handle Instagram connection - INDEPENDENT from Facebook
       if (channelType === "instagram") {
         const igResponse = await fetch(
           `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
@@ -158,42 +160,42 @@ serve(async (req) => {
           accountIdentifier = igInfo.username ? `@${igInfo.username}` : (igInfo.name || page.name);
         } else {
           console.log("[OAUTH] No Instagram Business Account found for this page");
-          config.account_name = `${page.name} (Facebook)`;
-          accountIdentifier = `${page.name} (Facebook)`;
-          accountId = page.id;
+          return new Response(
+            `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'No Instagram Business Account linked to this Facebook page'},'*');window.close();</script></body></html>`,
+            { headers: { "Content-Type": "text/html" } }
+          );
         }
 
-        // 🔥 FIX: Ensure workspace_id is always included
-        const { data: existingIgWorkspaceConnection } = await supabase
+        // Check for existing Instagram connection with same account_id in this workspace
+        const { data: existingIgConnection } = await supabase
           .from("channel_integrations")
           .select("id")
-          .eq("channel", `instagram_${accountId}`)
+          .eq("channel", "instagram")
+          .eq("account_id", accountId)
           .eq("workspace_id", workspaceId)
           .maybeSingle();
 
         let igSaveError: any = null;
         
-        if (existingIgWorkspaceConnection) {
+        if (existingIgConnection) {
           console.log("[OAUTH] Updating existing Instagram connection for workspace:", workspaceId);
           const { error } = await supabase
             .from("channel_integrations")
             .update({
               is_connected: true,
               config,
-              workspace_id: workspaceId, // 🔥 FIX: Explicitly set workspace_id
-              account_id: accountId, // 🔥 FIX: Ensure account_id is set
               updated_at: new Date().toISOString(),
             })
-            .eq("id", existingIgWorkspaceConnection.id);
+            .eq("id", existingIgConnection.id);
           igSaveError = error;
         } else {
           console.log("[OAUTH] Creating new Instagram connection for workspace:", workspaceId);
           const { error } = await supabase
             .from("channel_integrations")
             .insert({
-              channel: `instagram_${accountId}`,
+              channel: "instagram", // Use simple enum value
               account_id: accountId,
-              workspace_id: workspaceId, // 🔥 FIX: Always include workspace_id
+              workspace_id: workspaceId,
               is_connected: true,
               config,
             });
@@ -203,7 +205,7 @@ serve(async (req) => {
         if (igSaveError) {
           console.error("[OAUTH] Database error:", igSaveError);
           return new Response(
-            `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
+            `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error: ${igSaveError.message}'},'*');window.close();</script></body></html>`,
             { headers: { "Content-Type": "text/html" } }
           );
         }
@@ -229,37 +231,37 @@ serve(async (req) => {
       config.connected_via = "oauth";
     }
 
-    // 🔥 FIX: Ensure workspace_id is always included
-    const { data: existingWorkspaceConnection } = await supabase
+    // Handle Facebook Messenger connection - INDEPENDENT
+    // Check for existing Facebook connection with same account_id in this workspace
+    const { data: existingFbConnection } = await supabase
       .from("channel_integrations")
       .select("id")
-      .eq("channel", `facebook_${accountId}`)
+      .eq("channel", "facebook")
+      .eq("account_id", accountId)
       .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     let saveError: any = null;
     
-    if (existingWorkspaceConnection) {
+    if (existingFbConnection) {
       console.log("[OAUTH] Updating existing Facebook connection for workspace:", workspaceId);
       const { error } = await supabase
         .from("channel_integrations")
         .update({
           is_connected: true,
           config,
-          workspace_id: workspaceId, // 🔥 FIX: Explicitly set workspace_id
-          account_id: accountId, // 🔥 FIX: Ensure account_id is set
           updated_at: new Date().toISOString(),
         })
-        .eq("id", existingWorkspaceConnection.id);
+        .eq("id", existingFbConnection.id);
       saveError = error;
     } else {
       console.log("[OAUTH] Creating new Facebook connection for workspace:", workspaceId);
       const { error } = await supabase
         .from("channel_integrations")
         .insert({
-          channel: `facebook_${accountId}`,
+          channel: "facebook", // Use simple enum value
           account_id: accountId,
-          workspace_id: workspaceId, // 🔥 FIX: Always include workspace_id
+          workspace_id: workspaceId,
           is_connected: true,
           config,
         });
@@ -269,7 +271,7 @@ serve(async (req) => {
     if (saveError) {
       console.error("[OAUTH] Database error:", saveError);
       return new Response(
-        `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error'},'*');window.close();</script></body></html>`,
+        `<html><body><script>window.opener.postMessage({type:'oauth_error',error:'Database error: ${saveError.message}'},'*');window.close();</script></body></html>`,
         { headers: { "Content-Type": "text/html" } }
       );
     }
