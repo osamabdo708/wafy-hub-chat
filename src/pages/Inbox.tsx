@@ -41,7 +41,7 @@ interface Conversation {
   assigned_agent?: Agent | null;
 }
 
-type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email' | 'tiktok';
+type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email';
 type FilterType = 'all' | 'facebook' | 'instagram' | 'whatsapp' | 'tiktok';
 
 interface ConnectedChannel {

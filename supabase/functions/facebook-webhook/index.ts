@@ -268,8 +268,12 @@ serve(async (req) => {
                 console.error('[WEBHOOK] Error creating conversation:', convError);
                 continue;
               }
+            } else if (newConv) {
+              conversationId = newConv.id;
+            } else {
+              console.error('[WEBHOOK] Error creating conversation: newConv is null');
+              continue;
             }
-            conversationId = newConv.id;
             console.log('[WEBHOOK] Created new conversation:', conversationId);
           }
 

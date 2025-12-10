@@ -105,7 +105,7 @@ serve(async (req) => {
         result = await sendMetaMessage(recipientId, message, accessToken);
         break;
       case "whatsapp":
-        result = await sendWhatsAppMessage(recipientId, message, accessToken, supabase);
+        result = await sendWhatsAppMessage(recipientId, message, accessToken, supabase, conversation.workspace_id);
         break;
       default:
         return new Response(
@@ -183,13 +183,14 @@ async function sendWhatsAppMessage(
   recipientId: string,
   message: string,
   accessToken: string,
-  supabase: any
+  supabase: any,
+  workspaceId: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   // Get WhatsApp phone number ID from the specific integration that owns this conversation
   const { data: conversationIntegration } = await supabase
     .from("channel_integrations")
     .select("config")
-    .eq("workspace_id", conversation.workspace_id)
+    .eq("workspace_id", workspaceId)
     .like("channel", "whatsapp%")
     .eq("is_connected", true)
     .single(); // Assuming one connected WhatsApp account per workspace for now
