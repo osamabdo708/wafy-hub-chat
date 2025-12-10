@@ -31,7 +31,8 @@ export const ChannelCard = ({
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
+  // Use the new unified OAuth callback
+  const oauthCallbackUrl = `${SUPABASE_URL}/functions/v1/channel-oauth-callback`;
 
   useEffect(() => {
     // Get the user's workspace
@@ -61,7 +62,7 @@ export const ChannelCard = ({
         if (event.data?.type === 'oauth_success' && event.data?.channel === channel) {
           toast({
             title: 'تم الربط بنجاح',
-            description: `تم ربط ${name} بنجاح`,
+            description: `تم ربط ${name}: ${event.data.account}`,
           });
           loadSettings();
           setIsLoading(false);
@@ -78,14 +79,14 @@ export const ChannelCard = ({
       window.addEventListener('message', handleMessage);
       return () => window.removeEventListener('message', handleMessage);
     }
-  }, [channel, comingSoon, workspaceId]);
+  }, [channel, comingSoon, workspaceId, name, toast]);
 
   const loadSettings = async () => {
     // Only load for supported channels
     if (!['whatsapp', 'facebook', 'instagram'].includes(channel)) return;
     if (!workspaceId) return;
     
-    // Get the first connected integration for this channel in this workspace
+    // Get the integration for this channel in THIS workspace
     const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
@@ -103,13 +104,14 @@ export const ChannelCard = ({
       const config = data[0].config as any;
       setIsConnected(true);
       
-      // Set account info based on channel
+      // Set account info based on channel type
       if (channel === 'whatsapp') {
-        setAccountInfo(config?.business_name || config?.phone_number || '');
+        setAccountInfo(config?.display_name || config?.phone_number || 'WhatsApp Business');
       } else if (channel === 'facebook') {
-        setAccountInfo(config?.page_name || '');
+        setAccountInfo(config?.page_name || 'Facebook Page');
       } else if (channel === 'instagram') {
-        setAccountInfo(config?.account_name ? `@${config.account_name}` : '');
+        const username = config?.account_name;
+        setAccountInfo(username ? (username.startsWith('@') ? username : `@${username}`) : 'Instagram Account');
       }
     } else {
       setIsConnected(false);
@@ -120,11 +122,11 @@ export const ChannelCard = ({
   const getOAuthScope = () => {
     switch (channel) {
       case 'whatsapp':
-        return 'whatsapp_business_management,whatsapp_business_messaging';
+        return 'whatsapp_business_management,whatsapp_business_messaging,business_management';
       case 'facebook':
         return 'pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata';
       case 'instagram':
-        return 'instagram_basic,instagram_manage_messages,pages_show_list,pages_messaging,pages_read_engagement';
+        return 'instagram_basic,instagram_manage_messages,pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata';
       default:
         return '';
     }
@@ -142,11 +144,11 @@ export const ChannelCard = ({
 
     setIsLoading(true);
     const scope = getOAuthScope();
-    // Include workspace_id in state
+    // State format: channelType|redirectUri|workspaceId
     const state = `${channel}|${oauthCallbackUrl}|${workspaceId}`;
-    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
+    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
     
-    // Open popup window for all channels
+    // Open popup window
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.outerWidth - width) / 2;
@@ -164,7 +166,7 @@ export const ChannelCard = ({
     
     setIsLoading(true);
     try {
-      // First, get all conversation IDs for this channel in this workspace
+      // Get all conversation IDs for this channel in this workspace
       const { data: conversations } = await supabase
         .from('conversations')
         .select('id')
@@ -187,7 +189,7 @@ export const ChannelCard = ({
         .eq('channel', channel as any)
         .eq('workspace_id', workspaceId);
 
-      // Update only connected integrations for this channel in this workspace to disconnected
+      // Set integration to disconnected (don't delete, just mark as disconnected)
       const { error } = await supabase
         .from('channel_integrations')
         .update({
@@ -195,14 +197,13 @@ export const ChannelCard = ({
           updated_at: new Date().toISOString()
         })
         .eq('channel', channel as any)
-        .eq('is_connected', true)
         .eq('workspace_id', workspaceId);
 
       if (error) {
         console.error('Disconnect error:', error);
         toast({
           title: 'خطأ',
-          description: 'لا تملك الصلاحية لفصل الاتصال',
+          description: 'فشل في فصل الاتصال',
           variant: 'destructive',
         });
         return;

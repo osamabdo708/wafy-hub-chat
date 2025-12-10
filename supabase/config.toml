@@ -1,5 +1,14 @@
 project_id = "pegkzuxbgswqouieordl"
 
+[functions.unified-webhook]
+verify_jwt = false
+
+[functions.channel-oauth-callback]
+verify_jwt = false
+
+[functions.send-channel-message]
+verify_jwt = true
+
 [functions.whatsapp-webhook]
 verify_jwt = false
 
@@ -29,3 +38,12 @@ verify_jwt = true
 
 [functions.delete-user]
 verify_jwt = false
+
+[functions.super-admin-data]
+verify_jwt = false
+
+[functions.auto-reply-messages]
+verify_jwt = true
+
+[functions.auto-import-messages]
+verify_jwt = true
