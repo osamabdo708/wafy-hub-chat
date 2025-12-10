@@ -49,7 +49,8 @@ interface UserWithWorkspace {
   full_name: string;
   role: string;
   created_at: string;
-  workspace_name?: string;
+  workspace_id?: string | null;
+  workspace_name?: string | null;
 }
 
 const SuperAdmin = () => {
@@ -68,47 +69,17 @@ const SuperAdmin = () => {
 
   const fetchData = async () => {
     try {
-      // Fetch all workspaces
-      const { data: workspacesData, error: workspacesError } = await supabase
-        .from('workspaces')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Use edge function to bypass RLS and get all data
+      const { data, error } = await supabase.functions.invoke('super-admin-data');
 
-      if (workspacesError) throw workspacesError;
+      if (error) throw error;
 
-      // Fetch all profiles
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (data?.error) {
+        throw new Error(data.error);
+      }
 
-      if (profilesError) throw profilesError;
-
-      // Map workspaces with owner info
-      const workspacesWithOwners = (workspacesData || []).map(ws => {
-        const owner = profilesData?.find(p => p.id === ws.owner_user_id);
-        return {
-          ...ws,
-          owner_email: owner?.email || 'غير معروف',
-          owner_name: owner?.full_name || 'غير معروف'
-        };
-      });
-
-      // Map users with workspace info
-      const usersWithWorkspaces = (profilesData || []).map(profile => {
-        const workspace = workspacesData?.find(w => w.owner_user_id === profile.id);
-        return {
-          id: profile.id,
-          email: profile.email || '',
-          full_name: profile.full_name || '',
-          role: profile.role || 'agent',
-          created_at: profile.created_at,
-          workspace_name: workspace?.name
-        };
-      });
-
-      setWorkspaces(workspacesWithOwners);
-      setUsers(usersWithWorkspaces);
+      setWorkspaces(data.workspaces || []);
+      setUsers(data.users || []);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error("فشل في تحميل البيانات");
