@@ -24,7 +24,6 @@ serve(async (req) => {
     return new Response('Forbidden', { status: 403 });
   }
 
-  // Handle incoming messages
   if (req.method === 'POST') {
     try {
       const body = await req.json();
@@ -43,8 +42,6 @@ serve(async (req) => {
         .eq('provider', 'instagram');
 
       for (const entry of body.entry || []) {
-
-        // Determine the IG account receiving messages
         const recipientId = entry.messaging?.[0]?.recipient?.id || entry.id;
         const potentialIds = [recipientId, entry.id].filter(Boolean);
 
@@ -66,7 +63,6 @@ serve(async (req) => {
 
         if (!workspaceId || !myAccountId) continue;
 
-        // Process Instagram changes
         for (const change of entry.changes || []) {
           const value = change.value;
           if (!value || value.messaging_product !== "instagram") continue;
@@ -76,19 +72,18 @@ serve(async (req) => {
 
           const senderId = value.sender?.id;
           const timestamp = value.timestamp;
-          const messageId = msg.mid;
+          let messageId = msg.mid;
           const messageText = msg.text;
           const attachmentUrl = msg.attachments?.[0]?.payload?.url;
           const threadType = msg.thread_type || "INBOX";
           const content = messageText || attachmentUrl || "[Media]";
 
-          // Skip self messages
-          if (senderId === myAccountId || !messageId) continue;
+          if (senderId === myAccountId) continue;
 
           // Fetch sender name
-          let customerName = `Instagram User ${senderId.slice(-8)}`;
+          let customerName = `Instagram User ${senderId?.slice(-8)}`;
           try {
-            if (accessToken) {
+            if (accessToken && senderId) {
               const nameResponse = await fetch(
                 `https://graph.facebook.com/v19.0/${senderId}?fields=name,username&access_token=${accessToken}`
               );
@@ -100,16 +95,13 @@ serve(async (req) => {
             console.log('[INSTAGRAM-WEBHOOK] Could not fetch customer name:', e);
           }
 
-          // Generate conversation per **unique senderId + workspace**
-          const threadId = `ig_${workspaceId}_${senderId}`;
+          // Ensure unique conversation per senderId + username
+          const threadId = `ig_${workspaceId}_${senderId}_${customerName.replace(/\s/g, "_")}`;
 
           // Check if conversation exists
           let { data: existingConv } = await supabase
             .from('conversations')
-            .select('id')
-            .eq('customer_phone', senderId)
-            .eq('channel', 'instagram')
-            .eq('workspace_id', workspaceId)
+            .select('id, customer_name')
             .eq('thread_id', threadId)
             .maybeSingle();
 
@@ -139,13 +131,21 @@ serve(async (req) => {
             conversationId = newConv!.id;
           } else {
             conversationId = existingConv.id;
-            await supabase
-              .from('conversations')
+            // Update customer_name if changed
+            if (existingConv.customer_name !== customerName) {
+              await supabase.from('conversations')
+                .update({ customer_name: customerName })
+                .eq('id', conversationId);
+            }
+            await supabase.from('conversations')
               .update({ last_message_at: new Date(timestamp).toISOString() })
               .eq('id', conversationId);
           }
 
-          // Check for existing message
+          // Generate safe message ID if missing
+          if (!messageId) messageId = `igmsg_${timestamp}_${senderId}`;
+
+          // Check duplicate message
           const { data: existingMsg } = await supabase
             .from('messages')
             .select('id')
@@ -154,7 +154,7 @@ serve(async (req) => {
 
           if (existingMsg) continue;
 
-          // Insert new message
+          // Insert message
           const { error: msgError } = await supabase
             .from('messages')
             .insert({
