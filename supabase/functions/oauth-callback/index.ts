@@ -106,10 +106,10 @@ serve(async (req) => {
     const page = pagesData.data[0];
     console.log("[OAUTH-CALLBACK] Got page:", page.name);
 
-    let channelId: string;
-    let channelName: string;
-    let pageAccessToken: string;
-    let pageId: string;
+    let channelId: string = "";
+    let channelName: string = "";
+    let pageAccessToken: string = "";
+    let pageId: string = "";
 
     if (provider === "facebook") {
       // For Facebook Messenger, we connect the Facebook Page itself.
