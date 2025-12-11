@@ -95,14 +95,16 @@ serve(async (req) => {
             console.log('[INSTAGRAM-WEBHOOK] Could not fetch customer name:', e);
           }
 
-          // Ensure unique conversation per senderId + username
-          const threadId = `ig_${workspaceId}_${senderId}_${customerName.replace(/\s/g, "_")}`;
+          // Ensure unique conversation per senderId per workspace - KEY FIX
+          const threadId = `ig_${workspaceId}_${senderId}`;
 
-          // Check if conversation exists
+          // Check if conversation exists - match by workspace_id + channel + senderId (customer_phone)
           let { data: existingConv } = await supabase
             .from('conversations')
             .select('id, customer_name')
-            .eq('thread_id', threadId)
+            .eq('workspace_id', workspaceId)
+            .eq('channel', 'instagram')
+            .eq('customer_phone', senderId)
             .maybeSingle();
 
           let conversationId: string;
@@ -125,10 +127,30 @@ serve(async (req) => {
               .single();
 
             if (convError) {
-              console.error('[INSTAGRAM-WEBHOOK] Error creating conversation:', convError);
-              continue;
+              // Handle race condition
+              if ((convError as any).code === '23505') {
+                const { data: raceConv } = await supabase
+                  .from('conversations')
+                  .select('id, customer_name')
+                  .eq('workspace_id', workspaceId)
+                  .eq('channel', 'instagram')
+                  .eq('customer_phone', senderId)
+                  .maybeSingle();
+                if (raceConv) {
+                  conversationId = raceConv.id;
+                  console.log('[INSTAGRAM-WEBHOOK] Found conversation after race:', conversationId);
+                } else {
+                  console.error('[INSTAGRAM-WEBHOOK] Error creating conversation:', convError);
+                  continue;
+                }
+              } else {
+                console.error('[INSTAGRAM-WEBHOOK] Error creating conversation:', convError);
+                continue;
+              }
+            } else {
+              conversationId = newConv!.id;
+              console.log('[INSTAGRAM-WEBHOOK] Created new conversation for sender:', senderId);
             }
-            conversationId = newConv!.id;
           } else {
             conversationId = existingConv.id;
             // Update customer_name if changed
@@ -138,7 +160,10 @@ serve(async (req) => {
                 .eq('id', conversationId);
             }
             await supabase.from('conversations')
-              .update({ last_message_at: new Date(timestamp).toISOString() })
+              .update({ 
+                last_message_at: new Date(timestamp).toISOString(),
+                thread_id: threadId 
+              })
               .eq('id', conversationId);
           }
 

@@ -155,13 +155,15 @@ serve(async (req) => {
         senderName = userInfo?.name;
       }
 
-      // Find or create conversation
+      // Find or create conversation - MUST be scoped by workspace_id AND senderId (customer_phone)
+      // This ensures each Instagram/Facebook user gets their own conversation
       const { data: existingConv } = await supabase
         .from("conversations")
         .select("id, ai_enabled")
         .eq("channel", source.provider)
-        .eq("thread_id", source.conversationId)
-        .single();
+        .eq("workspace_id", workspaceId)
+        .eq("customer_phone", source.senderId)  // Key fix: match by senderId, not thread_id
+        .maybeSingle();
 
       let conversationId: string;
       let aiEnabled = false;
@@ -170,21 +172,26 @@ serve(async (req) => {
         conversationId = existingConv.id;
         aiEnabled = existingConv.ai_enabled || false;
 
-        // Update last message time
+        // Update last message time and thread_id
         await supabase
           .from("conversations")
-          .update({ last_message_at: new Date().toISOString() })
+          .update({ 
+            last_message_at: new Date().toISOString(),
+            thread_id: source.conversationId 
+          })
           .eq("id", conversationId);
+        
+        console.log("[WEBHOOK-META] Found existing conversation for sender:", source.senderId);
       } else {
-        // Create new conversation
+        // Create new conversation - one per sender per workspace per channel
         const { data: newConv, error: convError } = await supabase
           .from("conversations")
           .insert({
             workspace_id: workspaceId,
             channel: source.provider,
             thread_id: source.conversationId,
-            customer_name: senderName || source.senderId,
-            customer_phone: source.provider === "whatsapp" ? source.senderId : null,
+            customer_name: senderName || `${source.provider} User ${source.senderId.slice(-8)}`,
+            customer_phone: source.senderId,  // Key fix: store senderId for all channels
             platform: source.provider,
             status: "جديد",
             ai_enabled: false
@@ -193,15 +200,40 @@ serve(async (req) => {
           .single();
 
         if (convError) {
-          console.error("[WEBHOOK-META] Failed to create conversation:", convError);
-          await supabase
-            .from("webhook_events")
-            .update({ processed: true, processing_error: convError.message })
-            .eq("event_id", eventId);
-          return new Response("OK", { status: 200 });
+          // Handle race condition - conversation might have been created by another request
+          if ((convError as any).code === '23505') {
+            const { data: raceConv } = await supabase
+              .from("conversations")
+              .select("id, ai_enabled")
+              .eq("channel", source.provider)
+              .eq("workspace_id", workspaceId)
+              .eq("customer_phone", source.senderId)
+              .maybeSingle();
+            
+            if (raceConv) {
+              conversationId = raceConv.id;
+              aiEnabled = raceConv.ai_enabled || false;
+              console.log("[WEBHOOK-META] Found conversation after race condition:", conversationId);
+            } else {
+              console.error("[WEBHOOK-META] Failed to create conversation:", convError);
+              await supabase
+                .from("webhook_events")
+                .update({ processed: true, processing_error: convError.message })
+                .eq("event_id", eventId);
+              return new Response("OK", { status: 200 });
+            }
+          } else {
+            console.error("[WEBHOOK-META] Failed to create conversation:", convError);
+            await supabase
+              .from("webhook_events")
+              .update({ processed: true, processing_error: convError.message })
+              .eq("event_id", eventId);
+            return new Response("OK", { status: 200 });
+          }
+        } else {
+          conversationId = newConv.id;
+          console.log("[WEBHOOK-META] Created new conversation for sender:", source.senderId, "id:", conversationId);
         }
-
-        conversationId = newConv.id;
       }
 
       // Check for duplicate message
