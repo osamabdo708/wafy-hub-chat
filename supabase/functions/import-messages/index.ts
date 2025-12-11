@@ -16,31 +16,37 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get all connected integrations
+    // Get ALL connected integrations across ALL workspaces
     const { data: integrations, error: intError } = await supabase
       .from('channel_integrations')
       .select('*')
       .eq('is_connected', true);
 
     if (intError) {
-      console.error('Error fetching integrations:', intError);
+      console.error('[IMPORT] Error fetching integrations:', intError);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch integrations' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Found ${integrations?.length || 0} connected integrations`);
+    console.log(`[IMPORT] Found ${integrations?.length || 0} connected integrations across all workspaces`);
+
+    // Group integrations by workspace for logging
+    const workspaceCount = new Set(integrations?.map(i => i.workspace_id)).size;
+    console.log(`[IMPORT] Processing integrations for ${workspaceCount} different workspaces`);
 
     let totalImported = 0;
+    const results: { workspace: string; channel: string; imported: number }[] = [];
 
+    // Process EACH integration independently - true multi-tenant processing
     for (const integration of integrations || []) {
       const config = integration.config as any;
       const channel = integration.channel;
       const workspaceId = integration.workspace_id;
       const lastFetch = integration.last_fetch_timestamp;
 
-      console.log(`Processing ${channel} integration for workspace ${workspaceId}`);
+      console.log(`[IMPORT] Processing ${channel} for workspace ${workspaceId}`);
 
       try {
         let imported = 0;
@@ -53,31 +59,42 @@ serve(async (req) => {
             imported = await importInstagramMessages(supabase, integration, config, lastFetch);
             break;
           case 'whatsapp':
-            // WhatsApp is webhook-only, no polling import
-            console.log('WhatsApp uses webhooks only, skipping import');
+            // WhatsApp is webhook-only, no polling import needed
+            console.log(`[IMPORT] WhatsApp uses webhooks only, skipping polling import`);
             break;
         }
 
         totalImported += imported;
+        results.push({ workspace: workspaceId, channel, imported });
 
-        // Update last_fetch_timestamp
+        // Update last_fetch_timestamp for THIS specific integration
         await supabase
           .from('channel_integrations')
           .update({ last_fetch_timestamp: new Date().toISOString() })
           .eq('id', integration.id);
 
+        console.log(`[IMPORT] ✅ Workspace ${workspaceId} - ${channel}: imported ${imported} messages`);
+
       } catch (e) {
-        console.error(`Error importing from ${channel}:`, e);
+        console.error(`[IMPORT] Error importing ${channel} for workspace ${workspaceId}:`, e);
+        results.push({ workspace: workspaceId, channel, imported: 0 });
       }
     }
 
+    console.log(`[IMPORT] Complete. Total imported: ${totalImported} messages across ${workspaceCount} workspaces`);
+
     return new Response(
-      JSON.stringify({ success: true, imported: totalImported }),
+      JSON.stringify({ 
+        success: true, 
+        totalImported,
+        workspaceCount,
+        details: results 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
-    console.error('Import error:', error);
+    console.error('[IMPORT] Error:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -86,7 +103,7 @@ serve(async (req) => {
 });
 
 // ============================================================================
-// FACEBOOK IMPORT
+// FACEBOOK IMPORT (WORKSPACE-SCOPED)
 // ============================================================================
 async function importFacebookMessages(
   supabase: any,
@@ -96,16 +113,17 @@ async function importFacebookMessages(
 ): Promise<number> {
   const pageId = config.page_id;
   const accessToken = config.page_access_token;
+  const workspaceId = integration.workspace_id;
 
   if (!pageId || !accessToken) {
-    console.log('Missing Facebook config, skipping');
+    console.log(`[IMPORT] Missing Facebook config for workspace ${workspaceId}, skipping`);
     return 0;
   }
 
   let imported = 0;
 
   try {
-    // Fetch conversations
+    // Fetch conversations from Facebook API
     const convsResponse = await fetch(
       `https://graph.facebook.com/v21.0/${pageId}/conversations?` +
       `fields=id,participants,updated_time&` +
@@ -114,9 +132,11 @@ async function importFacebookMessages(
     const convsData = await convsResponse.json();
 
     if (!convsData.data) {
-      console.log('No Facebook conversations found');
+      console.log(`[IMPORT] No Facebook conversations found for workspace ${workspaceId}`);
       return 0;
     }
+
+    console.log(`[IMPORT] Found ${convsData.data.length} Facebook conversations for workspace ${workspaceId}`);
 
     for (const conv of convsData.data) {
       // Skip if not updated since last fetch
@@ -138,10 +158,10 @@ async function importFacebookMessages(
       const customer = conv.participants?.data?.find((p: any) => p.id !== pageId);
       const customerId = customer?.id || conv.id;
 
-      // Find or create conversation in database
+      // Find or create conversation in THIS workspace's database
       const dbConv = await getOrCreateConversation(
         supabase,
-        integration.workspace_id,
+        workspaceId,
         'facebook',
         customerId,
         conv.id,
@@ -158,10 +178,11 @@ async function importFacebookMessages(
         // Skip our own messages
         if (msg.from?.id === pageId) continue;
 
-        // Check for duplicate
+        // Check for duplicate - SCOPED BY CONVERSATION (workspace-isolated)
         const { data: existing } = await supabase
           .from('messages')
           .select('id')
+          .eq('conversation_id', dbConv.id)
           .eq('message_id', msg.id)
           .maybeSingle();
 
@@ -174,7 +195,7 @@ async function importFacebookMessages(
           sender_type: 'customer',
           message_id: msg.id,
           is_old: true,
-          reply_sent: true,
+          reply_sent: true, // Mark old messages as already replied
           created_at: new Date(msg.created_time).toISOString(),
         });
 
@@ -188,15 +209,15 @@ async function importFacebookMessages(
         .eq('id', dbConv.id);
     }
   } catch (e) {
-    console.error('Facebook import error:', e);
+    console.error(`[IMPORT] Facebook import error for workspace ${workspaceId}:`, e);
   }
 
-  console.log(`Imported ${imported} Facebook messages`);
+  console.log(`[IMPORT] Imported ${imported} Facebook messages for workspace ${workspaceId}`);
   return imported;
 }
 
 // ============================================================================
-// INSTAGRAM IMPORT
+// INSTAGRAM IMPORT (WORKSPACE-SCOPED)
 // ============================================================================
 async function importInstagramMessages(
   supabase: any,
@@ -206,16 +227,17 @@ async function importInstagramMessages(
 ): Promise<number> {
   const instagramAccountId = config.instagram_account_id;
   const accessToken = config.page_access_token;
+  const workspaceId = integration.workspace_id;
 
   if (!instagramAccountId || !accessToken) {
-    console.log('Missing Instagram config, skipping');
+    console.log(`[IMPORT] Missing Instagram config for workspace ${workspaceId}, skipping`);
     return 0;
   }
 
   let imported = 0;
 
   try {
-    // Fetch conversations
+    // Fetch conversations from Instagram API
     const convsResponse = await fetch(
       `https://graph.facebook.com/v21.0/${instagramAccountId}/conversations?` +
       `fields=id,participants,updated_time&` +
@@ -224,9 +246,11 @@ async function importInstagramMessages(
     const convsData = await convsResponse.json();
 
     if (!convsData.data) {
-      console.log('No Instagram conversations found');
+      console.log(`[IMPORT] No Instagram conversations found for workspace ${workspaceId}`);
       return 0;
     }
+
+    console.log(`[IMPORT] Found ${convsData.data.length} Instagram conversations for workspace ${workspaceId}`);
 
     for (const conv of convsData.data) {
       // Skip if not updated since last fetch
@@ -248,10 +272,10 @@ async function importInstagramMessages(
       const customer = conv.participants?.data?.find((p: any) => p.id !== instagramAccountId);
       const customerId = customer?.id || conv.id;
 
-      // Find or create conversation in database
+      // Find or create conversation in THIS workspace's database
       const dbConv = await getOrCreateConversation(
         supabase,
-        integration.workspace_id,
+        workspaceId,
         'instagram',
         customerId,
         conv.id,
@@ -268,10 +292,11 @@ async function importInstagramMessages(
         // Skip our own messages
         if (msg.from?.id === instagramAccountId) continue;
 
-        // Check for duplicate
+        // Check for duplicate - SCOPED BY CONVERSATION (workspace-isolated)
         const { data: existing } = await supabase
           .from('messages')
           .select('id')
+          .eq('conversation_id', dbConv.id)
           .eq('message_id', msg.id)
           .maybeSingle();
 
@@ -298,15 +323,15 @@ async function importInstagramMessages(
         .eq('id', dbConv.id);
     }
   } catch (e) {
-    console.error('Instagram import error:', e);
+    console.error(`[IMPORT] Instagram import error for workspace ${workspaceId}:`, e);
   }
 
-  console.log(`Imported ${imported} Instagram messages`);
+  console.log(`[IMPORT] Imported ${imported} Instagram messages for workspace ${workspaceId}`);
   return imported;
 }
 
 // ============================================================================
-// HELPER: Get or create conversation (workspace-scoped)
+// HELPER: Get or create conversation (STRICTLY workspace-scoped)
 // ============================================================================
 async function getOrCreateConversation(
   supabase: any,
@@ -317,7 +342,7 @@ async function getOrCreateConversation(
   customerName: string | null,
   accessToken: string
 ) {
-  // First try by customer_phone
+  // First try by customer_phone + channel + workspace_id
   const { data: existing } = await supabase
     .from('conversations')
     .select('*')
@@ -327,6 +352,7 @@ async function getOrCreateConversation(
     .maybeSingle();
 
   if (existing) {
+    // Update thread_id if changed
     if (existing.thread_id !== threadId) {
       await supabase
         .from('conversations')
@@ -336,7 +362,7 @@ async function getOrCreateConversation(
     return existing;
   }
 
-  // Then try by thread_id
+  // Then try by thread_id + workspace_id
   const { data: byThread } = await supabase
     .from('conversations')
     .select('*')
@@ -355,13 +381,17 @@ async function getOrCreateConversation(
         `https://graph.facebook.com/v21.0/${customerId}?fields=name,username&access_token=${accessToken}`
       );
       const data = await response.json();
-      name = data.name || data.username;
+      if (channel === 'instagram' && data.username) {
+        name = `@${data.username}`;
+      } else if (data.name) {
+        name = data.name;
+      }
     } catch (e) {
-      console.error('Error fetching customer name:', e);
+      console.error('[IMPORT] Error fetching customer name:', e);
     }
   }
 
-  // Create new conversation
+  // Create new conversation IN THIS WORKSPACE
   const { data: newConv, error } = await supabase
     .from('conversations')
     .insert({
@@ -377,9 +407,21 @@ async function getOrCreateConversation(
     .single();
 
   if (error) {
-    console.error('Error creating conversation:', error);
+    // Handle duplicate - might have been created by webhook
+    if ((error as any).code === '23505') {
+      const { data: dupConv } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('channel', channel)
+        .eq('customer_phone', customerId)
+        .maybeSingle();
+      if (dupConv) return dupConv;
+    }
+    console.error('[IMPORT] Error creating conversation:', error);
     throw error;
   }
 
+  console.log(`[IMPORT] Created new conversation ${newConv.id} in workspace ${workspaceId}`);
   return newConv;
 }

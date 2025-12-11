@@ -66,7 +66,7 @@ serve(async (req) => {
       // Determine channel type from payload
       const objectType = body.object;
       
-      // Route based on object type
+      // Route based on object type - process ALL matching workspaces
       if (objectType === 'whatsapp_business_account') {
         await handleWhatsAppMessage(body, supabase);
       } else if (objectType === 'instagram') {
@@ -109,35 +109,36 @@ async function handleFacebookMessage(body: any, supabase: any) {
       // Skip if missing required data
       if (!senderId || !messageId) continue;
 
-      // Find the integration by page_id - STRICT workspace-scoped lookup
-      const integration = await findIntegrationStrict(supabase, 'facebook', pageId);
-      if (!integration) {
-        console.log('[UNIFIED-WEBHOOK] ❌ No Facebook integration found for page:', pageId);
+      // Find ALL integrations matching this page_id - MULTI-TENANT support
+      const integrations = await findAllMatchingIntegrations(supabase, 'facebook', pageId);
+      
+      if (integrations.length === 0) {
+        console.log('[UNIFIED-WEBHOOK] ❌ No Facebook integrations found for page:', pageId);
         continue;
       }
 
-      // Skip self-messages (from our page)
-      if (senderId === integration.config.page_id || senderId === integration.account_id) {
-        console.log('[UNIFIED-WEBHOOK] Skipping self-message');
-        continue;
+      // Process for EACH matching workspace
+      for (const integration of integrations) {
+        // Skip self-messages (from our page)
+        if (senderId === integration.config.page_id || senderId === integration.account_id) {
+          console.log('[UNIFIED-WEBHOOK] Skipping self-message for workspace:', integration.workspace_id);
+          continue;
+        }
+
+        console.log('[UNIFIED-WEBHOOK] ✅ Processing for workspace:', integration.workspace_id);
+
+        await saveIncomingMessage(supabase, {
+          channel: 'facebook',
+          workspaceId: integration.workspace_id,
+          accountId: integration.account_id,
+          senderId,
+          recipientId,
+          content,
+          messageId,
+          timestamp,
+          accessToken: integration.config.page_access_token
+        });
       }
-
-      console.log('[UNIFIED-WEBHOOK] ✅ Matched Facebook integration:', {
-        workspace_id: integration.workspace_id,
-        account_id: integration.account_id
-      });
-
-      await saveIncomingMessage(supabase, {
-        channel: 'facebook',
-        workspaceId: integration.workspace_id,
-        accountId: integration.account_id,
-        senderId,
-        recipientId,
-        content,
-        messageId,
-        timestamp,
-        accessToken: integration.config.page_access_token
-      });
     }
   }
 }
@@ -149,8 +150,6 @@ async function handleInstagramMessage(body: any, supabase: any) {
   console.log('[UNIFIED-WEBHOOK] Processing Instagram message');
 
   for (const entry of body.entry || []) {
-    // Instagram can send via entry.messaging (older) or entry.changes (newer API)
-    
     // Handle entry.messaging format
     for (const messaging of entry.messaging || []) {
       const senderId = messaging.sender?.id;
@@ -163,34 +162,34 @@ async function handleInstagramMessage(body: any, supabase: any) {
 
       if (!senderId || !messageId) continue;
 
-      // Find integration by recipient ID (Instagram account ID)
-      const integration = await findIntegrationStrict(supabase, 'instagram', recipientId);
-      if (!integration) {
-        console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integration found for:', recipientId);
+      // Find ALL integrations matching this Instagram account
+      const integrations = await findAllMatchingIntegrations(supabase, 'instagram', recipientId);
+      
+      if (integrations.length === 0) {
+        console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integrations found for:', recipientId);
         continue;
       }
 
-      if (senderId === integration.config.instagram_account_id || senderId === integration.account_id) {
-        console.log('[UNIFIED-WEBHOOK] Skipping self-message');
-        continue;
+      for (const integration of integrations) {
+        if (senderId === integration.config.instagram_account_id || senderId === integration.account_id) {
+          console.log('[UNIFIED-WEBHOOK] Skipping self-message for workspace:', integration.workspace_id);
+          continue;
+        }
+
+        console.log('[UNIFIED-WEBHOOK] ✅ Processing Instagram for workspace:', integration.workspace_id);
+
+        await saveIncomingMessage(supabase, {
+          channel: 'instagram',
+          workspaceId: integration.workspace_id,
+          accountId: integration.account_id,
+          senderId,
+          recipientId,
+          content,
+          messageId,
+          timestamp,
+          accessToken: integration.config.page_access_token
+        });
       }
-
-      console.log('[UNIFIED-WEBHOOK] ✅ Matched Instagram integration:', {
-        workspace_id: integration.workspace_id,
-        account_id: integration.account_id
-      });
-
-      await saveIncomingMessage(supabase, {
-        channel: 'instagram',
-        workspaceId: integration.workspace_id,
-        accountId: integration.account_id,
-        senderId,
-        recipientId,
-        content,
-        messageId,
-        timestamp,
-        accessToken: integration.config.page_access_token
-      });
     }
 
     // Handle entry.changes format (Instagram Messaging API)
@@ -209,33 +208,32 @@ async function handleInstagramMessage(body: any, supabase: any) {
 
       if (!senderId || !messageId) continue;
 
-      const integration = await findIntegrationStrict(supabase, 'instagram', recipientId);
-      if (!integration) {
-        console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integration found for:', recipientId);
+      const integrations = await findAllMatchingIntegrations(supabase, 'instagram', recipientId);
+      
+      if (integrations.length === 0) {
+        console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integrations found for:', recipientId);
         continue;
       }
 
-      if (senderId === integration.config.instagram_account_id || senderId === integration.account_id) {
-        console.log('[UNIFIED-WEBHOOK] Skipping self-message');
-        continue;
+      for (const integration of integrations) {
+        if (senderId === integration.config.instagram_account_id || senderId === integration.account_id) {
+          continue;
+        }
+
+        console.log('[UNIFIED-WEBHOOK] ✅ Processing Instagram (changes) for workspace:', integration.workspace_id);
+
+        await saveIncomingMessage(supabase, {
+          channel: 'instagram',
+          workspaceId: integration.workspace_id,
+          accountId: integration.account_id,
+          senderId,
+          recipientId,
+          content,
+          messageId,
+          timestamp,
+          accessToken: integration.config.page_access_token
+        });
       }
-
-      console.log('[UNIFIED-WEBHOOK] ✅ Matched Instagram integration:', {
-        workspace_id: integration.workspace_id,
-        account_id: integration.account_id
-      });
-
-      await saveIncomingMessage(supabase, {
-        channel: 'instagram',
-        workspaceId: integration.workspace_id,
-        accountId: integration.account_id,
-        senderId,
-        recipientId,
-        content,
-        messageId,
-        timestamp,
-        accessToken: integration.config.page_access_token
-      });
     }
   }
 }
@@ -265,17 +263,13 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
 
         if (!senderId || !messageId) continue;
 
-        // Find integration by phone_number_id or wa_id - STRICT lookup
-        const integration = await findIntegrationStrict(supabase, 'whatsapp', phoneNumberId, waId);
-        if (!integration) {
-          console.log('[UNIFIED-WEBHOOK] ❌ No WhatsApp integration found for:', phoneNumberId || waId);
+        // Find ALL integrations matching this phone_number_id or wa_id
+        const integrations = await findAllMatchingIntegrations(supabase, 'whatsapp', phoneNumberId, waId);
+        
+        if (integrations.length === 0) {
+          console.log('[UNIFIED-WEBHOOK] ❌ No WhatsApp integrations found for:', phoneNumberId || waId);
           continue;
         }
-
-        console.log('[UNIFIED-WEBHOOK] ✅ Matched WhatsApp integration:', {
-          workspace_id: integration.workspace_id,
-          account_id: integration.account_id
-        });
 
         // Get contact name
         let customerName = `WhatsApp User ${senderId.slice(-8)}`;
@@ -283,40 +277,43 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
           customerName = contacts[0].profile.name;
         }
 
-        await saveIncomingMessage(supabase, {
-          channel: 'whatsapp',
-          workspaceId: integration.workspace_id,
-          accountId: integration.account_id,
-          senderId,
-          recipientId: phoneNumberId,
-          content: messageText || '[Media]',
-          messageId,
-          timestamp: parseInt(timestamp) * 1000,
-          accessToken: integration.config.access_token || integration.config.page_access_token,
-          customerName
-        });
+        for (const integration of integrations) {
+          console.log('[UNIFIED-WEBHOOK] ✅ Processing WhatsApp for workspace:', integration.workspace_id);
+
+          await saveIncomingMessage(supabase, {
+            channel: 'whatsapp',
+            workspaceId: integration.workspace_id,
+            accountId: integration.account_id,
+            senderId,
+            recipientId: phoneNumberId,
+            content: messageText || '[Media]',
+            messageId,
+            timestamp: parseInt(timestamp) * 1000,
+            accessToken: integration.config.access_token || integration.config.page_access_token,
+            customerName
+          });
+        }
       }
     }
   }
 }
 
 // ============================================
-// HELPER: Find Integration STRICTLY by Account ID
-// This is the KEY FIX for multi-tenant routing
+// HELPER: Find ALL Matching Integrations
+// Returns ALL workspaces that have connected this account
 // ============================================
-async function findIntegrationStrict(
+async function findAllMatchingIntegrations(
   supabase: any,
   channel: string,
   primaryId: string,
   secondaryId?: string
-): Promise<ChannelIntegration | null> {
-  console.log(`[UNIFIED-WEBHOOK] Looking for ${channel} integration with ID: ${primaryId}${secondaryId ? ` or ${secondaryId}` : ''}`);
+): Promise<ChannelIntegration[]> {
+  console.log(`[UNIFIED-WEBHOOK] Finding ALL ${channel} integrations for ID: ${primaryId}${secondaryId ? ` or ${secondaryId}` : ''}`);
 
-  // Build list of IDs to search for
   const searchIds = [primaryId];
   if (secondaryId) searchIds.push(secondaryId);
 
-  // STRICT QUERY: Only match integrations where account_id OR config contains the exact ID
+  // Fetch all connected integrations for this channel type
   const { data: integrations, error } = await supabase
     .from('channel_integrations')
     .select('id, channel, account_id, workspace_id, config')
@@ -325,17 +322,19 @@ async function findIntegrationStrict(
 
   if (error) {
     console.error('[UNIFIED-WEBHOOK] Error fetching integrations:', error);
-    return null;
+    return [];
   }
 
   if (!integrations || integrations.length === 0) {
     console.log(`[UNIFIED-WEBHOOK] No ${channel} integrations found in database`);
-    return null;
+    return [];
   }
 
-  console.log(`[UNIFIED-WEBHOOK] Found ${integrations.length} ${channel} integrations, checking for match...`);
+  console.log(`[UNIFIED-WEBHOOK] Checking ${integrations.length} ${channel} integrations for matches...`);
 
-  // Find EXACT match by account_id or config identifiers
+  // Find ALL integrations that match - not just the first one!
+  const matchingIntegrations: ChannelIntegration[] = [];
+
   for (const integration of integrations) {
     const config = integration.config as any;
     
@@ -348,23 +347,22 @@ async function findIntegrationStrict(
       config?.wa_id
     ].filter(Boolean);
 
-    console.log(`[UNIFIED-WEBHOOK] Integration ${integration.id} (workspace: ${integration.workspace_id}) has IDs:`, integrationIds);
-
     // Check if any of our search IDs match this integration
     for (const searchId of searchIds) {
       if (integrationIds.includes(searchId)) {
-        console.log(`[UNIFIED-WEBHOOK] ✅ MATCH FOUND - Routing to workspace: ${integration.workspace_id}`);
-        return integration as ChannelIntegration;
+        console.log(`[UNIFIED-WEBHOOK] ✅ MATCH: workspace ${integration.workspace_id}`);
+        matchingIntegrations.push(integration as ChannelIntegration);
+        break; // Don't add same integration twice
       }
     }
   }
 
-  console.log(`[UNIFIED-WEBHOOK] ❌ No matching integration found for IDs:`, searchIds);
-  return null;
+  console.log(`[UNIFIED-WEBHOOK] Found ${matchingIntegrations.length} matching workspaces`);
+  return matchingIntegrations;
 }
 
 // ============================================
-// HELPER: Save Incoming Message
+// HELPER: Save Incoming Message (WORKSPACE-SCOPED)
 // ============================================
 async function saveIncomingMessage(
   supabase: any,
@@ -383,17 +381,8 @@ async function saveIncomingMessage(
 ) {
   const { channel, workspaceId, accountId, senderId, recipientId, content, messageId, timestamp, accessToken, customerName } = params;
 
-  // Check for duplicate message
-  const { data: existingMsg } = await supabase
-    .from('messages')
-    .select('id')
-    .eq('message_id', messageId)
-    .maybeSingle();
-
-  if (existingMsg) {
-    console.log('[UNIFIED-WEBHOOK] Message already exists, skipping:', messageId);
-    return;
-  }
+  // Generate workspace-scoped message key for deduplication
+  const workspaceScopedMessageId = `${workspaceId}_${messageId}`;
 
   // Find or create conversation - SCOPED TO THIS WORKSPACE
   const threadId = `${channel}_${senderId}_${recipientId}`;
@@ -460,7 +449,7 @@ async function saveIncomingMessage(
       .single();
 
     if (convError) {
-      // Handle duplicate key error - conversation might have been created by another request
+      // Handle duplicate key error
       if ((convError as any).code === '23505') {
         const { data: dupConv } = await supabase
           .from('conversations')
@@ -472,7 +461,7 @@ async function saveIncomingMessage(
         
         if (dupConv) {
           conversationId = dupConv.id;
-          console.log('[UNIFIED-WEBHOOK] Reused existing conversation after dup key:', conversationId);
+          console.log('[UNIFIED-WEBHOOK] Reused existing conversation:', conversationId);
         } else {
           console.error('[UNIFIED-WEBHOOK] Error creating conversation:', convError);
           return;
@@ -485,6 +474,19 @@ async function saveIncomingMessage(
       conversationId = newConv.id;
       console.log('[UNIFIED-WEBHOOK] Created new conversation:', conversationId, 'in workspace:', workspaceId);
     }
+  }
+
+  // Check for duplicate message - SCOPED BY CONVERSATION (which is already workspace-scoped)
+  const { data: existingMsg } = await supabase
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', conversationId)
+    .eq('message_id', messageId)
+    .maybeSingle();
+
+  if (existingMsg) {
+    console.log('[UNIFIED-WEBHOOK] Message already exists in workspace, skipping:', messageId);
+    return;
   }
 
   // Insert message
@@ -502,15 +504,27 @@ async function saveIncomingMessage(
     });
 
   if (msgError) {
-    console.error('[UNIFIED-WEBHOOK] Error inserting message:', msgError);
-  } else {
-    console.log('[UNIFIED-WEBHOOK] ✅ Message saved successfully for', channel, 'in workspace:', workspaceId);
+    console.error('[UNIFIED-WEBHOOK] Error saving message:', msgError);
+    return;
+  }
 
-    // Trigger AI auto-reply
-    try {
-      await supabase.functions.invoke('auto-reply-messages');
-    } catch (e) {
-      console.log('[UNIFIED-WEBHOOK] Auto-reply trigger failed:', e);
+  console.log('[UNIFIED-WEBHOOK] ✅ Saved message:', messageId, 'to workspace:', workspaceId);
+
+  // Trigger auto-reply if AI is enabled for this conversation
+  try {
+    const { data: convData } = await supabase
+      .from('conversations')
+      .select('ai_enabled')
+      .eq('id', conversationId)
+      .single();
+
+    if (convData?.ai_enabled) {
+      console.log('[UNIFIED-WEBHOOK] Triggering auto-reply for conversation:', conversationId);
+      await supabase.functions.invoke('auto-reply', {
+        body: { conversationId }
+      });
     }
+  } catch (e) {
+    console.log('[UNIFIED-WEBHOOK] Auto-reply trigger error (non-fatal):', e);
   }
 }
