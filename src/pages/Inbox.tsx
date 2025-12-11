@@ -61,17 +61,29 @@ const Inbox = () => {
 
   // Fetch connected channels first
   useEffect(() => {
-    fetchConnectedChannels();
+    const initChannels = async () => {
+      await fetchConnectedChannels();
+    };
+    initChannels();
 
-    // Subscribe to channel integration changes (both legacy and new tables)
+    // Subscribe to channel integration changes - these will be re-subscribed
+    // after we have the workspace ID
+  }, []);
+
+  // Workspace-scoped channel subscriptions
+  useEffect(() => {
+    if (!workspaceId) return;
+
+    // Subscribe to channel integration changes for THIS workspace only
     const legacyChannel = supabase
-      .channel('channel-integrations-changes')
+      .channel(`workspace_${workspaceId}_integrations`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'channel_integrations'
+          table: 'channel_integrations',
+          filter: `workspace_id=eq.${workspaceId}`
         },
         () => {
           fetchConnectedChannels();
@@ -79,15 +91,16 @@ const Inbox = () => {
       )
       .subscribe();
 
-    // Subscribe to new channel_connections table
+    // Subscribe to new channel_connections table for THIS workspace
     const connectionsChannel = supabase
-      .channel('channel-connections-changes')
+      .channel(`workspace_${workspaceId}_connections`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'channel_connections'
+          table: 'channel_connections',
+          filter: `workspace_id=eq.${workspaceId}`
         },
         () => {
           fetchConnectedChannels();
@@ -99,22 +112,24 @@ const Inbox = () => {
       supabase.removeChannel(legacyChannel);
       supabase.removeChannel(connectionsChannel);
     };
-  }, []);
+  }, [workspaceId]);
 
   // Fetch conversations when connected channels change
   useEffect(() => {
     if (!loadingChannels) {
       fetchConversations();
 
-      // Subscribe to real-time updates for conversations
+      // Subscribe to real-time updates - WORKSPACE-SCOPED channels
+      // Each workspace gets its own channel to prevent cross-workspace updates
       const conversationsChannel = supabase
-        .channel('conversations-changes')
+        .channel(`workspace_${workspaceId}_conversations`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
-            table: 'conversations'
+            table: 'conversations',
+            filter: `workspace_id=eq.${workspaceId}`
           },
           () => {
             fetchConversations();
@@ -122,9 +137,9 @@ const Inbox = () => {
         )
         .subscribe();
 
-      // Subscribe to message changes for unread count updates
+      // Subscribe to message changes for unread count updates - WORKSPACE-SCOPED
       const messagesChannel = supabase
-        .channel('messages-unread-changes')
+        .channel(`workspace_${workspaceId}_messages`)
         .on(
           'postgres_changes',
           {
@@ -133,7 +148,10 @@ const Inbox = () => {
             table: 'messages'
           },
           () => {
-            fetchConversations();
+            // Only refetch if we have a workspace context
+            if (workspaceId) {
+              fetchConversations();
+            }
           }
         )
         .subscribe();
