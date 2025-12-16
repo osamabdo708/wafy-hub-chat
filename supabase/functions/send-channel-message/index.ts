@@ -157,10 +157,12 @@ async function sendFacebookMessage(
   message: string,
   config: any
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const accessToken = config.page_access_token || config.access_token;
+  // IMPORTANT: For Facebook, always use the PAGE access token to send messages.
+  // Using the user access token will fail with "must be granted before impersonating a user's page".
+  const accessToken = config.page_access_token;
   
   if (!accessToken) {
-    return { success: false, error: "No access token for Facebook" };
+    return { success: false, error: "Facebook page access token missing. Please reconnect Facebook with pages_messaging permission." };
   }
 
   // Facebook uses /me/messages endpoint with page access token
@@ -192,11 +194,12 @@ async function sendInstagramMessage(
   message: string,
   config: any
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const accessToken = config.page_access_token || config.access_token;
+  // Prefer page access token (recommended for Instagram messaging). Fallback to access_token if present.
+  const accessToken = config.page_access_token ?? config.access_token;
   const igAccountId = config.instagram_account_id;
   
   if (!accessToken) {
-    return { success: false, error: "No access token for Instagram" };
+    return { success: false, error: "Instagram access token missing. Please reconnect Instagram with instagram_manage_messages permission." };
   }
 
   // Instagram uses /{ig-user-id}/messages endpoint

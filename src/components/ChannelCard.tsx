@@ -146,7 +146,7 @@ export const ChannelCard = ({
     const scope = getOAuthScope();
     // State format: channelType|redirectUri|workspaceId
     const state = `${channel}|${oauthCallbackUrl}|${workspaceId}`;
-    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
+    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(oauthCallbackUrl)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}&auth_type=rerequest&return_scopes=true&display=popup`;
     
     // Open popup window
     const width = 600;
