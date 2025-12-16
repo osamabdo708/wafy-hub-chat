@@ -189,10 +189,12 @@ async function importFacebookMessages(
       for (const msg of messages.reverse()) {
         if (!msg || !msg.message || !msg.id) continue;
 
-        // Check for duplicate
+        // Check for duplicate (MUST be workspace-scoped). Since messages table has no workspace_id,
+        // we scope by conversation_id (which is already workspace-scoped) + message_id.
         const { data: existingMsg } = await supabase
           .from('messages')
           .select('id')
+          .eq('conversation_id', conversationId)
           .eq('message_id', msg.id)
           .maybeSingle();
 
@@ -300,10 +302,12 @@ async function importInstagramMessages(
       for (const msg of messages.reverse()) {
         if (!msg || !msg.message || !msg.id) continue;
 
-        // Check for duplicate
+        // Check for duplicate (MUST be workspace-scoped). Since messages table has no workspace_id,
+        // we scope by conversation_id (which is already workspace-scoped) + message_id.
         const { data: existingMsg } = await supabase
           .from('messages')
           .select('id')
+          .eq('conversation_id', conversationId)
           .eq('message_id', msg.id)
           .maybeSingle();
 
