@@ -170,10 +170,11 @@ serve(async (req) => {
           // Generate safe message ID if missing
           if (!messageId) messageId = `igmsg_${timestamp}_${senderId}`;
 
-          // Check duplicate message
+          // Check duplicate (MUST be workspace-scoped). Scope by conversation_id + message_id.
           const { data: existingMsg } = await supabase
             .from('messages')
             .select('id')
+            .eq('conversation_id', conversationId)
             .eq('message_id', messageId)
             .maybeSingle();
 

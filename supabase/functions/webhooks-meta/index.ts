@@ -236,15 +236,16 @@ serve(async (req) => {
         }
       }
 
-      // Check for duplicate message
+      // Check for duplicate message (MUST be workspace-scoped). Scope by conversation_id + message_id.
       const { data: existingMsg } = await supabase
         .from("messages")
         .select("id")
+        .eq("conversation_id", conversationId)
         .eq("message_id", source.messageId)
-        .single();
+        .maybeSingle();
 
       if (existingMsg) {
-        console.log("[WEBHOOK-META] Duplicate message, skipping");
+        console.log("[WEBHOOK-META] Duplicate message (scoped), skipping");
         await supabase
           .from("webhook_events")
           .update({ processed: true, processed_at: new Date().toISOString() })
