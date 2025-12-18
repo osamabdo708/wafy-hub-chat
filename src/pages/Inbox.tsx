@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Clock, User, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { MessageSquare, Clock, User, Wifi, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -53,7 +53,6 @@ const Inbox = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [connectedChannels, setConnectedChannels] = useState<ChannelType[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
@@ -394,31 +393,9 @@ const Inbox = () => {
     return getChannelIconComponent(channel, "w-4 h-4");
   };
 
-  // Background polling for messages - ensures messages are always fetched
-  // This runs alongside webhooks as a fallback mechanism
+  // Auto-reply check periodically for AI-enabled conversations
   useEffect(() => {
     if (connectedChannels.length === 0) return;
-
-    // Initial import on page load
-    const initialImport = async () => {
-      try {
-        console.log('[INBOX] Running initial message import...');
-        await supabase.functions.invoke('auto-import-messages');
-      } catch (error) {
-        console.error('[INBOX] Initial import error:', error);
-      }
-    };
-    initialImport();
-
-    // Poll for new messages every 30 seconds as fallback to webhooks
-    const importInterval = setInterval(async () => {
-      try {
-        console.log('[INBOX] Polling for new messages...');
-        await supabase.functions.invoke('auto-import-messages');
-      } catch (error) {
-        console.error('[INBOX] Import poll error:', error);
-      }
-    }, 30000); // 30 seconds
 
     // Auto-reply check every 15 seconds
     const autoReplyInterval = setInterval(async () => {
@@ -427,51 +404,12 @@ const Inbox = () => {
       } catch (error) {
         console.error('[INBOX] Auto-reply error:', error);
       }
-    }, 15000); // 15 seconds
+    }, 15000);
 
     return () => {
-      clearInterval(importInterval);
       clearInterval(autoReplyInterval);
     };
   }, [connectedChannels]);
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      console.log('[INBOX] Manual refresh triggered...');
-      toast.info("جاري جلب الرسائل الجديدة...");
-      
-      // Reset last_fetch_timestamp to fetch older messages
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: workspace } = await supabase
-          .from('workspaces')
-          .select('id')
-          .eq('owner_user_id', user.id)
-          .limit(1)
-          .single();
-
-        if (workspace) {
-          // Reset timestamp to 24 hours ago to force re-fetch
-          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-          await supabase
-            .from('channel_integrations')
-            .update({ last_fetch_timestamp: yesterday })
-            .eq('workspace_id', workspace.id)
-            .eq('is_connected', true);
-        }
-      }
-
-      await supabase.functions.invoke('auto-import-messages');
-      await fetchConversations();
-      toast.success("تم تحديث الرسائل بنجاح");
-    } catch (error) {
-      console.error('[INBOX] Refresh error:', error);
-      toast.error("فشل في جلب الرسائل");
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
   const totalUnread = conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
 
@@ -534,16 +472,6 @@ const Inbox = () => {
               ))}
             </div>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={`w-4 h-4 ml-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'جاري التحديث...' : 'تحديث'}
-          </Button>
         </div>
       </div>
 
