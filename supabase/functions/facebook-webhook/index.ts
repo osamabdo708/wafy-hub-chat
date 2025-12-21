@@ -182,21 +182,32 @@ serve(async (req) => {
                 .eq('id', conversationId);
               console.log(`[WEBHOOK] Updated existing conversation for workspace ${workspaceId}:`, conversationId);
             } else {
-              // Get customer name
-              let customerName = isInstagram
-                ? `Instagram User ${senderId.slice(-8)}`
-                : `Facebook User ${senderId.slice(-8)}`;
+              // Get customer name from Meta API
+              let customerName = senderId; // Fallback to sender ID
+              let customerAvatar: string | undefined;
 
               try {
                 if (accessToken) {
+                  // Use correct fields based on platform
+                  const fields = isInstagram 
+                    ? 'name,username,profile_picture_url' 
+                    : 'first_name,last_name,profile_pic';
+                  
                   const nameResponse = await fetch(
-                    `https://graph.facebook.com/v19.0/${senderId}?fields=name,username&access_token=${accessToken}`
+                    `https://graph.facebook.com/v19.0/${senderId}?fields=${fields}&access_token=${accessToken}`
                   );
                   const nameData = await nameResponse.json();
-                  if (isInstagram && nameData.username) {
-                    customerName = `@${nameData.username}`;
-                  } else if (nameData.name) {
-                    customerName = nameData.name;
+                  console.log('[WEBHOOK] User info response:', JSON.stringify(nameData));
+                  
+                  if (isInstagram) {
+                    customerName = nameData.name || nameData.username || senderId;
+                    customerAvatar = nameData.profile_picture_url;
+                  } else {
+                    // Facebook: combine first_name and last_name
+                    const firstName = nameData.first_name || '';
+                    const lastName = nameData.last_name || '';
+                    customerName = `${firstName} ${lastName}`.trim() || nameData.name || senderId;
+                    customerAvatar = nameData.profile_pic;
                   }
                 }
               } catch (e) {
@@ -209,6 +220,7 @@ serve(async (req) => {
                   workspace_id: workspaceId,
                   customer_name: customerName,
                   customer_phone: senderId,
+                  customer_avatar: customerAvatar,
                   channel: channel,
                   platform: `${channel}_${accountId}`,
                   thread_id: threadId,

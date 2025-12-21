@@ -235,7 +235,7 @@ async function processMessageForWorkspace({
   // Insert the message
   const { error: msgError } = await supabase.from("messages").insert({
     conversation_id: conversationId,
-    content: source.text || "[Media]",
+    content: source.messageText || "[Media]",
     sender_type: "customer",
     message_id: source.messageId,
     is_read: false,
