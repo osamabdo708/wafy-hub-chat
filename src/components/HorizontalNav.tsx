@@ -50,7 +50,7 @@ export const HorizontalNav = () => {
   };
 
   return (
-    <nav className="bg-card border-b border-border">
+    <nav className="border-b border-border bg-[rgba(245,245,247,0.8)] dark:bg-card">
       <div className="px-6 flex items-center justify-between h-14">
         <div className="flex items-center gap-1">
           {navItems.map((item) => (

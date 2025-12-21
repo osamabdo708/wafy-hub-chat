@@ -8,7 +8,7 @@ export const Header = () => {
   const { theme, setTheme } = useTheme();
 
   return (
-    <header className="bg-background border-b border-border">
+    <header className="border-b border-border bg-[rgba(245,245,247,0.8)] dark:bg-background">
       <div className="px-6 h-20 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-3">
