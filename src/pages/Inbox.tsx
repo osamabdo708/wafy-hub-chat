@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageSquare, Clock, User, Wifi, WifiOff } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -533,9 +535,20 @@ const Inbox = () => {
 
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    {/* <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                       <User className="w-5 h-5 text-primary" />
-                    </div>
+                    </div> */
+                    }
+
+                      <Avatar className="h-10 w-10">
+    <AvatarImage
+      src={conversation.customer_avatar}
+      alt={conversation.customer_name}
+    />
+    <AvatarFallback>
+      <User className="w-5 h-5 text-primary" />
+    </AvatarFallback>
+  </Avatar>
                     <div>
                       <h3 className={`font-semibold ${conversation.unread_count && conversation.unread_count > 0 ? 'text-foreground' : ''}`}>
                         {conversation.customer_name}
