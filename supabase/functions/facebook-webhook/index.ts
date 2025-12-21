@@ -189,9 +189,9 @@ serve(async (req) => {
               try {
                 if (accessToken) {
                   // Use correct fields based on platform
-                  // Instagram Business scoped IDs only support 'name' and 'username'
+                  // Instagram supports: name, username, profile_pic
                   const fields = isInstagram 
-                    ? 'name,username' 
+                    ? 'name,username,profile_pic' 
                     : 'first_name,last_name,profile_pic';
                   
                   const nameResponse = await fetch(
@@ -207,7 +207,7 @@ serve(async (req) => {
                     } else if (nameData.name) {
                       customerName = nameData.name;
                     }
-                    // Instagram Business API doesn't provide profile pic for scoped IDs
+                    customerAvatar = nameData.profile_pic;
                   } else {
                     // Facebook: combine first_name and last_name
                     const firstName = nameData.first_name || '';
