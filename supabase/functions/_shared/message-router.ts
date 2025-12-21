@@ -80,8 +80,9 @@ export async function getMetaUserInfo(
   provider: string
 ): Promise<{ name: string; profilePic?: string } | null> {
   try {
+    // Instagram Business scoped IDs only support 'name' and 'username'
     const fields = provider === "instagram" 
-      ? "name,username,profile_picture_url"
+      ? "name,username"
       : "first_name,last_name,profile_pic";
     
     const response = await fetch(
@@ -93,9 +94,11 @@ export async function getMetaUserInfo(
     const data = await response.json();
     
     if (provider === "instagram") {
+      // Prefer username for Instagram, format as @username
+      const name = data.username ? `@${data.username}` : data.name || "Instagram User";
       return {
-        name: data.name || data.username || "Instagram User",
-        profilePic: data.profile_picture_url
+        name,
+        profilePic: undefined // Instagram Business API doesn't provide profile pic for scoped IDs
       };
     }
     
