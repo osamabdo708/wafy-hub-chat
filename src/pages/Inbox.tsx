@@ -521,34 +521,30 @@ const Inbox = () => {
                 {filteredConversations.map((conversation) => (
               <Card 
                 key={conversation.id} 
-                className={`p-4 cursor-pointer hover:shadow-md transition-shadow relative ${
+                className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
                   selectedConversation?.id === conversation.id ? 'border-primary shadow-md' : ''
                 } ${conversation.ai_enabled ? 'genie-card-animated-bg' : ''}`}
                 onClick={() => handleSelectConversation(conversation)}
               >
-                {/* Unread badge */}
-                {conversation.unread_count && conversation.unread_count > 0 && (
-                  <div className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
-                    {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
-                  </div>
-                )}
-
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {/* <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="w-5 h-5 text-primary" />
-                    </div> */
-                    }
-
+                    <div className="relative">
                       <Avatar className="h-10 w-10">
-    <AvatarImage
-      src={conversation.customer_avatar}
-      alt={conversation.customer_name}
-    />
-    <AvatarFallback>
-      <User className="w-5 h-5 text-primary" />
-    </AvatarFallback>
-  </Avatar>
+                        <AvatarImage
+                          src={conversation.customer_avatar}
+                          alt={conversation.customer_name}
+                        />
+                        <AvatarFallback>
+                          <User className="w-5 h-5 text-primary" />
+                        </AvatarFallback>
+                      </Avatar>
+                      {/* Unread badge on avatar */}
+                      {conversation.unread_count && conversation.unread_count > 0 && (
+                        <div className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                          {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                        </div>
+                      )}
+                    </div>
                     <div>
                       <h3 className={`font-semibold ${conversation.unread_count && conversation.unread_count > 0 ? 'text-foreground' : ''}`}>
                         {conversation.customer_name}
@@ -577,10 +573,6 @@ const Inbox = () => {
                     </div>
                   )}
                 </div>
-                
-                <p className="text-sm text-muted-foreground mb-2">
-                  {conversation.customer_phone || conversation.customer_email}
-                </p>
                 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <div className="flex items-center gap-1">
