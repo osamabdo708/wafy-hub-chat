@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
 import agentIcon from "@/assets/agent-icon.png";
 import { AgentSelector } from "@/components/AgentSelector";
+import { playNotificationSound } from "@/utils/notificationSound";
 import { 
   MessengerIcon, 
   InstagramIcon, 
@@ -144,14 +145,18 @@ const Inbox = () => {
         .on(
           'postgres_changes',
           {
-            event: '*',
+            event: 'INSERT',
             schema: 'public',
             table: 'messages'
           },
-          () => {
+          (payload) => {
             // Only refetch if we have a workspace context
             if (workspaceId) {
               fetchConversations();
+              // Play notification sound for new customer messages
+              if (payload.new && (payload.new as any).sender_type === 'customer') {
+                playNotificationSound();
+              }
             }
           }
         )
