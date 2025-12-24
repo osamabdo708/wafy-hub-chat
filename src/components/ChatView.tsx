@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Send, User, Phone, Mail, Bot, Package, ShoppingCart, X } from "lucide-react";
+import { Send, User, Phone, Mail, Bot, Package, ShoppingCart, X, LinkIcon, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -59,7 +59,11 @@ const ChatView = ({
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [showProductDialog, setShowProductDialog] = useState(false);
+  const [showPaymentLinkDialog, setShowPaymentLinkDialog] = useState(false);
+  const [generatingPaymentLink, setGeneratingPaymentLink] = useState(false);
+  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<string>("");
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [orderForm, setOrderForm] = useState({
     customer_name: customerName,
@@ -76,6 +80,7 @@ const ChatView = ({
   useEffect(() => {
     fetchMessages();
     fetchProducts();
+    fetchOrders();
 
     // Subscribe to new messages
     const channel = supabase
@@ -133,6 +138,21 @@ const ChatView = ({
       setProducts(data || []);
     } catch (error) {
       console.error('Error fetching products:', error);
+    }
+  };
+
+  const fetchOrders = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setOrders(data || []);
+    } catch (error) {
+      console.error('Error fetching orders:', error);
     }
   };
 
@@ -262,6 +282,7 @@ const ChatView = ({
         notes: ''
       });
       toast.success('تم إنشاء الطلب بنجاح');
+      fetchOrders(); // Refresh orders list
     } catch (error) {
       console.error('Error creating order:', error);
       toast.error('فشل إنشاء الطلب');
@@ -270,6 +291,58 @@ const ChatView = ({
 
   const getChannelIcon = () => {
     return getChannelIconComponent(channel, "w-4 h-4");
+  };
+
+  const handleGeneratePaymentLink = async () => {
+    if (!selectedOrderForPayment) {
+      toast.error('يرجى اختيار طلب');
+      return;
+    }
+
+    setGeneratingPaymentLink(true);
+    try {
+      const order = orders.find(o => o.id === selectedOrderForPayment);
+      if (!order) {
+        toast.error('الطلب غير موجود');
+        return;
+      }
+
+      // Generate a simple payment link (placeholder - will be enhanced with PayTabs integration)
+      const paymentLink = `${window.location.origin}/pay/${order.order_number}`;
+      
+      // Update order with payment link
+      const { error } = await supabase
+        .from('orders')
+        .update({ payment_link: paymentLink })
+        .eq('id', selectedOrderForPayment);
+
+      if (error) throw error;
+
+      // Send payment link in chat
+      const paymentMessage = `🔗 رابط الدفع للطلب #${order.order_number}\n\n💰 المبلغ: ${order.price} ريال\n\n${paymentLink}`;
+      
+      const { error: msgError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          content: paymentMessage,
+          sender_type: 'employee',
+          is_old: false,
+          reply_sent: true
+        });
+
+      if (msgError) throw msgError;
+
+      setShowPaymentLinkDialog(false);
+      setSelectedOrderForPayment("");
+      toast.success('تم إرسال رابط الدفع للعميل');
+      fetchOrders();
+    } catch (error) {
+      console.error('Error generating payment link:', error);
+      toast.error('فشل إنشاء رابط الدفع');
+    } finally {
+      setGeneratingPaymentLink(false);
+    }
   };
 
   return (
@@ -322,6 +395,58 @@ const ChatView = ({
                       <p className="text-primary font-bold mt-2">{product.price} ريال</p>
                     </Card>
                   ))}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={showPaymentLinkDialog} onOpenChange={setShowPaymentLinkDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <LinkIcon className="w-4 h-4 ml-1" />
+                  رابط دفع
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>إنشاء رابط دفع</DialogTitle>
+                  <DialogDescription>
+                    اختر الطلب لإرسال رابط الدفع للعميل
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  {orders.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">
+                      لا توجد طلبات لهذه المحادثة
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label>اختر الطلب</Label>
+                      <Select value={selectedOrderForPayment} onValueChange={setSelectedOrderForPayment}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="اختر طلب" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {orders.map((order) => (
+                            <SelectItem key={order.id} value={order.id}>
+                              {order.order_number} - {order.price} ريال
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowPaymentLinkDialog(false)}>
+                    إلغاء
+                  </Button>
+                  <Button 
+                    onClick={handleGeneratePaymentLink} 
+                    disabled={!selectedOrderForPayment || generatingPaymentLink}
+                  >
+                    {generatingPaymentLink && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+                    إرسال رابط الدفع
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>

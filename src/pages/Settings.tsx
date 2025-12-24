@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Link, Building, Mail } from "lucide-react";
+import { Settings as SettingsIcon, Link, Building, Mail, Store, Truck, CreditCard } from "lucide-react";
 import { ChannelCard } from "@/components/ChannelCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +17,9 @@ import {
   TikTokChannelIcon, 
   TelegramIcon 
 } from "@/components/ChannelIcons";
+import StoreSettings from "@/components/settings/StoreSettings";
+import ShippingSettings from "@/components/settings/ShippingSettings";
+import PaymentSettings from "@/components/settings/PaymentSettings";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -100,10 +103,22 @@ const Settings = () => {
       </div>
 
       <Tabs defaultValue="channels" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="channels">
             <Link className="w-4 h-4 ml-2" />
             القنوات
+          </TabsTrigger>
+          <TabsTrigger value="store">
+            <Store className="w-4 h-4 ml-2" />
+            المتجر
+          </TabsTrigger>
+          <TabsTrigger value="shipping">
+            <Truck className="w-4 h-4 ml-2" />
+            الشحن
+          </TabsTrigger>
+          <TabsTrigger value="payments">
+            <CreditCard className="w-4 h-4 ml-2" />
+            الدفع
           </TabsTrigger>
           <TabsTrigger value="business">
             <Building className="w-4 h-4 ml-2" />
@@ -168,6 +183,18 @@ const Settings = () => {
               comingSoon
             />
           </div>
+        </TabsContent>
+
+        <TabsContent value="store" className="space-y-4">
+          <StoreSettings />
+        </TabsContent>
+
+        <TabsContent value="shipping" className="space-y-4">
+          <ShippingSettings />
+        </TabsContent>
+
+        <TabsContent value="payments" className="space-y-4">
+          <PaymentSettings />
         </TabsContent>
 
         <TabsContent value="business" className="space-y-4">
