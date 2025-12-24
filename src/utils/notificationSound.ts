@@ -1,43 +1,20 @@
-// Notification sound utility using Web Audio API
-let audioContext: AudioContext | null = null;
+// Notification sound utility using audio file
+import notificationSoundFile from "@/assets/notification-sound.mp3";
 
-const getAudioContext = (): AudioContext => {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-  }
-  return audioContext;
-};
+let audio: HTMLAudioElement | null = null;
 
 export const playNotificationSound = () => {
   try {
-    const ctx = getAudioContext();
-    
-    // Resume context if suspended (required for autoplay policies)
-    if (ctx.state === 'suspended') {
-      ctx.resume();
+    if (!audio) {
+      audio = new Audio(notificationSoundFile);
     }
-
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    // Create a pleasant notification tone
-    oscillator.frequency.setValueAtTime(880, ctx.currentTime); // A5 note
-    oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1); // Higher note
-    oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2); // Back to A5
-
-    oscillator.type = 'sine';
-
-    // Volume envelope
-    gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
-    gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.15);
-    gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
-
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + 0.3);
+    
+    // Reset to start if already playing
+    audio.currentTime = 0;
+    audio.volume = 0.5;
+    audio.play().catch((error) => {
+      console.error('[NOTIFICATION] Error playing sound:', error);
+    });
 
     console.log('[NOTIFICATION] Sound played');
   } catch (error) {
