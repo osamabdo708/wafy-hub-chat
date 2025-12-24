@@ -6,8 +6,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Single unified verify token for ALL channels and ALL workspaces
-const UNIFIED_VERIFY_TOKEN = "almared_unified_webhook_2024";
+// Helper to get app setting from database with fallback to env
+async function getAppSetting(supabase: any, key: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', key)
+      .single();
+    
+    if (error || !data?.value) {
+      // Fallback to environment variable
+      return Deno.env.get(key) || Deno.env.get(key.replace('META_', 'FACEBOOK_')) || null;
+    }
+    return data.value;
+  } catch {
+    return Deno.env.get(key) || null;
+  }
+}
 
 interface ChannelIntegration {
   id: string;
@@ -30,6 +46,12 @@ serve(async (req) => {
   }
 
   const url = new URL(req.url);
+  
+  // Create supabase client for settings lookup
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
 
   // ============================================
   // WEBHOOK VERIFICATION (GET request from Meta)
@@ -41,11 +63,14 @@ serve(async (req) => {
 
     console.log('[UNIFIED-WEBHOOK] Verification request:', { mode, token, challenge });
 
-    if (mode === 'subscribe' && token === UNIFIED_VERIFY_TOKEN) {
+    // Get verify token from dynamic settings
+    const verifyToken = await getAppSetting(supabase, 'META_WEBHOOK_VERIFY_TOKEN');
+    
+    if (mode === 'subscribe' && token && verifyToken && token === verifyToken) {
       console.log('[UNIFIED-WEBHOOK] ✅ Verification successful');
       return new Response(challenge, { status: 200 });
     } else {
-      console.log('[UNIFIED-WEBHOOK] ❌ Verification failed - token mismatch');
+      console.log('[UNIFIED-WEBHOOK] ❌ Verification failed - token mismatch. Expected:', verifyToken, 'Got:', token);
       return new Response('Forbidden', { status: 403 });
     }
   }
@@ -57,11 +82,6 @@ serve(async (req) => {
     try {
       const body = await req.json();
       console.log('[UNIFIED-WEBHOOK] Received payload:', JSON.stringify(body, null, 2));
-
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      );
 
       // Determine channel type from payload
       const objectType = body.object;
