@@ -21,7 +21,12 @@ import {
   CreditCard,
   Truck,
   Bot,
-  Facebook
+  Facebook,
+  Copy,
+  Check,
+  Link,
+  Webhook,
+  Key
 } from "lucide-react";
 import {
   Table,
@@ -84,6 +89,17 @@ const SuperAdmin = () => {
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [showSensitive, setShowSensitive] = useState<Record<string, boolean>>({});
   const [editedSettings, setEditedSettings] = useState<Record<string, string>>({});
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+  // Define all Meta settings that should be available
+  const metaSettingsConfig = [
+    { key: 'META_APP_ID', description: 'Meta App ID', is_sensitive: false, category: 'meta' },
+    { key: 'META_APP_SECRET', description: 'Meta App Secret', is_sensitive: true, category: 'meta' },
+    { key: 'META_WEBHOOK_VERIFY_TOKEN', description: 'Webhook Verify Token', is_sensitive: true, category: 'meta' },
+    { key: 'META_GRAPH_API_VERSION', description: 'Graph API Version (e.g., v21.0)', is_sensitive: false, category: 'meta' },
+  ];
 
   useEffect(() => {
     fetchData();
@@ -149,7 +165,7 @@ const SuperAdmin = () => {
 
       if (error) throw error;
 
-      toast.success("تم حفظ الإعدادات بنجاح");
+      toast.success("تم حفظ الإعدادات بنجاح - سيتم تطبيقها فوراً");
       fetchSettings();
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -196,112 +212,19 @@ const SuperAdmin = () => {
     setShowSensitive(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const copyToClipboard = async (text: string, id: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedUrl(id);
+    toast.success("تم نسخ الرابط");
+    setTimeout(() => setCopiedUrl(null), 2000);
+  };
+
   const getSettingsByCategory = (category: string) => 
     settings.filter(s => s.category === category);
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'meta': return <Facebook className="w-5 h-5" />;
-      case 'ai': return <Bot className="w-5 h-5" />;
-      case 'payments': return <CreditCard className="w-5 h-5" />;
-      case 'shipping': return <Truck className="w-5 h-5" />;
-      default: return <Settings className="w-5 h-5" />;
-    }
-  };
-
-  const getCategoryTitle = (category: string) => {
-    switch (category) {
-      case 'meta': return 'إعدادات Meta (Facebook/Instagram/WhatsApp)';
-      case 'ai': return 'إعدادات الذكاء الاصطناعي';
-      case 'payments': return 'إعدادات الدفع';
-      case 'shipping': return 'إعدادات الشحن';
-      default: return 'إعدادات عامة';
-    }
-  };
-
-  const renderSettingsSection = (category: string) => {
-    const categorySettings = getSettingsByCategory(category);
-    
-    return (
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              {getCategoryIcon(category)}
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold">{getCategoryTitle(category)}</h3>
-              <p className="text-sm text-muted-foreground">
-                {category === 'meta' && 'إعدادات تطبيق Meta للربط مع المنصات الاجتماعية'}
-                {category === 'ai' && 'إعدادات مفاتيح API للذكاء الاصطناعي'}
-                {category === 'payments' && 'إعدادات بوابات الدفع الإلكتروني'}
-                {category === 'shipping' && 'إعدادات شركات الشحن'}
-              </p>
-            </div>
-          </div>
-          <Button 
-            onClick={() => handleSaveSettings(category)}
-            disabled={savingSettings}
-            className="gap-2"
-          >
-            {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            حفظ التغييرات
-          </Button>
-        </div>
-        
-        <Separator className="mb-6" />
-        
-        <div className="space-y-4">
-          {categorySettings.map((setting) => (
-            <div key={setting.id} className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor={setting.key} className="text-sm font-medium">
-                  {setting.description}
-                </Label>
-                {setting.is_sensitive && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSensitive(setting.key)}
-                    className="h-8 px-2"
-                  >
-                    {showSensitive[setting.key] ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </Button>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  id={setting.key}
-                  type={setting.is_sensitive && !showSensitive[setting.key] ? 'password' : 'text'}
-                  placeholder={setting.display_value || `أدخل ${setting.description}`}
-                  value={editedSettings[setting.key] || ''}
-                  onChange={(e) => setEditedSettings(prev => ({
-                    ...prev,
-                    [setting.key]: e.target.value
-                  }))}
-                  className="font-mono text-sm"
-                  dir="ltr"
-                />
-              </div>
-              {setting.value && (
-                <p className="text-xs text-muted-foreground">
-                  القيمة الحالية: {setting.is_sensitive ? setting.display_value : setting.value}
-                  {setting.updated_at && (
-                    <span className="mr-2">
-                      (آخر تحديث: {new Date(setting.updated_at).toLocaleDateString('ar-SA')})
-                    </span>
-                  )}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      </Card>
-    );
+  const getSettingValue = (key: string): string => {
+    const setting = settings.find(s => s.key === key);
+    return setting?.display_value || setting?.value || '';
   };
 
   const stats = [
@@ -309,6 +232,9 @@ const SuperAdmin = () => {
     { label: "مساحات العمل", value: workspaces.length, icon: Building2, color: "bg-green-500/10 text-green-500" },
     { label: "الإعدادات النشطة", value: settings.filter(s => s.value).length, icon: Settings, color: "bg-purple-500/10 text-purple-500" },
   ];
+
+  const webhookUrl = `${supabaseUrl}/functions/v1/unified-webhook`;
+  const oauthCallbackUrl = `${supabaseUrl}/functions/v1/oauth-callback`;
 
   if (loading) {
     return (
@@ -361,8 +287,12 @@ const SuperAdmin = () => {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="users" className="space-y-6">
+      <Tabs defaultValue="meta" className="space-y-6">
         <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+          <TabsTrigger value="meta" className="gap-2">
+            <Facebook className="w-4 h-4" />
+            Meta
+          </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
             <Users className="w-4 h-4" />
             المستخدمين
@@ -370,10 +300,6 @@ const SuperAdmin = () => {
           <TabsTrigger value="workspaces" className="gap-2">
             <Building2 className="w-4 h-4" />
             مساحات العمل
-          </TabsTrigger>
-          <TabsTrigger value="meta" className="gap-2">
-            <Facebook className="w-4 h-4" />
-            Meta
           </TabsTrigger>
           <TabsTrigger value="integrations" className="gap-2">
             <Globe className="w-4 h-4" />
@@ -384,6 +310,257 @@ const SuperAdmin = () => {
             النظام
           </TabsTrigger>
         </TabsList>
+
+        {/* Meta Settings Tab */}
+        <TabsContent value="meta" className="space-y-6">
+          {/* App Credentials */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <Key className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">بيانات تطبيق Meta</h3>
+                  <p className="text-sm text-muted-foreground">
+                    App ID و App Secret من Meta Developer Console
+                  </p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => handleSaveSettings('meta')}
+                disabled={savingSettings}
+                className="gap-2"
+              >
+                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                حفظ التغييرات
+              </Button>
+            </div>
+            
+            <Separator className="mb-6" />
+            
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Meta App ID */}
+              <div className="space-y-2">
+                <Label htmlFor="META_APP_ID" className="text-sm font-medium flex items-center gap-2">
+                  <Facebook className="w-4 h-4" />
+                  Meta App ID
+                </Label>
+                <Input
+                  id="META_APP_ID"
+                  placeholder="أدخل App ID"
+                  value={editedSettings['META_APP_ID'] || ''}
+                  onChange={(e) => setEditedSettings(prev => ({
+                    ...prev,
+                    META_APP_ID: e.target.value
+                  }))}
+                  className="font-mono text-sm"
+                  dir="ltr"
+                />
+                {getSettingValue('META_APP_ID') && (
+                  <p className="text-xs text-muted-foreground">
+                    القيمة الحالية: {getSettingValue('META_APP_ID')}
+                  </p>
+                )}
+              </div>
+
+              {/* Meta App Secret */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="META_APP_SECRET" className="text-sm font-medium flex items-center gap-2">
+                    <Key className="w-4 h-4" />
+                    Meta App Secret
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleSensitive('META_APP_SECRET')}
+                    className="h-8 px-2"
+                  >
+                    {showSensitive['META_APP_SECRET'] ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <Input
+                  id="META_APP_SECRET"
+                  type={showSensitive['META_APP_SECRET'] ? 'text' : 'password'}
+                  placeholder="أدخل App Secret"
+                  value={editedSettings['META_APP_SECRET'] || ''}
+                  onChange={(e) => setEditedSettings(prev => ({
+                    ...prev,
+                    META_APP_SECRET: e.target.value
+                  }))}
+                  className="font-mono text-sm"
+                  dir="ltr"
+                />
+                {getSettingValue('META_APP_SECRET') && (
+                  <p className="text-xs text-muted-foreground">
+                    القيمة الحالية: {getSettingValue('META_APP_SECRET')}
+                  </p>
+                )}
+              </div>
+
+              {/* Webhook Verify Token */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="META_WEBHOOK_VERIFY_TOKEN" className="text-sm font-medium flex items-center gap-2">
+                    <Webhook className="w-4 h-4" />
+                    Webhook Verify Token
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleSensitive('META_WEBHOOK_VERIFY_TOKEN')}
+                    className="h-8 px-2"
+                  >
+                    {showSensitive['META_WEBHOOK_VERIFY_TOKEN'] ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <Input
+                  id="META_WEBHOOK_VERIFY_TOKEN"
+                  type={showSensitive['META_WEBHOOK_VERIFY_TOKEN'] ? 'text' : 'password'}
+                  placeholder="أدخل Verify Token"
+                  value={editedSettings['META_WEBHOOK_VERIFY_TOKEN'] || ''}
+                  onChange={(e) => setEditedSettings(prev => ({
+                    ...prev,
+                    META_WEBHOOK_VERIFY_TOKEN: e.target.value
+                  }))}
+                  className="font-mono text-sm"
+                  dir="ltr"
+                />
+                {getSettingValue('META_WEBHOOK_VERIFY_TOKEN') && (
+                  <p className="text-xs text-muted-foreground">
+                    القيمة الحالية: {getSettingValue('META_WEBHOOK_VERIFY_TOKEN')}
+                  </p>
+                )}
+              </div>
+
+              {/* Graph API Version */}
+              <div className="space-y-2">
+                <Label htmlFor="META_GRAPH_API_VERSION" className="text-sm font-medium flex items-center gap-2">
+                  <Globe className="w-4 h-4" />
+                  Graph API Version
+                </Label>
+                <Input
+                  id="META_GRAPH_API_VERSION"
+                  placeholder="v21.0"
+                  value={editedSettings['META_GRAPH_API_VERSION'] || ''}
+                  onChange={(e) => setEditedSettings(prev => ({
+                    ...prev,
+                    META_GRAPH_API_VERSION: e.target.value
+                  }))}
+                  className="font-mono text-sm"
+                  dir="ltr"
+                />
+                {getSettingValue('META_GRAPH_API_VERSION') && (
+                  <p className="text-xs text-muted-foreground">
+                    القيمة الحالية: {getSettingValue('META_GRAPH_API_VERSION')}
+                  </p>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Webhook & OAuth URLs */}
+          <Card className="p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <Link className="w-5 h-5 text-green-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">روابط الربط مع Meta</h3>
+                <p className="text-sm text-muted-foreground">
+                  استخدم هذه الروابط في إعدادات تطبيق Meta
+                </p>
+              </div>
+            </div>
+            
+            <Separator className="mb-6" />
+
+            <div className="space-y-4">
+              {/* Unified Webhook URL */}
+              <div className="p-4 rounded-lg bg-muted/50 border">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Webhook className="w-4 h-4 text-primary" />
+                    Unified Webhook URL
+                    <Badge variant="secondary" className="text-xs">لجميع المنصات</Badge>
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(webhookUrl, 'webhook')}
+                    className="h-8 px-2"
+                  >
+                    {copiedUrl === 'webhook' ? (
+                      <Check className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-sm font-mono bg-background p-3 rounded border" dir="ltr">
+                  {webhookUrl}
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  استخدم هذا الرابط الموحد لـ WhatsApp و Messenger و Instagram
+                </p>
+              </div>
+
+              {/* OAuth Callback URL */}
+              <div className="p-4 rounded-lg bg-muted/50 border">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Link className="w-4 h-4 text-primary" />
+                    OAuth Callback URL
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(oauthCallbackUrl, 'oauth')}
+                    className="h-8 px-2"
+                  >
+                    {copiedUrl === 'oauth' ? (
+                      <Check className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-sm font-mono bg-background p-3 rounded border" dir="ltr">
+                  {oauthCallbackUrl}
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  أضف هذا الرابط في Valid OAuth Redirect URIs
+                </p>
+              </div>
+            </div>
+
+            {/* Setup Instructions */}
+            <div className="mt-6 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                خطوات الإعداد في Meta Developer Console
+              </h4>
+              <ol className="text-sm space-y-2 text-muted-foreground list-decimal list-inside">
+                <li>انتقل إلى <span className="font-mono text-foreground">developers.facebook.com</span></li>
+                <li>اختر التطبيق أو أنشئ تطبيق جديد</li>
+                <li>انسخ App ID و App Secret من إعدادات التطبيق</li>
+                <li>في قسم Webhooks، أضف Callback URL الموحد أعلاه</li>
+                <li>أدخل Verify Token الذي تختاره (واحفظه هنا)</li>
+                <li>اشترك في الأحداث: messages, messaging_postbacks</li>
+                <li>في Facebook Login Settings، أضف OAuth Callback URL</li>
+              </ol>
+            </div>
+          </Card>
+        </TabsContent>
 
         {/* Users Tab */}
         <TabsContent value="users">
@@ -472,48 +649,153 @@ const SuperAdmin = () => {
           </Card>
         </TabsContent>
 
-        {/* Meta Settings Tab */}
-        <TabsContent value="meta" className="space-y-6">
-          {renderSettingsSection('meta')}
-          
-          <Card className="p-6 border-dashed">
-            <h4 className="font-semibold mb-4 flex items-center gap-2">
-              <Globe className="w-5 h-5" />
-              روابط Webhook
-            </h4>
-            <div className="space-y-3">
-              <div className="p-4 rounded-lg bg-muted">
-                <Label className="text-sm font-medium">Facebook Webhook URL</Label>
-                <p className="text-sm font-mono mt-1 text-muted-foreground" dir="ltr">
-                  {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/facebook-webhook`}
-                </p>
+        {/* Integrations Tab */}
+        <TabsContent value="integrations" className="space-y-6">
+          {/* Payments Settings */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-500/10">
+                  <CreditCard className="w-5 h-5 text-green-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">إعدادات الدفع</h3>
+                  <p className="text-sm text-muted-foreground">PayTabs وطرق الدفع الأخرى</p>
+                </div>
               </div>
-              <div className="p-4 rounded-lg bg-muted">
-                <Label className="text-sm font-medium">Instagram Webhook URL</Label>
-                <p className="text-sm font-mono mt-1 text-muted-foreground" dir="ltr">
-                  {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-webhook`}
-                </p>
+              <Button 
+                onClick={() => handleSaveSettings('payments')}
+                disabled={savingSettings}
+                className="gap-2"
+              >
+                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                حفظ
+              </Button>
+            </div>
+            <Separator className="mb-6" />
+            <div className="grid gap-4 md:grid-cols-2">
+              {getSettingsByCategory('payments').map((setting) => (
+                <div key={setting.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor={setting.key}>{setting.description}</Label>
+                    {setting.is_sensitive && (
+                      <Button variant="ghost" size="sm" onClick={() => toggleSensitive(setting.key)}>
+                        {showSensitive[setting.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id={setting.key}
+                    type={setting.is_sensitive && !showSensitive[setting.key] ? 'password' : 'text'}
+                    placeholder={setting.display_value || `أدخل ${setting.description}`}
+                    value={editedSettings[setting.key] || ''}
+                    onChange={(e) => setEditedSettings(prev => ({ ...prev, [setting.key]: e.target.value }))}
+                    className="font-mono text-sm"
+                    dir="ltr"
+                  />
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Shipping Settings */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <Truck className="w-5 h-5 text-orange-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">إعدادات الشحن</h3>
+                  <p className="text-sm text-muted-foreground">EPS وشركات الشحن الأخرى</p>
+                </div>
               </div>
-              <div className="p-4 rounded-lg bg-muted">
-                <Label className="text-sm font-medium">WhatsApp Webhook URL</Label>
-                <p className="text-sm font-mono mt-1 text-muted-foreground" dir="ltr">
-                  {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`}
-                </p>
-              </div>
+              <Button 
+                onClick={() => handleSaveSettings('shipping')}
+                disabled={savingSettings}
+                className="gap-2"
+              >
+                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                حفظ
+              </Button>
+            </div>
+            <Separator className="mb-6" />
+            <div className="grid gap-4 md:grid-cols-2">
+              {getSettingsByCategory('shipping').map((setting) => (
+                <div key={setting.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor={setting.key}>{setting.description}</Label>
+                    {setting.is_sensitive && (
+                      <Button variant="ghost" size="sm" onClick={() => toggleSensitive(setting.key)}>
+                        {showSensitive[setting.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id={setting.key}
+                    type={setting.is_sensitive && !showSensitive[setting.key] ? 'password' : 'text'}
+                    placeholder={setting.display_value || `أدخل ${setting.description}`}
+                    value={editedSettings[setting.key] || ''}
+                    onChange={(e) => setEditedSettings(prev => ({ ...prev, [setting.key]: e.target.value }))}
+                    className="font-mono text-sm"
+                    dir="ltr"
+                  />
+                </div>
+              ))}
             </div>
           </Card>
         </TabsContent>
 
-        {/* Integrations Tab */}
-        <TabsContent value="integrations" className="space-y-6">
-          {renderSettingsSection('payments')}
-          {renderSettingsSection('shipping')}
-        </TabsContent>
-
         {/* System Tab */}
         <TabsContent value="system" className="space-y-6">
-          {renderSettingsSection('ai')}
+          {/* AI Settings */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <Bot className="w-5 h-5 text-purple-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">إعدادات الذكاء الاصطناعي</h3>
+                  <p className="text-sm text-muted-foreground">OpenAI وخدمات AI الأخرى</p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => handleSaveSettings('ai')}
+                disabled={savingSettings}
+                className="gap-2"
+              >
+                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                حفظ
+              </Button>
+            </div>
+            <Separator className="mb-6" />
+            <div className="grid gap-4">
+              {getSettingsByCategory('ai').map((setting) => (
+                <div key={setting.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor={setting.key}>{setting.description}</Label>
+                    {setting.is_sensitive && (
+                      <Button variant="ghost" size="sm" onClick={() => toggleSensitive(setting.key)}>
+                        {showSensitive[setting.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id={setting.key}
+                    type={setting.is_sensitive && !showSensitive[setting.key] ? 'password' : 'text'}
+                    placeholder={setting.display_value || `أدخل ${setting.description}`}
+                    value={editedSettings[setting.key] || ''}
+                    onChange={(e) => setEditedSettings(prev => ({ ...prev, [setting.key]: e.target.value }))}
+                    className="font-mono text-sm"
+                    dir="ltr"
+                  />
+                </div>
+              ))}
+            </div>
+          </Card>
           
+          {/* System Info */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">معلومات النظام</h3>
             <div className="grid gap-4">

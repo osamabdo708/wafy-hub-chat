@@ -53,13 +53,27 @@ serve(async (req) => {
       return createErrorResponse(`Provider ${provider} not configured`);
     }
 
-    // Get Meta App credentials
-    const appId = Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
-    const appSecret = Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+    // Get Meta App credentials from dynamic settings first, then fall back to env
+    const { data: appIdSetting } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'META_APP_ID')
+      .single();
+    
+    const { data: appSecretSetting } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'META_APP_SECRET')
+      .single();
+
+    const appId = appIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+    const appSecret = appSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
 
     if (!appId || !appSecret) {
-      return createErrorResponse("Meta App credentials not configured");
+      return createErrorResponse("Meta App credentials not configured. Please configure them in Super Admin settings.");
     }
+
+    console.log("[OAUTH-CALLBACK] Using App ID:", appId);
 
     // Exchange code for token
     const callbackUrl = `${supabaseUrl}/functions/v1/oauth-callback`;
