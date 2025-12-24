@@ -11,6 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,13 +40,20 @@ interface Product {
   description?: string;
   price: number;
   category?: string;
+  category_id?: string;
   stock: number;
   image_url?: string;
   is_active: boolean;
 }
 
+interface Category {
+  id: string;
+  name: string;
+}
+
 const Products = () => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -49,7 +63,7 @@ const Products = () => {
     name: "",
     description: "",
     price: "",
-    category: "",
+    category_id: "",
     stock: "0",
     image_url: "",
   });
@@ -70,12 +84,29 @@ const Products = () => {
 
       if (workspace) {
         setWorkspaceId(workspace.id);
+        fetchCategories(workspace.id);
       }
 
       fetchProducts();
     };
     init();
   }, []);
+
+  const fetchCategories = async (wsId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('id, name')
+        .eq('workspace_id', wsId)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -101,7 +132,7 @@ const Products = () => {
         name: product.name,
         description: product.description || "",
         price: product.price.toString(),
-        category: product.category || "",
+        category_id: product.category_id || "",
         stock: product.stock.toString(),
         image_url: product.image_url || "",
       });
@@ -111,7 +142,7 @@ const Products = () => {
         name: "",
         description: "",
         price: "",
-        category: "",
+        category_id: "",
         stock: "0",
         image_url: "",
       });
@@ -141,7 +172,7 @@ const Products = () => {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         price: parseFloat(formData.price),
-        category: formData.category.trim() || null,
+        category_id: formData.category_id || null,
         stock: parseInt(formData.stock),
         image_url: formData.image_url.trim() || null,
         is_active: true,
@@ -266,8 +297,10 @@ const Products = () => {
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <h3 className="font-bold text-lg mb-1">{product.name}</h3>
-                    {product.category && (
-                      <Badge variant="secondary">{product.category}</Badge>
+                    {product.category_id && (
+                      <Badge variant="secondary">
+                        {categories.find(c => c.id === product.category_id)?.name || 'غير مصنف'}
+                      </Badge>
                     )}
                   </div>
                 </div>
@@ -371,16 +404,21 @@ const Products = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="category">الفئة</Label>
-              <Input
-                id="category"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                placeholder="مثال: عناية بالبشرة"
-              />
-              {formErrors.category && (
-                <p className="text-sm text-destructive">{formErrors.category}</p>
-              )}
+              <Label htmlFor="category_id">الفئة</Label>
+              <Select 
+                value={formData.category_id} 
+                onValueChange={(value) => setFormData({ ...formData, category_id: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر فئة" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">بدون فئة</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

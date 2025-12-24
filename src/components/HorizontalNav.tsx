@@ -10,7 +10,8 @@ import {
   BarChart3, 
   Settings,
   LogOut,
-  Users
+  Users,
+  FolderTree
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ const navItems = [
   { title: "البريد الوارد", url: "/inbox", icon: MessageSquare },
   { title: "الطلبات", url: "/orders", icon: ShoppingCart },
   { title: "المنتجات", url: "/products", icon: Package },
+  { title: "التصنيفات", url: "/categories", icon: FolderTree },
   { title: "الوكلاء", url: "/agents", icon: Users },
   { title: "التقارير", url: "/reports", icon: BarChart3 },
   { title: "الإعدادات", url: "/settings", icon: Settings },
