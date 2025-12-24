@@ -26,7 +26,10 @@ import {
   Check,
   Link,
   Webhook,
-  Key
+  Key,
+  User,
+  AlertTriangle,
+  RotateCcw
 } from "lucide-react";
 import {
   Table,
@@ -69,6 +72,14 @@ interface UserWithWorkspace {
   workspace_name?: string | null;
 }
 
+interface SystemUser {
+  id: string;
+  email: string;
+  full_name: string;
+  created_at: string;
+  workspace_name?: string;
+}
+
 interface AppSetting {
   id: string;
   key: string;
@@ -83,10 +94,13 @@ interface AppSetting {
 const SuperAdmin = () => {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [users, setUsers] = useState<UserWithWorkspace[]>([]);
+  const [systemUser, setSystemUser] = useState<SystemUser | null>(null);
   const [settings, setSettings] = useState<AppSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [showSensitive, setShowSensitive] = useState<Record<string, boolean>>({});
   const [editedSettings, setEditedSettings] = useState<Record<string, string>>({});
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
@@ -113,6 +127,19 @@ const SuperAdmin = () => {
       if (data?.error) throw new Error(data.error);
       setWorkspaces(data.workspaces || []);
       setUsers(data.users || []);
+      
+      // Set the single system user (first user)
+      if (data.users && data.users.length > 0) {
+        const firstUser = data.users[0];
+        const userWorkspace = data.workspaces?.find((w: Workspace) => w.owner_user_id === firstUser.id);
+        setSystemUser({
+          id: firstUser.id,
+          email: firstUser.email,
+          full_name: firstUser.full_name,
+          created_at: firstUser.created_at,
+          workspace_name: userWorkspace?.name
+        });
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error("فشل في تحميل البيانات");
@@ -193,6 +220,29 @@ const SuperAdmin = () => {
     }
   };
 
+  const handleResetSystem = async () => {
+    if (!systemUser) return;
+    setResetting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: systemUser.id }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success("تم إعادة تعيين النظام - سيتم إعادة التوجيه للتثبيت");
+      
+      // Sign out current user and redirect to installation
+      await supabase.auth.signOut();
+      window.location.href = '/installation';
+    } catch (error) {
+      console.error('Error resetting system:', error);
+      toast.error("فشل في إعادة تعيين النظام");
+    } finally {
+      setResetting(false);
+      setShowResetDialog(false);
+    }
+  };
+
   const handleClearAllSessions = async () => {
     try {
       toast.loading("جاري إنهاء جميع الجلسات...");
@@ -228,8 +278,7 @@ const SuperAdmin = () => {
   };
 
   const stats = [
-    { label: "إجمالي المستخدمين", value: users.length, icon: Users, color: "bg-blue-500/10 text-blue-500" },
-    { label: "مساحات العمل", value: workspaces.length, icon: Building2, color: "bg-green-500/10 text-green-500" },
+    { label: "حالة النظام", value: systemUser ? "مُثبت" : "غير مُثبت", icon: Shield, color: systemUser ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500" },
     { label: "الإعدادات النشطة", value: settings.filter(s => s.value).length, icon: Settings, color: "bg-purple-500/10 text-purple-500" },
   ];
 
@@ -287,19 +336,15 @@ const SuperAdmin = () => {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="meta" className="space-y-6">
-        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+      <Tabs defaultValue="system-user" className="space-y-6">
+        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+          <TabsTrigger value="system-user" className="gap-2">
+            <User className="w-4 h-4" />
+            المستخدم
+          </TabsTrigger>
           <TabsTrigger value="meta" className="gap-2">
             <Facebook className="w-4 h-4" />
             Meta
-          </TabsTrigger>
-          <TabsTrigger value="users" className="gap-2">
-            <Users className="w-4 h-4" />
-            المستخدمين
-          </TabsTrigger>
-          <TabsTrigger value="workspaces" className="gap-2">
-            <Building2 className="w-4 h-4" />
-            مساحات العمل
           </TabsTrigger>
           <TabsTrigger value="integrations" className="gap-2">
             <Globe className="w-4 h-4" />
@@ -310,6 +355,79 @@ const SuperAdmin = () => {
             النظام
           </TabsTrigger>
         </TabsList>
+
+        {/* System User Tab */}
+        <TabsContent value="system-user" className="space-y-6">
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <User className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">مستخدم النظام</h3>
+                  <p className="text-sm text-muted-foreground">المستخدم الوحيد المثبت في النظام</p>
+                </div>
+              </div>
+            </div>
+            
+            <Separator className="mb-6" />
+            
+            {systemUser ? (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <Label className="text-sm text-muted-foreground">الاسم الكامل</Label>
+                    <p className="font-medium mt-1">{systemUser.full_name || 'غير محدد'}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <Label className="text-sm text-muted-foreground">البريد الإلكتروني</Label>
+                    <p className="font-medium mt-1" dir="ltr">{systemUser.email}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <Label className="text-sm text-muted-foreground">مساحة العمل</Label>
+                    <p className="font-medium mt-1">{systemUser.workspace_name || 'غير محددة'}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <Label className="text-sm text-muted-foreground">تاريخ التسجيل</Label>
+                    <p className="font-medium mt-1">{new Date(systemUser.created_at).toLocaleDateString('ar-SA')}</p>
+                  </div>
+                </div>
+                
+                {/* Reset System Section */}
+                <div className="p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-destructive flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5" />
+                        إعادة تعيين النظام
+                      </h4>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        سيتم حذف المستخدم ومساحة العمل وجميع البيانات نهائياً
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowResetDialog(true)}
+                      className="gap-2"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      إعادة تعيين
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Shield className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">لا يوجد مستخدم مثبت في النظام</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  انتقل إلى صفحة التثبيت لإنشاء مستخدم جديد
+                </p>
+              </div>
+            )}
+          </Card>
+        </TabsContent>
 
         {/* Meta Settings Tab */}
         <TabsContent value="meta" className="space-y-6">
@@ -812,19 +930,25 @@ const SuperAdmin = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Delete User Dialog */}
-      <AlertDialog open={!!deleteUserId} onOpenChange={() => setDeleteUserId(null)}>
+      {/* Reset System Dialog */}
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>هل أنت متأكد من حذف هذا المستخدم؟</AlertDialogTitle>
+            <AlertDialogTitle className="text-destructive">تأكيد إعادة تعيين النظام</AlertDialogTitle>
             <AlertDialogDescription>
-              سيتم حذف المستخدم ومساحة العمل الخاصة به نهائياً. لا يمكن التراجع عن هذا الإجراء.
+              سيتم حذف المستخدم ومساحة العمل وجميع البيانات نهائياً. سيتم إعادة التوجيه لصفحة التثبيت.
+              <br /><br />
+              <strong>هذا الإجراء لا يمكن التراجع عنه!</strong>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>إلغاء</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground">
-              حذف
+            <AlertDialogCancel disabled={resetting}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleResetSystem} 
+              className="bg-destructive text-destructive-foreground"
+              disabled={resetting}
+            >
+              {resetting ? "جاري إعادة التعيين..." : "إعادة تعيين النظام"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
