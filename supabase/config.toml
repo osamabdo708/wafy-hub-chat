@@ -86,3 +86,6 @@ verify_jwt = true
 
 [functions.token-refresh-worker]
 verify_jwt = true
+
+[functions.manage-app-settings]
+verify_jwt = false
