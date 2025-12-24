@@ -102,6 +102,50 @@ export type Database = {
           },
         ]
       }
+      categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          name: string
+          sort_order: number | null
+          updated_at: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name: string
+          sort_order?: number | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name?: string
+          sort_order?: number | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_configs: {
         Row: {
           auth_url: string | null
@@ -488,9 +532,13 @@ export type Database = {
           id: string
           notes: string | null
           order_number: string
+          payment_link: string | null
+          payment_status: string | null
           price: number
           product_id: string | null
           service_id: string | null
+          shipping_address: string | null
+          shipping_method_id: string | null
           source_platform: string | null
           status: Database["public"]["Enums"]["order_status"] | null
           updated_at: string | null
@@ -508,9 +556,13 @@ export type Database = {
           id?: string
           notes?: string | null
           order_number: string
+          payment_link?: string | null
+          payment_status?: string | null
           price: number
           product_id?: string | null
           service_id?: string | null
+          shipping_address?: string | null
+          shipping_method_id?: string | null
           source_platform?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
           updated_at?: string | null
@@ -528,9 +580,13 @@ export type Database = {
           id?: string
           notes?: string | null
           order_number?: string
+          payment_link?: string | null
+          payment_status?: string | null
           price?: number
           product_id?: string | null
           service_id?: string | null
+          shipping_address?: string | null
+          shipping_method_id?: string | null
           source_platform?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
           updated_at?: string | null
@@ -566,9 +622,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_shipping_method_id_fkey"
+            columns: ["shipping_method_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_methods"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_settings: {
+        Row: {
+          cod_enabled: boolean | null
+          created_at: string
+          id: string
+          paytabs_enabled: boolean | null
+          paytabs_profile_id: string | null
+          paytabs_server_key_encrypted: string | null
+          updated_at: string
+          workspace_id: string | null
+        }
+        Insert: {
+          cod_enabled?: boolean | null
+          created_at?: string
+          id?: string
+          paytabs_enabled?: boolean | null
+          paytabs_profile_id?: string | null
+          paytabs_server_key_encrypted?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Update: {
+          cod_enabled?: boolean | null
+          created_at?: string
+          id?: string
+          paytabs_enabled?: boolean | null
+          paytabs_profile_id?: string | null
+          paytabs_server_key_encrypted?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
@@ -578,6 +682,7 @@ export type Database = {
         Row: {
           attributes: Json | null
           category: string | null
+          category_id: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -592,6 +697,7 @@ export type Database = {
         Insert: {
           attributes?: Json | null
           category?: string | null
+          category_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -606,6 +712,7 @@ export type Database = {
         Update: {
           attributes?: Json | null
           category?: string | null
+          category_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -618,6 +725,13 @@ export type Database = {
           workspace_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -745,6 +859,56 @@ export type Database = {
           },
         ]
       }
+      shipping_methods: {
+        Row: {
+          config: Json | null
+          created_at: string
+          description: string | null
+          estimated_days: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price: number
+          provider: string | null
+          updated_at: string
+          workspace_id: string | null
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string
+          description?: string | null
+          estimated_days?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price?: number
+          provider?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string
+          description?: string | null
+          estimated_days?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number
+          provider?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_methods_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -812,6 +976,15 @@ export type Database = {
           name: string
           owner_user_id: string | null
           settings: Json | null
+          social_links: Json | null
+          store_address: string | null
+          store_banner_url: string | null
+          store_description: string | null
+          store_email: string | null
+          store_enabled: boolean | null
+          store_logo_url: string | null
+          store_phone: string | null
+          store_slug: string | null
           updated_at: string | null
         }
         Insert: {
@@ -820,6 +993,15 @@ export type Database = {
           name: string
           owner_user_id?: string | null
           settings?: Json | null
+          social_links?: Json | null
+          store_address?: string | null
+          store_banner_url?: string | null
+          store_description?: string | null
+          store_email?: string | null
+          store_enabled?: boolean | null
+          store_logo_url?: string | null
+          store_phone?: string | null
+          store_slug?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -828,6 +1010,15 @@ export type Database = {
           name?: string
           owner_user_id?: string | null
           settings?: Json | null
+          social_links?: Json | null
+          store_address?: string | null
+          store_banner_url?: string | null
+          store_description?: string | null
+          store_email?: string | null
+          store_enabled?: boolean | null
+          store_logo_url?: string | null
+          store_phone?: string | null
+          store_slug?: string | null
           updated_at?: string | null
         }
         Relationships: []
