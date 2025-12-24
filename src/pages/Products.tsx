@@ -44,6 +44,7 @@ const Products = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -55,7 +56,25 @@ const Products = () => {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetchProducts();
+    const init = async () => {
+      // Get user's workspace first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .limit(1)
+        .single();
+
+      if (workspace) {
+        setWorkspaceId(workspace.id);
+      }
+
+      fetchProducts();
+    };
+    init();
   }, []);
 
   const fetchProducts = async () => {
@@ -138,10 +157,15 @@ const Products = () => {
         if (error) throw error;
         toast.success('تم تحديث المنتج بنجاح');
       } else {
-        // Create new product
+        // Create new product with workspace_id
+        if (!workspaceId) {
+          toast.error('فشل في تحديد مساحة العمل');
+          return;
+        }
+
         const { error } = await supabase
           .from('products')
-          .insert(productData);
+          .insert({ ...productData, workspace_id: workspaceId });
 
         if (error) throw error;
         toast.success('تم إضافة المنتج بنجاح');
