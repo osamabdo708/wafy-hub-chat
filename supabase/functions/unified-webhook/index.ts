@@ -263,17 +263,25 @@ async function handleInstagramMessage(body: any, supabase: any) {
 // ============================================
 async function handleWhatsAppMessage(body: any, supabase: any) {
   console.log('[UNIFIED-WEBHOOK] Processing WhatsApp message');
+  console.log('[UNIFIED-WEBHOOK] WhatsApp payload:', JSON.stringify(body, null, 2));
 
   for (const entry of body.entry || []) {
     const waId = entry.id; // WhatsApp Business Account ID
+    console.log('[UNIFIED-WEBHOOK] WhatsApp entry id (waId):', waId);
 
     for (const change of entry.changes || []) {
-      if (change.field !== 'messages') continue;
+      if (change.field !== 'messages') {
+        console.log('[UNIFIED-WEBHOOK] Skipping non-messages field:', change.field);
+        continue;
+      }
 
       const value = change.value;
       const phoneNumberId = value.metadata?.phone_number_id;
+      const displayPhoneNumber = value.metadata?.display_phone_number;
       const messages = value.messages || [];
       const contacts = value.contacts || [];
+      
+      console.log('[UNIFIED-WEBHOOK] WhatsApp metadata - phoneNumberId:', phoneNumberId, 'displayPhoneNumber:', displayPhoneNumber);
 
       for (const message of messages) {
         const senderId = message.from;
@@ -281,13 +289,49 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
         const messageId = message.id;
         const timestamp = message.timestamp;
 
+        console.log('[UNIFIED-WEBHOOK] WhatsApp message from:', senderId, 'text:', messageText?.substring(0, 50));
+
         if (!senderId || !messageId) continue;
 
-        // Find ALL integrations matching this phone_number_id or wa_id
-        const integrations = await findAllMatchingIntegrations(supabase, 'whatsapp', phoneNumberId, waId);
+        // Find ALL integrations matching this phone_number_id, wa_id, or any connected WhatsApp
+        let integrations = await findAllMatchingIntegrations(supabase, 'whatsapp', phoneNumberId, waId);
+        
+        // If no match found, try to find ANY connected WhatsApp integration
+        if (integrations.length === 0) {
+          console.log('[UNIFIED-WEBHOOK] No exact match, trying to find any WhatsApp integration...');
+          const { data: allWaIntegrations } = await supabase
+            .from('channel_integrations')
+            .select('id, channel, account_id, workspace_id, config')
+            .eq('channel', 'whatsapp')
+            .eq('is_connected', true);
+          
+          if (allWaIntegrations && allWaIntegrations.length > 0) {
+            console.log('[UNIFIED-WEBHOOK] Found', allWaIntegrations.length, 'WhatsApp integrations, using first one');
+            integrations = allWaIntegrations as ChannelIntegration[];
+            
+            // Update the integration with the correct phone_number_id for future matching
+            const firstIntegration = allWaIntegrations[0];
+            const updatedConfig = {
+              ...firstIntegration.config,
+              phone_number_id: phoneNumberId,
+              wa_id: waId,
+              display_phone_number: displayPhoneNumber
+            };
+            
+            await supabase
+              .from('channel_integrations')
+              .update({ 
+                config: updatedConfig,
+                account_id: phoneNumberId || waId || firstIntegration.account_id
+              })
+              .eq('id', firstIntegration.id);
+            
+            console.log('[UNIFIED-WEBHOOK] Updated integration with phone_number_id:', phoneNumberId);
+          }
+        }
         
         if (integrations.length === 0) {
-          console.log('[UNIFIED-WEBHOOK] ❌ No WhatsApp integrations found for:', phoneNumberId || waId);
+          console.log('[UNIFIED-WEBHOOK] ❌ No WhatsApp integrations found at all');
           continue;
         }
 

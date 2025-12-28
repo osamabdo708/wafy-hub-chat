@@ -307,55 +307,124 @@ async function handleInstagramConnect(supabase: any, accessToken: string, worksp
 async function handleWhatsAppConnect(supabase: any, accessToken: string, workspaceId: string) {
   console.log("[CHANNEL-OAUTH] Connecting WhatsApp...");
 
-  // Get WhatsApp Business Accounts
-  const wabaResponse = await fetch(
-    `https://graph.facebook.com/v21.0/me/businesses?access_token=${accessToken}`
-  );
-  const wabaData = await wabaResponse.json();
-  console.log("[CHANNEL-OAUTH] Businesses:", JSON.stringify(wabaData));
-
-  // For WhatsApp, we need to get the phone number ID
-  // This is a simplified flow - in production, you'd need to handle WABA setup
   let phoneNumberId: string | null = null;
   let waId: string | null = null;
   let displayName: string = 'WhatsApp Business';
+  let phoneNumber: string | null = null;
 
-  if (wabaData.data && wabaData.data.length > 0) {
-    const businessId = wabaData.data[0].id;
-    
-    // Get WhatsApp Business Account
-    const waAccountResponse = await fetch(
-      `https://graph.facebook.com/v21.0/${businessId}/owned_whatsapp_business_accounts?access_token=${accessToken}`
+  // Try multiple approaches to get WhatsApp info
+  
+  // Approach 1: Get from shared WhatsApp Business Account IDs (new method)
+  try {
+    const sharedWabaResponse = await fetch(
+      `https://graph.facebook.com/v21.0/me/whatsapp_business_accounts?access_token=${accessToken}`
     );
-    const waAccountData = await waAccountResponse.json();
-    console.log("[CHANNEL-OAUTH] WhatsApp accounts:", JSON.stringify(waAccountData));
-
-    if (waAccountData.data && waAccountData.data.length > 0) {
-      waId = waAccountData.data[0].id;
+    const sharedWabaData = await sharedWabaResponse.json();
+    console.log("[CHANNEL-OAUTH] Shared WABA:", JSON.stringify(sharedWabaData));
+    
+    if (sharedWabaData.data && sharedWabaData.data.length > 0) {
+      waId = sharedWabaData.data[0].id;
       
-      // Get phone numbers
+      // Get phone numbers from this WABA
       const phonesResponse = await fetch(
         `https://graph.facebook.com/v21.0/${waId}/phone_numbers?access_token=${accessToken}`
       );
       const phonesData = await phonesResponse.json();
-      console.log("[CHANNEL-OAUTH] Phone numbers:", JSON.stringify(phonesData));
+      console.log("[CHANNEL-OAUTH] Phone numbers from shared WABA:", JSON.stringify(phonesData));
 
       if (phonesData.data && phonesData.data.length > 0) {
         phoneNumberId = phonesData.data[0].id;
-        displayName = phonesData.data[0].display_phone_number || phonesData.data[0].verified_name || 'WhatsApp Business';
+        phoneNumber = phonesData.data[0].display_phone_number;
+        displayName = phonesData.data[0].verified_name || phoneNumber || 'WhatsApp Business';
       }
+    }
+  } catch (e) {
+    console.log("[CHANNEL-OAUTH] Error getting shared WABA:", e);
+  }
+
+  // Approach 2: Get from business accounts (old method)
+  if (!phoneNumberId && !waId) {
+    try {
+      const wabaResponse = await fetch(
+        `https://graph.facebook.com/v21.0/me/businesses?access_token=${accessToken}`
+      );
+      const wabaData = await wabaResponse.json();
+      console.log("[CHANNEL-OAUTH] Businesses:", JSON.stringify(wabaData));
+
+      if (wabaData.data && wabaData.data.length > 0) {
+        for (const business of wabaData.data) {
+          const waAccountResponse = await fetch(
+            `https://graph.facebook.com/v21.0/${business.id}/owned_whatsapp_business_accounts?access_token=${accessToken}`
+          );
+          const waAccountData = await waAccountResponse.json();
+          console.log("[CHANNEL-OAUTH] WhatsApp accounts for business", business.id, ":", JSON.stringify(waAccountData));
+
+          if (waAccountData.data && waAccountData.data.length > 0) {
+            waId = waAccountData.data[0].id;
+            
+            const phonesResponse = await fetch(
+              `https://graph.facebook.com/v21.0/${waId}/phone_numbers?access_token=${accessToken}`
+            );
+            const phonesData = await phonesResponse.json();
+            console.log("[CHANNEL-OAUTH] Phone numbers:", JSON.stringify(phonesData));
+
+            if (phonesData.data && phonesData.data.length > 0) {
+              phoneNumberId = phonesData.data[0].id;
+              phoneNumber = phonesData.data[0].display_phone_number;
+              displayName = phonesData.data[0].verified_name || phoneNumber || 'WhatsApp Business';
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log("[CHANNEL-OAUTH] Error getting businesses:", e);
     }
   }
 
+  // Approach 3: Try debug_token to get connected assets
   if (!phoneNumberId && !waId) {
-    // Fallback: Allow manual setup later
-    console.log("[CHANNEL-OAUTH] No WhatsApp phone found, creating placeholder connection");
+    try {
+      const debugResponse = await fetch(
+        `https://graph.facebook.com/v21.0/debug_token?input_token=${accessToken}&access_token=${accessToken}`
+      );
+      const debugData = await debugResponse.json();
+      console.log("[CHANNEL-OAUTH] Debug token data:", JSON.stringify(debugData));
+      
+      // Check for WhatsApp in granular_scopes
+      const granularScopes = debugData.data?.granular_scopes || [];
+      for (const scope of granularScopes) {
+        if (scope.scope === 'whatsapp_business_messaging' && scope.target_ids?.length > 0) {
+          waId = scope.target_ids[0];
+          console.log("[CHANNEL-OAUTH] Found WABA ID from scopes:", waId);
+          
+          // Try to get phone numbers
+          const phonesResponse = await fetch(
+            `https://graph.facebook.com/v21.0/${waId}/phone_numbers?access_token=${accessToken}`
+          );
+          const phonesData = await phonesResponse.json();
+          console.log("[CHANNEL-OAUTH] Phone numbers from scopes WABA:", JSON.stringify(phonesData));
+
+          if (phonesData.data && phonesData.data.length > 0) {
+            phoneNumberId = phonesData.data[0].id;
+            phoneNumber = phonesData.data[0].display_phone_number;
+            displayName = phonesData.data[0].verified_name || phoneNumber || 'WhatsApp Business';
+          }
+          break;
+        }
+      }
+    } catch (e) {
+      console.log("[CHANNEL-OAUTH] Error debugging token:", e);
+    }
   }
 
-  // Store configuration - ONLY for WhatsApp, SEPARATE from other channels
+  console.log("[CHANNEL-OAUTH] Final WhatsApp info - waId:", waId, "phoneNumberId:", phoneNumberId, "displayName:", displayName);
+
+  // Store configuration
   const config = {
     wa_id: waId,
     phone_number_id: phoneNumberId,
+    phone_number: phoneNumber,
     display_name: displayName,
     access_token: accessToken,
     connected_at: new Date().toISOString()
@@ -405,6 +474,12 @@ async function handleWhatsAppConnect(supabase: any, accessToken: string, workspa
   }
 
   console.log("[CHANNEL-OAUTH] ✅ WhatsApp connected for workspace:", workspaceId);
+  
+  // Show message about manual webhook setup if no phone number ID found
+  if (!phoneNumberId) {
+    return successResponse('whatsapp', displayName + ' (Manual webhook setup required)');
+  }
+  
   return successResponse('whatsapp', displayName);
 }
 
