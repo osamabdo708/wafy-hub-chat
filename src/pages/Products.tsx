@@ -406,14 +406,14 @@ const Products = () => {
             <div className="space-y-2">
               <Label htmlFor="category_id">الفئة</Label>
               <Select 
-                value={formData.category_id} 
-                onValueChange={(value) => setFormData({ ...formData, category_id: value })}
+                value={formData.category_id || "none"} 
+                onValueChange={(value) => setFormData({ ...formData, category_id: value === "none" ? "" : value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="اختر فئة" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">بدون فئة</SelectItem>
+                  <SelectItem value="none">بدون فئة</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                   ))}
