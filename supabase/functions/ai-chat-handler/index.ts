@@ -44,7 +44,7 @@ serve(async (req) => {
       });
     }
 
-    // Get all products from database with full details (excluding purchase_price - internal only)
+    // Get all products from database with full details
     const { data: products, error: productsError } = await supabase
       .from('products')
       .select('id, name, description, price, min_negotiable_price, stock, category, category_id, attributes, image_url, gallery_images, categories:category_id(name)')
@@ -55,14 +55,47 @@ serve(async (req) => {
       console.error('Error fetching products:', productsError);
     }
 
-    // Helper function to format product attributes (never include purchase_price)
+    // Fetch shipping methods
+    const { data: shippingMethods, error: shippingError } = await supabase
+      .from('shipping_methods')
+      .select('id, name, description, price, estimated_days, provider')
+      .eq('is_active', true)
+      .eq('workspace_id', conversation.workspace_id);
+
+    if (shippingError) {
+      console.error('Error fetching shipping methods:', shippingError);
+    }
+
+    // Fetch payment settings
+    const { data: paymentSettings, error: paymentError } = await supabase
+      .from('payment_settings')
+      .select('*')
+      .eq('workspace_id', conversation.workspace_id)
+      .maybeSingle();
+
+    if (paymentError) {
+      console.error('Error fetching payment settings:', paymentError);
+    }
+
+    // Fetch customer's previous orders
+    const { data: customerOrders, error: ordersHistoryError } = await supabase
+      .from('orders')
+      .select('order_number, status, price, created_at, products(name)')
+      .eq('customer_phone', conversation.customer_phone)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (ordersHistoryError) {
+      console.error('Error fetching customer orders:', ordersHistoryError);
+    }
+
+    // Helper function to format product attributes
     const formatProductAttributes = (product: any): string => {
       const attrs = product.attributes;
       if (!attrs) return '';
       
       let attrText = '';
       
-      // Format colors
       if (attrs.colors && attrs.colors.length > 0) {
         attrText += '\nالألوان المتاحة:\n';
         attrs.colors.forEach((color: any) => {
@@ -70,7 +103,6 @@ serve(async (req) => {
           if (color.price) attrText += ` (${color.price} ريال)`;
           attrText += '\n';
           
-          // Color sub-attributes (like sizes per color)
           if (color.attributes && color.attributes.length > 0) {
             color.attributes.forEach((subAttr: any) => {
               attrText += `    ${subAttr.name}: `;
@@ -85,7 +117,6 @@ serve(async (req) => {
         });
       }
       
-      // Format custom attributes
       if (attrs.custom && attrs.custom.length > 0) {
         attrs.custom.forEach((attr: any) => {
           attrText += `\n${attr.name}: `;
@@ -101,7 +132,7 @@ serve(async (req) => {
       return attrText;
     };
 
-    // Build products catalog text with full details (NO purchase_price - it's internal)
+    // Build products catalog text
     const productsCatalog = products?.map(p => {
       let productInfo = `[معرف: ${p.id}] المنتج: ${p.name}`;
       productInfo += `\nالوصف: ${p.description || 'لا يوجد وصف'}`;
@@ -114,7 +145,6 @@ serve(async (req) => {
       productInfo += `\nالمخزون: ${p.stock > 0 ? `${p.stock} متوفر` : 'غير متوفر'}`;
       productInfo += `\nالفئة: ${p.categories?.name || p.category || 'غير محدد'}`;
       
-      // Add attributes
       const attrText = formatProductAttributes(p);
       if (attrText) {
         productInfo += attrText;
@@ -122,6 +152,31 @@ serve(async (req) => {
       
       return productInfo;
     }).join('\n\n---\n\n') || 'لا توجد منتجات متاحة';
+
+    // Build shipping methods catalog
+    const shippingCatalog = shippingMethods?.map(s => {
+      return `[معرف: ${s.id}] ${s.name}: ${s.price} ريال (${s.estimated_days || 'غير محدد'} أيام)${s.description ? ` - ${s.description}` : ''}`;
+    }).join('\n') || 'لا توجد طرق شحن متاحة';
+
+    // Build payment methods text
+    const paymentMethodsText = [];
+    if (paymentSettings?.cod_enabled) {
+      paymentMethodsText.push('- الدفع عند الاستلام (cod)');
+    }
+    if (paymentSettings?.paytabs_enabled) {
+      paymentMethodsText.push('- الدفع الإلكتروني عبر بطاقة ائتمان/مدى (electronic)');
+    }
+    const paymentMethodsCatalog = paymentMethodsText.length > 0 
+      ? paymentMethodsText.join('\n') 
+      : 'الدفع عند الاستلام فقط';
+
+    // Build customer order history
+    const customerOrdersHistory = customerOrders && customerOrders.length > 0
+      ? customerOrders.map(o => {
+          const productName = o.products?.name || 'منتج غير معروف';
+          return `- طلب ${o.order_number}: ${productName} - ${o.price} ريال (${o.status})`;
+        }).join('\n')
+      : 'لا توجد طلبات سابقة';
 
     // Get conversation history
     const { data: messages, error: messagesError } = await supabase
@@ -147,29 +202,51 @@ serve(async (req) => {
 3. إذا سأل العميل عن منتج غير موجود في القائمة، أخبره بأن هذا المنتج غير متوفر في المتجر حالياً
 4. عند عرض المنتجات، اذكر الألوان المتاحة وأسعارها إن وجدت
 5. اذكر المقاسات أو السمات الأخرى المتاحة لكل لون مع أسعارها الإضافية
-6. احسب السعر الإجمالي عند طلب العميل (سعر المنتج + سعر اللون + سعر المقاس/السمة)
-7. عندما يؤكد العميل رغبته في الطلب ويوفر جميع التفاصيل (الاسم، الهاتف، العنوان، اللون، المقاس إن وجد)، استخدم أداة create_order لإنشاء الطلب
+6. احسب السعر الإجمالي عند طلب العميل (سعر المنتج + سعر اللون + سعر المقاس + رسوم الشحن)
+7. عندما يؤكد العميل رغبته في الطلب، اتبع هذه الخطوات بالترتيب:
+   أ. اجمع معلومات العميل (الاسم، الهاتف، البريد الإلكتروني إن أمكن)
+   ب. اسأل عن عنوان الشحن الكامل
+   ج. اقترح طريقة الشحن المناسبة بناءً على العنوان (إذا كان في نفس المدينة اقترح الأرخص)
+   د. اسأل عن طريقة الدفع المفضلة (نقدي عند الاستلام أو إلكتروني)
+   هـ. أنشئ الطلب باستخدام أداة create_order
 8. كن ودوداً ومحترفاً دائماً
 9. يمكنك التفاوض على السعر ضمن الحد الأدنى للتفاوض إن وجد
-10. لا تذكر أبداً سعر الشراء أو تكلفة المنتج الداخلية للعميل - هذه معلومات سرية
+10. لا تذكر أبداً سعر الشراء أو تكلفة المنتج الداخلية للعميل
+11. إذا سأل العميل عن طلباته السابقة، أخبره بها من المعلومات المتاحة
+12. احسب الإجمالي الكامل = سعر المنتج + رسوم الشحن
 
 المنتجات المتاحة:
 ${productsCatalog}
+
+طرق الشحن المتاحة:
+${shippingCatalog}
+
+طرق الدفع المتاحة:
+${paymentMethodsCatalog}
+
+طلبات العميل السابقة:
+${customerOrdersHistory}
 
 معلومات العميل:
 الاسم: ${conversation.customer_name || 'غير معروف'}
 الهاتف: ${conversation.customer_phone || 'غير معروف'}
 البريد الإلكتروني: ${conversation.customer_email || 'غير معروف'}
 
+تعليمات مهمة لإنشاء الطلب:
+- يجب اختيار طريقة شحن من القائمة المتاحة
+- يجب السؤال عن طريقة الدفع (cod للنقدي، electronic للإلكتروني)
+- إذا اختار العميل الدفع الإلكتروني، سيتم إرسال رابط الدفع له تلقائياً
+- تأكد من حساب الإجمالي شاملاً رسوم الشحن
+
 تحدث بالعربية دائماً وكن مختصراً وواضحاً في ردودك.`;
 
-    // Define tools for order creation
+    // Define tools for order creation with enhanced parameters
     const tools = [
       {
         type: "function",
         function: {
           name: "create_order",
-          description: "إنشاء طلب جديد عندما يؤكد العميل رغبته في الشراء ويوفر جميع التفاصيل المطلوبة",
+          description: "إنشاء طلب جديد عندما يؤكد العميل رغبته في الشراء ويوفر جميع التفاصيل المطلوبة (المنتج، العنوان، طريقة الشحن، طريقة الدفع)",
           parameters: {
             type: "object",
             properties: {
@@ -185,25 +262,46 @@ ${productsCatalog}
                 type: "string",
                 description: "رقم هاتف العميل"
               },
+              customer_email: {
+                type: "string",
+                description: "البريد الإلكتروني للعميل (اختياري)"
+              },
               shipping_address: {
                 type: "string",
-                description: "عنوان الشحن"
+                description: "عنوان الشحن الكامل"
+              },
+              shipping_method_id: {
+                type: "string",
+                description: "معرف طريقة الشحن المختارة (UUID)"
+              },
+              payment_method: {
+                type: "string",
+                enum: ["cod", "electronic"],
+                description: "طريقة الدفع: cod للدفع عند الاستلام، electronic للدفع الإلكتروني"
               },
               quantity: {
                 type: "number",
                 description: "الكمية المطلوبة",
                 default: 1
               },
+              product_price: {
+                type: "number",
+                description: "سعر المنتج (بدون الشحن)"
+              },
+              shipping_price: {
+                type: "number",
+                description: "رسوم الشحن"
+              },
               total_price: {
                 type: "number",
-                description: "السعر الإجمالي بعد حساب اللون والمقاس"
+                description: "السعر الإجمالي شاملاً الشحن"
               },
               notes: {
                 type: "string",
                 description: "ملاحظات الطلب (اللون، المقاس، أي تفاصيل أخرى)"
               }
             },
-            required: ["product_id", "customer_name", "customer_phone", "shipping_address", "total_price"]
+            required: ["product_id", "customer_name", "customer_phone", "shipping_address", "shipping_method_id", "payment_method", "total_price"]
           }
         }
       }
@@ -226,7 +324,7 @@ ${productsCatalog}
         tools: tools,
         tool_choice: "auto",
         temperature: 0.7,
-        max_tokens: 500
+        max_tokens: 800
       }),
     });
 
@@ -256,9 +354,17 @@ ${productsCatalog}
         } else if (product.stock < (args.quantity || 1)) {
           aiReply = `عذراً، الكمية المطلوبة (${args.quantity || 1}) غير متوفرة. المخزون المتاح: ${product.stock}`;
         } else {
-          // Create the order
+          // Get shipping method details
+          const { data: shippingMethod } = await supabase
+            .from('shipping_methods')
+            .select('id, name, price')
+            .eq('id', args.shipping_method_id)
+            .maybeSingle();
+
           const quantity = args.quantity || 1;
+          const paymentMethod = args.payment_method || 'cod';
           
+          // Create the order
           const { data: newOrder, error: orderError } = await supabase
             .from('orders')
             .insert({
@@ -267,14 +373,17 @@ ${productsCatalog}
               product_id: args.product_id,
               customer_name: args.customer_name,
               customer_phone: args.customer_phone,
+              customer_email: args.customer_email || null,
               shipping_address: args.shipping_address,
+              shipping_method_id: args.shipping_method_id,
               price: args.total_price,
               notes: args.notes || `الكمية: ${quantity}`,
               status: 'قيد الانتظار',
+              payment_status: paymentMethod === 'cod' ? 'cod' : 'pending',
               ai_generated: true,
               source_platform: conversation.channel
             })
-            .select('order_number')
+            .select('id, order_number')
             .single();
 
           if (orderError) {
@@ -292,7 +401,92 @@ ${productsCatalog}
               console.error('Error updating stock:', stockError);
             }
 
-            aiReply = `🎉 تم إنشاء طلبك بنجاح!\n\nرقم الطلب: ${newOrder.order_number}\nالمنتج: ${product.name}\nالكمية: ${quantity}\nالسعر الإجمالي: ${args.total_price} ريال\n\nسيتم التواصل معك قريباً لتأكيد الطلب. شكراً لتسوقك معنا! 🛍️`;
+            const shippingName = shippingMethod?.name || 'شحن عادي';
+            const shippingPrice = args.shipping_price || shippingMethod?.price || 0;
+            const productPrice = args.product_price || product.price;
+
+            // Handle payment
+            if (paymentMethod === 'electronic' && paymentSettings?.paytabs_enabled) {
+              // Generate payment link
+              try {
+                const paymentResponse = await fetch(`${supabaseUrl}/functions/v1/create-paytabs-payment`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseServiceKey}`
+                  },
+                  body: JSON.stringify({ orderId: newOrder.id })
+                });
+                
+                const paymentData = await paymentResponse.json();
+                console.log('Payment response:', paymentData);
+
+                if (paymentData.payment_url) {
+                  aiReply = `🎉 تم إنشاء طلبك بنجاح!
+
+📋 رقم الطلب: ${newOrder.order_number}
+📦 المنتج: ${product.name}
+📊 الكمية: ${quantity}
+💵 سعر المنتج: ${productPrice} ريال
+🚚 الشحن: ${shippingName} (${shippingPrice} ريال)
+💰 الإجمالي: ${args.total_price} ريال
+
+💳 رابط الدفع الإلكتروني:
+${paymentData.payment_url}
+
+⏰ يرجى إتمام الدفع خلال 24 ساعة لتأكيد طلبك.
+📍 سيتم الشحن إلى: ${args.shipping_address}
+
+شكراً لتسوقك معنا! 🛍️`;
+                } else {
+                  // Payment link generation failed, fallback to COD message
+                  aiReply = `🎉 تم إنشاء طلبك بنجاح!
+
+📋 رقم الطلب: ${newOrder.order_number}
+📦 المنتج: ${product.name}
+📊 الكمية: ${quantity}
+💵 سعر المنتج: ${productPrice} ريال
+🚚 الشحن: ${shippingName} (${shippingPrice} ريال)
+💰 الإجمالي: ${args.total_price} ريال
+
+⚠️ تعذر إنشاء رابط الدفع الإلكتروني. سيتم التواصل معك لترتيب الدفع.
+📍 سيتم الشحن إلى: ${args.shipping_address}
+
+شكراً لتسوقك معنا! 🛍️`;
+                }
+              } catch (paymentErr) {
+                console.error('Payment generation error:', paymentErr);
+                aiReply = `🎉 تم إنشاء طلبك بنجاح!
+
+📋 رقم الطلب: ${newOrder.order_number}
+📦 المنتج: ${product.name}
+📊 الكمية: ${quantity}
+💵 سعر المنتج: ${productPrice} ريال
+🚚 الشحن: ${shippingName} (${shippingPrice} ريال)
+💰 الإجمالي: ${args.total_price} ريال
+
+⚠️ تعذر إنشاء رابط الدفع الإلكتروني. سيتم التواصل معك لترتيب الدفع.
+📍 سيتم الشحن إلى: ${args.shipping_address}
+
+شكراً لتسوقك معنا! 🛍️`;
+              }
+            } else {
+              // COD order confirmation
+              aiReply = `🎉 تم إنشاء طلبك بنجاح!
+
+📋 رقم الطلب: ${newOrder.order_number}
+📦 المنتج: ${product.name}
+📊 الكمية: ${quantity}
+💵 سعر المنتج: ${productPrice} ريال
+🚚 الشحن: ${shippingName} (${shippingPrice} ريال)
+💰 الإجمالي: ${args.total_price} ريال
+
+💵 طريقة الدفع: الدفع عند الاستلام
+📍 سيتم الشحن إلى: ${args.shipping_address}
+
+سيتم التواصل معك قريباً لتأكيد الطلب.
+شكراً لتسوقك معنا! 🛍️`;
+            }
           }
         }
       }
@@ -327,7 +521,6 @@ ${productsCatalog}
     const channel = conversation.channel;
     
     if (channel === 'facebook') {
-      // Get Facebook integration
       const { data: integration } = await supabase
         .from('channel_integrations')
         .select('config')
@@ -336,7 +529,7 @@ ${productsCatalog}
         .maybeSingle();
 
       if (integration?.config?.page_access_token) {
-        const recipientId = conversation.customer_phone; // Facebook PSID stored in customer_phone
+        const recipientId = conversation.customer_phone;
         
         await fetch(`https://graph.facebook.com/v18.0/me/messages`, {
           method: 'POST',
@@ -351,7 +544,6 @@ ${productsCatalog}
         });
       }
     } else if (channel === 'whatsapp') {
-      // Get WhatsApp integration
       const { data: integration } = await supabase
         .from('channel_integrations')
         .select('config')
@@ -371,6 +563,29 @@ ${productsCatalog}
             to: conversation.customer_phone,
             type: 'text',
             text: { body: aiReply }
+          })
+        });
+      }
+    } else if (channel === 'instagram') {
+      const { data: integration } = await supabase
+        .from('channel_integrations')
+        .select('config')
+        .eq('channel', 'instagram')
+        .eq('workspace_id', conversation.workspace_id)
+        .maybeSingle();
+
+      if (integration?.config?.page_access_token) {
+        const recipientId = conversation.customer_phone;
+        
+        await fetch(`https://graph.facebook.com/v18.0/me/messages`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${integration.config.page_access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            recipient: { id: recipientId },
+            message: { text: aiReply }
           })
         });
       }
