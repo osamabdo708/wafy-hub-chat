@@ -67,7 +67,16 @@ serve(async (req) => {
 
     // Create PayTabs payment page
     const callbackUrl = `${supabaseUrl}/functions/v1/paytabs-webhook`;
-    const returnUrl = `${supabaseUrl.replace('.supabase.co', '')}/payment-success?order=${order.order_number}`;
+
+    const origin = req.headers.get('origin');
+    if (!origin) {
+      return new Response(
+        JSON.stringify({ error: 'Missing request origin' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const returnUrl = `${origin}/pay/${order.order_number}`;
 
     const paymentRequest = {
       profile_id: profileId,
@@ -105,10 +114,11 @@ serve(async (req) => {
     const paytabsResponse = await fetch(paytabsEndpoint, {
       method: 'POST',
       headers: {
-        'Authorization': serverKey,
-        'Content-Type': 'application/json'
+        'Authorization': serverKey.trim(),
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      body: JSON.stringify(paymentRequest)
+      body: JSON.stringify(paymentRequest),
     });
 
     const paytabsData = await paytabsResponse.json();
