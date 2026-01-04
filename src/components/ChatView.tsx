@@ -384,17 +384,19 @@ const ChatView = ({
       const shippingInfo = order.shipping_methods ? `\n📦 الشحن: ${order.shipping_methods.name} (${order.shipping_methods.price} ₪)` : '';
       const paymentMessage = `🔗 رابط الدفع للطلب #${order.order_number}\n\n💰 المبلغ الإجمالي: ${order.price} ₪${shippingInfo}\n\n${paymentLink}`;
       
-      const { error: msgError } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          content: paymentMessage,
-          sender_type: 'employee',
-          is_old: false,
-          reply_sent: true
-        });
+      // Send to channel using unified send function
+      const { data: sendResponse, error: sendError } = await supabase.functions.invoke('send-channel-message', {
+        body: {
+          conversationId,
+          message: paymentMessage
+        }
+      });
 
-      if (msgError) throw msgError;
+      if (sendError || !sendResponse?.success) {
+        console.error('Error sending payment link to channel:', sendError || sendResponse?.error);
+        toast.error('فشل إرسال رابط الدفع للعميل');
+        return;
+      }
 
       setShowPaymentLinkDialog(false);
       setSelectedOrderForPayment("");
