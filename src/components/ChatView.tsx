@@ -335,16 +335,18 @@ const ChatView = ({
         return;
       }
 
-      // Generate a simple payment link (placeholder - will be enhanced with PayTabs integration)
-      const paymentLink = `${window.location.origin}/pay/${order.order_number}`;
-      
-      // Update order with payment link
-      const { error } = await supabase
-        .from('orders')
-        .update({ payment_link: paymentLink })
-        .eq('id', selectedOrderForPayment);
+      // Call PayTabs edge function to create real payment link
+      const { data: response, error: functionError } = await supabase.functions.invoke('create-paytabs-payment', {
+        body: { orderId: selectedOrderForPayment }
+      });
 
-      if (error) throw error;
+      if (functionError || !response?.success) {
+        console.error('PayTabs error:', functionError || response?.error);
+        toast.error(response?.error || 'فشل إنشاء رابط الدفع');
+        return;
+      }
+
+      const paymentLink = response.payment_url;
 
       // Send payment link in chat
       const paymentMessage = `🔗 رابط الدفع للطلب #${order.order_number}\n\n💰 المبلغ: ${order.price} ريال\n\n${paymentLink}`;
