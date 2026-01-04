@@ -37,6 +37,7 @@ const productSchema = z.object({
 interface ColorAttribute {
   name: string;
   hex: string;
+  image_url?: string;
 }
 
 interface Product {
@@ -78,12 +79,14 @@ const Products = () => {
     gallery_images: [] as string[],
     colors: [] as ColorAttribute[],
   });
-  const [newColor, setNewColor] = useState({ name: "", hex: "#000000" });
+  const [newColor, setNewColor] = useState({ name: "", hex: "#000000", image_url: "" });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [uploadingColorImage, setUploadingColorImage] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const colorImageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -217,6 +220,21 @@ const Products = () => {
     setFormData({ ...formData, image_url: "" });
   };
 
+  const handleColorImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingColorImage(true);
+    const url = await uploadImage(file);
+    if (url) {
+      setNewColor({ ...newColor, image_url: url });
+    }
+    setUploadingColorImage(false);
+    if (colorImageInputRef.current) {
+      colorImageInputRef.current.value = '';
+    }
+  };
+
   const addColor = () => {
     if (!newColor.name.trim()) {
       toast.error("يرجى إدخال اسم اللون");
@@ -224,9 +242,13 @@ const Products = () => {
     }
     setFormData({
       ...formData,
-      colors: [...formData.colors, { name: newColor.name.trim(), hex: newColor.hex }],
+      colors: [...formData.colors, { 
+        name: newColor.name.trim(), 
+        hex: newColor.hex,
+        image_url: newColor.image_url || undefined
+      }],
     });
-    setNewColor({ name: "", hex: "#000000" });
+    setNewColor({ name: "", hex: "#000000", image_url: "" });
   };
 
   const removeColor = (index: number) => {
@@ -265,7 +287,7 @@ const Products = () => {
       });
     }
     setFormErrors({});
-    setNewColor({ name: "", hex: "#000000" });
+    setNewColor({ name: "", hex: "#000000", image_url: "" });
     setDialogOpen(true);
   };
 
@@ -667,26 +689,36 @@ const Products = () => {
               
               {/* Existing Colors */}
               {formData.colors.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {formData.colors.map((color, index) => (
                     <div
                       key={index}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-full border bg-muted/50"
+                      className="flex items-center gap-3 p-2 rounded-lg border bg-muted/50"
                     >
-                      <div
-                        className="w-4 h-4 rounded-full border"
-                        style={{ backgroundColor: color.hex }}
-                      />
-                      <span className="text-sm">{color.name}</span>
-                      <span className="text-xs text-muted-foreground">{color.hex}</span>
+                      {color.image_url ? (
+                        <img
+                          src={color.image_url}
+                          alt={color.name}
+                          className="w-12 h-12 rounded-lg object-cover border"
+                        />
+                      ) : (
+                        <div
+                          className="w-12 h-12 rounded-lg border"
+                          style={{ backgroundColor: color.hex }}
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{color.name}</p>
+                        <p className="text-xs text-muted-foreground">{color.hex}</p>
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="w-5 h-5 hover:bg-destructive hover:text-destructive-foreground"
+                        className="w-6 h-6 hover:bg-destructive hover:text-destructive-foreground"
                         onClick={() => removeColor(index)}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-4 h-4" />
                       </Button>
                     </div>
                   ))}
@@ -694,38 +726,102 @@ const Products = () => {
               )}
 
               {/* Add New Color */}
-              <div className="flex items-end gap-2">
-                <div className="flex-1 space-y-1">
-                  <Label htmlFor="colorName" className="text-xs">اسم اللون</Label>
-                  <Input
-                    id="colorName"
-                    value={newColor.name}
-                    onChange={(e) => setNewColor({ ...newColor, name: e.target.value })}
-                    placeholder="مثال: أحمر"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="colorHex" className="text-xs">كود اللون</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      id="colorPicker"
-                      value={newColor.hex}
-                      onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
-                      className="w-10 h-10 rounded cursor-pointer border"
-                    />
+              <div className="p-3 rounded-lg border border-dashed space-y-3">
+                <p className="text-sm font-medium">إضافة لون جديد</p>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="colorName" className="text-xs">اسم اللون</Label>
                     <Input
-                      id="colorHex"
-                      value={newColor.hex}
-                      onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
-                      placeholder="#000000"
-                      className="w-24"
+                      id="colorName"
+                      value={newColor.name}
+                      onChange={(e) => setNewColor({ ...newColor, name: e.target.value })}
+                      placeholder="مثال: أحمر"
                     />
                   </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="colorHex" className="text-xs">كود اللون</Label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="colorPicker"
+                        value={newColor.hex}
+                        onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
+                        className="w-10 h-10 rounded cursor-pointer border"
+                      />
+                      <Input
+                        id="colorHex"
+                        value={newColor.hex}
+                        onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
+                        placeholder="#000000"
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <Button type="button" variant="secondary" onClick={addColor}>
+
+                {/* Color Image Upload */}
+                <div className="space-y-1">
+                  <Label className="text-xs">صورة مرجعية للون (اختياري)</Label>
+                  <input
+                    ref={colorImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleColorImageUpload}
+                    className="hidden"
+                  />
+                  <div className="flex items-center gap-2">
+                    {newColor.image_url ? (
+                      <div className="relative w-16 h-16 rounded-lg overflow-hidden border">
+                        <img
+                          src={newColor.image_url}
+                          alt="Color reference"
+                          className="w-full h-full object-cover"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-0.5 right-0.5 w-5 h-5"
+                          onClick={() => setNewColor({ ...newColor, image_url: "" })}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-16 w-16 border-dashed"
+                        onClick={() => colorImageInputRef.current?.click()}
+                        disabled={uploadingColorImage}
+                      >
+                        {uploadingColorImage ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            <ImageIcon className="w-4 h-4" />
+                            <span className="text-[10px]">صورة</span>
+                          </div>
+                        )}
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground flex-1">
+                      يمكنك إضافة صورة مرجعية للون بدلاً من كود اللون
+                    </p>
+                  </div>
+                </div>
+
+                <Button 
+                  type="button" 
+                  variant="secondary" 
+                  className="w-full"
+                  onClick={addColor}
+                  disabled={uploadingColorImage}
+                >
                   <Plus className="w-4 h-4 ml-1" />
-                  إضافة
+                  إضافة اللون
                 </Button>
               </div>
             </div>
