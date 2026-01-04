@@ -406,7 +406,9 @@ const ChatView = ({
           
           // Copy link to clipboard
           await navigator.clipboard.writeText(paymentLink);
-          toast.warning('تم إنشاء رابط الدفع ونسخه للحافظة. يرجى إرساله يدوياً للعميل (قيود API)');
+          
+          const channelName = channel === 'instagram' ? 'إنستغرام' : channel === 'facebook' ? 'فيسبوك' : 'القناة';
+          toast.warning(`تم إنشاء رابط الدفع ونسخه للحافظة. ${channelName} لا يسمح بإرسال الروابط تلقائياً - يرجى لصق الرابط وإرساله يدوياً للعميل.`);
         } else {
           toast.success('تم إرسال رابط الدفع للعميل');
         }
@@ -423,7 +425,9 @@ const ChatView = ({
         
         // Copy link to clipboard
         await navigator.clipboard.writeText(paymentLink);
-        toast.warning('تم إنشاء رابط الدفع ونسخه للحافظة. يرجى إرساله يدوياً للعميل');
+        
+        const channelName = channel === 'instagram' ? 'إنستغرام' : channel === 'facebook' ? 'فيسبوك' : 'القناة';
+        toast.warning(`تم إنشاء رابط الدفع ونسخه للحافظة. ${channelName} لا يسمح بإرسال الروابط تلقائياً - يرجى لصق الرابط وإرساله يدوياً للعميل.`);
       }
 
       setShowPaymentLinkDialog(false);
