@@ -89,3 +89,12 @@ verify_jwt = true
 
 [functions.manage-app-settings]
 verify_jwt = false
+
+# ============================================
+# PAYTABS PAYMENT
+# ============================================
+[functions.create-paytabs-payment]
+verify_jwt = true
+
+[functions.paytabs-webhook]
+verify_jwt = false

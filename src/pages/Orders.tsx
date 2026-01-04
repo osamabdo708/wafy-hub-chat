@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -19,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Plus, X } from "lucide-react";
+import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -227,10 +228,8 @@ const Orders = () => {
                     <SelectValue placeholder="اختر طريقة الدفع" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="نقدي">نقدي</SelectItem>
-                    <SelectItem value="بطاقة ائتمان">بطاقة ائتمان</SelectItem>
-                    <SelectItem value="تحويل بنكي">تحويل بنكي</SelectItem>
-                    <SelectItem value="محفظة إلكترونية">محفظة إلكترونية</SelectItem>
+                    <SelectItem value="نقدي">نقدي (الدفع عند الاستلام)</SelectItem>
+                    <SelectItem value="رابط دفع PayTabs">رابط دفع PayTabs</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -392,6 +391,7 @@ const Orders = () => {
                 <TableHead className="text-right">المنتج/الخدمة</TableHead>
                 <TableHead className="text-right">السعر</TableHead>
                 <TableHead className="text-right">الحالة</TableHead>
+                <TableHead className="text-right">حالة الدفع</TableHead>
                 <TableHead className="text-right">التاريخ</TableHead>
                 <TableHead className="text-right">المصدر</TableHead>
               </TableRow>
@@ -417,6 +417,41 @@ const Orders = () => {
                     }>
                       {order.status}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Badge 
+                            variant="outline" 
+                            className={
+                              order.payment_status === 'paid' ? 'bg-green-100 text-green-800 border-green-300' :
+                              order.payment_status === 'awaiting_payment' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                              order.payment_status === 'failed' ? 'bg-red-100 text-red-800 border-red-300' :
+                              'bg-gray-100 text-gray-800 border-gray-300'
+                            }
+                          >
+                            {order.payment_status === 'paid' && <CheckCircle className="w-3 h-3 ml-1" />}
+                            {order.payment_status === 'awaiting_payment' && <Clock className="w-3 h-3 ml-1" />}
+                            {order.payment_status === 'failed' && <XCircle className="w-3 h-3 ml-1" />}
+                            {order.payment_status === 'pending' && <AlertCircle className="w-3 h-3 ml-1" />}
+                            {!order.payment_status && <Banknote className="w-3 h-3 ml-1" />}
+                            {order.payment_status === 'paid' ? 'مدفوع' :
+                             order.payment_status === 'awaiting_payment' ? 'في انتظار الدفع' :
+                             order.payment_status === 'failed' ? 'فشل الدفع' :
+                             order.payment_status === 'pending' ? 'معلق' :
+                             'غير محدد'}
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {order.payment_link ? (
+                            <p className="text-xs">رابط الدفع: {order.payment_link}</p>
+                          ) : (
+                            <p className="text-xs">لا يوجد رابط دفع</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
                   <TableCell>
                     {order.created_at ? format(new Date(order.created_at), "yyyy-MM-dd") : "-"}
