@@ -95,8 +95,18 @@ serve(async (req) => {
 
     console.log('Creating PayTabs payment:', JSON.stringify(paymentRequest));
     console.log('Using profile_id:', profileId);
+    console.log('Server key starts with:', serverKey.substring(0, 10));
 
-    const paytabsResponse = await fetch('https://secure.paytabs.sa/payment/request', {
+    // Use demo endpoint for test keys (keys starting with 'SHJ' or similar test patterns)
+    // Production keys usually start with 'SBJ' or have different format
+    const isTestKey = serverKey.startsWith('SHJ') || profileId.toString().length <= 6;
+    const paytabsEndpoint = isTestKey 
+      ? 'https://secure-egypt.paytabs.com/payment/request'  // Test/Demo endpoint
+      : 'https://secure.paytabs.sa/payment/request';  // Production endpoint
+    
+    console.log('Using PayTabs endpoint:', paytabsEndpoint);
+
+    const paytabsResponse = await fetch(paytabsEndpoint, {
       method: 'POST',
       headers: {
         'Authorization': serverKey,
