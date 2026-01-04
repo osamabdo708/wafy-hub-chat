@@ -60,6 +60,7 @@ const ChatView = ({
   const [sending, setSending] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [shippingMethods, setShippingMethods] = useState<any[]>([]);
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [showPaymentLinkDialog, setShowPaymentLinkDialog] = useState(false);
   const [generatingPaymentLink, setGeneratingPaymentLink] = useState(false);
@@ -72,6 +73,7 @@ const ChatView = ({
     address: '',
     payment_method: '',
     product_id: '',
+    shipping_method_id: '',
     quantity: 1,
     notes: ''
   });
@@ -83,6 +85,7 @@ const ChatView = ({
     fetchProducts();
     fetchOrders();
     fetchWorkspaceId();
+    fetchShippingMethods();
 
     // Subscribe to new messages
     const channel = supabase
@@ -165,7 +168,7 @@ const ChatView = ({
     try {
       const { data, error } = await supabase
         .from('orders')
-        .select('*')
+        .select('*, shipping_methods(name, price)')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false });
 
@@ -173,6 +176,20 @@ const ChatView = ({
       setOrders(data || []);
     } catch (error) {
       console.error('Error fetching orders:', error);
+    }
+  };
+
+  const fetchShippingMethods = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('shipping_methods')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      setShippingMethods(data || []);
+    } catch (error) {
+      console.error('Error fetching shipping methods:', error);
     }
   };
 
@@ -208,7 +225,7 @@ const ChatView = ({
 
   const handleSendProduct = async (product: any) => {
     try {
-      const productMessage = `📦 *${product.name}*\n\n${product.description}\n\n💰 السعر: ${product.price} ريال`;
+      const productMessage = `📦 *${product.name}*\n\n${product.description}\n\n💰 السعر: ${product.price} ₪`;
       
       // Send to channel FIRST to get message_id
       let platformMessageId = null;
@@ -265,6 +282,11 @@ const ChatView = ({
       return;
     }
 
+    if (!orderForm.shipping_method_id) {
+      toast.error('يرجى اختيار طريقة الشحن');
+      return;
+    }
+
     try {
       if (!workspaceId) {
         toast.error('لم يتم العثور على بيانات المحادثة');
@@ -272,7 +294,10 @@ const ChatView = ({
       }
 
       const selectedProduct = products.find(p => p.id === orderForm.product_id);
-      const totalPrice = selectedProduct ? selectedProduct.price * orderForm.quantity : 0;
+      const selectedShipping = shippingMethods.find(s => s.id === orderForm.shipping_method_id);
+      const productTotal = selectedProduct ? selectedProduct.price * orderForm.quantity : 0;
+      const shippingPrice = selectedShipping ? Number(selectedShipping.price) : 0;
+      const totalPrice = productTotal + shippingPrice;
 
       // Generate order number
       const { data: orderNumber } = await supabase.rpc('generate_order_number');
@@ -284,6 +309,7 @@ const ChatView = ({
           customer_phone: orderForm.customer_phone,
           customer_email: orderForm.customer_email || null,
           product_id: orderForm.product_id,
+          shipping_method_id: orderForm.shipping_method_id,
           price: totalPrice,
           order_number: orderNumber || `ORD-${Date.now()}`,
           status: 'قيد الانتظار',
@@ -293,7 +319,7 @@ const ChatView = ({
           created_by: 'employee',
           shipping_address: orderForm.address,
           payment_status: orderForm.payment_method === 'نقدي' ? 'pending' : 'awaiting_payment',
-          notes: `طريقة الدفع: ${orderForm.payment_method}${orderForm.notes ? `\n${orderForm.notes}` : ''}`
+          notes: `طريقة الدفع: ${orderForm.payment_method}\nطريقة الشحن: ${selectedShipping?.name || 'غير محدد'}${orderForm.notes ? `\n${orderForm.notes}` : ''}`
         });
 
       if (error) throw error;
@@ -306,6 +332,7 @@ const ChatView = ({
         address: '',
         payment_method: '',
         product_id: '',
+        shipping_method_id: '',
         quantity: 1,
         notes: ''
       });
@@ -354,7 +381,8 @@ const ChatView = ({
       const paymentLink = response.payment_url;
 
       // Send payment link in chat
-      const paymentMessage = `🔗 رابط الدفع للطلب #${order.order_number}\n\n💰 المبلغ: ${order.price} ريال\n\n${paymentLink}`;
+      const shippingInfo = order.shipping_methods ? `\n📦 الشحن: ${order.shipping_methods.name} (${order.shipping_methods.price} ₪)` : '';
+      const paymentMessage = `🔗 رابط الدفع للطلب #${order.order_number}\n\n💰 المبلغ الإجمالي: ${order.price} ₪${shippingInfo}\n\n${paymentLink}`;
       
       const { error: msgError } = await supabase
         .from('messages')
@@ -430,7 +458,7 @@ const ChatView = ({
                       )}
                       <h4 className="font-semibold">{product.name}</h4>
                       <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
-                      <p className="text-primary font-bold mt-2">{product.price} ريال</p>
+                      <p className="text-primary font-bold mt-2">{product.price} ₪</p>
                     </Card>
                   ))}
                 </div>
@@ -466,7 +494,7 @@ const ChatView = ({
                         <SelectContent>
                           {payableOrders.map((order) => (
                             <SelectItem key={order.id} value={order.id}>
-                              {order.order_number} - {order.price} ريال
+                              {order.order_number} - {order.price} ₪
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -564,7 +592,26 @@ const ChatView = ({
                   <SelectContent>
                     {products.map((product) => (
                       <SelectItem key={product.id} value={product.id}>
-                        {product.name} - {product.price} ريال
+                        {product.name} - {product.price} ₪
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="order_shipping">طريقة الشحن *</Label>
+                <Select
+                  value={orderForm.shipping_method_id}
+                  onValueChange={(value) => setOrderForm({ ...orderForm, shipping_method_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر طريقة الشحن" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shippingMethods.map((method) => (
+                      <SelectItem key={method.id} value={method.id}>
+                        {method.name} - {method.price} ₪
                       </SelectItem>
                     ))}
                   </SelectContent>
