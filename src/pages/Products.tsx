@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon, Palette } from "lucide-react";
+import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon, Palette, Tags, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,21 @@ interface ColorAttribute {
   image_url?: string;
 }
 
+interface AttributeValue {
+  value: string;
+  image_url?: string;
+}
+
+interface CustomAttribute {
+  name: string;
+  values: AttributeValue[];
+}
+
+interface ProductAttributes {
+  colors?: ColorAttribute[];
+  custom?: CustomAttribute[];
+}
+
 interface Product {
   id: string;
   name: string;
@@ -51,7 +66,7 @@ interface Product {
   stock: number;
   image_url?: string;
   gallery_images?: string[];
-  attributes?: { colors?: ColorAttribute[] };
+  attributes?: ProductAttributes;
   is_active: boolean;
 }
 
@@ -78,15 +93,21 @@ const Products = () => {
     image_url: "",
     gallery_images: [] as string[],
     colors: [] as ColorAttribute[],
+    customAttributes: [] as CustomAttribute[],
   });
   const [newColor, setNewColor] = useState({ name: "", hex: "#000000", image_url: "" });
+  const [newAttributeName, setNewAttributeName] = useState("");
+  const [newAttributeValue, setNewAttributeValue] = useState({ value: "", image_url: "" });
+  const [selectedAttributeIndex, setSelectedAttributeIndex] = useState<number | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const [uploadingColorImage, setUploadingColorImage] = useState(false);
+  const [uploadingAttributeImage, setUploadingAttributeImage] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const colorImageInputRef = useRef<HTMLInputElement>(null);
+  const attributeImageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -271,6 +292,7 @@ const Products = () => {
         image_url: product.image_url || "",
         gallery_images: product.gallery_images || [],
         colors: product.attributes?.colors || [],
+        customAttributes: product.attributes?.custom || [],
       });
     } else {
       setEditingProduct(null);
@@ -284,11 +306,82 @@ const Products = () => {
         image_url: "",
         gallery_images: [],
         colors: [],
+        customAttributes: [],
       });
     }
     setFormErrors({});
     setNewColor({ name: "", hex: "#000000", image_url: "" });
+    setNewAttributeName("");
+    setNewAttributeValue({ value: "", image_url: "" });
+    setSelectedAttributeIndex(null);
     setDialogOpen(true);
+  };
+
+  // Custom Attribute Functions
+  const addCustomAttribute = () => {
+    if (!newAttributeName.trim()) {
+      toast.error("يرجى إدخال اسم السمة");
+      return;
+    }
+    // Check if attribute already exists
+    if (formData.customAttributes.some(attr => attr.name.toLowerCase() === newAttributeName.trim().toLowerCase())) {
+      toast.error("هذه السمة موجودة بالفعل");
+      return;
+    }
+    setFormData({
+      ...formData,
+      customAttributes: [...formData.customAttributes, { name: newAttributeName.trim(), values: [] }],
+    });
+    setNewAttributeName("");
+    // Auto-select the new attribute
+    setSelectedAttributeIndex(formData.customAttributes.length);
+  };
+
+  const removeCustomAttribute = (index: number) => {
+    setFormData({
+      ...formData,
+      customAttributes: formData.customAttributes.filter((_, i) => i !== index),
+    });
+    if (selectedAttributeIndex === index) {
+      setSelectedAttributeIndex(null);
+    } else if (selectedAttributeIndex !== null && selectedAttributeIndex > index) {
+      setSelectedAttributeIndex(selectedAttributeIndex - 1);
+    }
+  };
+
+  const addAttributeValue = (attrIndex: number) => {
+    if (!newAttributeValue.value.trim()) {
+      toast.error("يرجى إدخال قيمة السمة");
+      return;
+    }
+    const updatedAttributes = [...formData.customAttributes];
+    updatedAttributes[attrIndex].values.push({
+      value: newAttributeValue.value.trim(),
+      image_url: newAttributeValue.image_url || undefined,
+    });
+    setFormData({ ...formData, customAttributes: updatedAttributes });
+    setNewAttributeValue({ value: "", image_url: "" });
+  };
+
+  const removeAttributeValue = (attrIndex: number, valueIndex: number) => {
+    const updatedAttributes = [...formData.customAttributes];
+    updatedAttributes[attrIndex].values = updatedAttributes[attrIndex].values.filter((_, i) => i !== valueIndex);
+    setFormData({ ...formData, customAttributes: updatedAttributes });
+  };
+
+  const handleAttributeImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingAttributeImage(true);
+    const url = await uploadImage(file);
+    if (url) {
+      setNewAttributeValue({ ...newAttributeValue, image_url: url });
+    }
+    setUploadingAttributeImage(false);
+    if (attributeImageInputRef.current) {
+      attributeImageInputRef.current.value = '';
+    }
   };
 
   const handleSaveProduct = async () => {
@@ -316,7 +409,7 @@ const Products = () => {
         stock: parseInt(formData.stock),
         image_url: formData.image_url || null,
         gallery_images: formData.gallery_images,
-        attributes: JSON.parse(JSON.stringify({ colors: formData.colors })),
+        attributes: JSON.parse(JSON.stringify({ colors: formData.colors, custom: formData.customAttributes })),
         is_active: true,
       };
 
@@ -822,6 +915,157 @@ const Products = () => {
                 >
                   <Plus className="w-4 h-4 ml-1" />
                   إضافة اللون
+                </Button>
+              </div>
+            </div>
+
+            {/* Custom Attributes */}
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Tags className="w-4 h-4" />
+                سمات إضافية (مقاسات، خامات، إلخ)
+              </Label>
+
+              {/* Existing Custom Attributes */}
+              {formData.customAttributes.length > 0 && (
+                <div className="space-y-3">
+                  {formData.customAttributes.map((attr, attrIndex) => (
+                    <div key={attrIndex} className="p-3 rounded-lg border bg-muted/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-medium text-sm">{attr.name}</p>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant={selectedAttributeIndex === attrIndex ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSelectedAttributeIndex(selectedAttributeIndex === attrIndex ? null : attrIndex)}
+                          >
+                            <Plus className="w-3 h-3 ml-1" />
+                            إضافة قيمة
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="w-7 h-7 hover:bg-destructive hover:text-destructive-foreground"
+                            onClick={() => removeCustomAttribute(attrIndex)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Attribute Values */}
+                      {attr.values.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {attr.values.map((val, valIndex) => (
+                            <div
+                              key={valIndex}
+                              className="flex items-center gap-2 px-2 py-1 rounded-lg border bg-background"
+                            >
+                              {val.image_url && (
+                                <img
+                                  src={val.image_url}
+                                  alt={val.value}
+                                  className="w-6 h-6 rounded object-cover"
+                                />
+                              )}
+                              <span className="text-sm">{val.value}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="w-5 h-5 hover:bg-destructive hover:text-destructive-foreground"
+                                onClick={() => removeAttributeValue(attrIndex, valIndex)}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Add Value Form (shown when selected) */}
+                      {selectedAttributeIndex === attrIndex && (
+                        <div className="pt-2 border-t space-y-2">
+                          <div className="flex items-end gap-2">
+                            <div className="flex-1 space-y-1">
+                              <Label className="text-xs">القيمة</Label>
+                              <Input
+                                value={newAttributeValue.value}
+                                onChange={(e) => setNewAttributeValue({ ...newAttributeValue, value: e.target.value })}
+                                placeholder={`مثال: ${attr.name === 'المقاس' ? 'XL' : 'قيمة'}`}
+                              />
+                            </div>
+                            <input
+                              ref={attributeImageInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleAttributeImageUpload}
+                              className="hidden"
+                            />
+                            {newAttributeValue.image_url ? (
+                              <div className="relative w-10 h-10 rounded overflow-hidden border">
+                                <img
+                                  src={newAttributeValue.image_url}
+                                  alt="Value"
+                                  className="w-full h-full object-cover"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="icon"
+                                  className="absolute top-0 right-0 w-4 h-4"
+                                  onClick={() => setNewAttributeValue({ ...newAttributeValue, image_url: "" })}
+                                >
+                                  <X className="w-2 h-2" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="w-10 h-10"
+                                onClick={() => attributeImageInputRef.current?.click()}
+                                disabled={uploadingAttributeImage}
+                              >
+                                {uploadingAttributeImage ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <ImageIcon className="w-4 h-4" />
+                                )}
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => addAttributeValue(attrIndex)}
+                              disabled={uploadingAttributeImage}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add New Attribute */}
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">إضافة سمة جديدة</Label>
+                  <Input
+                    value={newAttributeName}
+                    onChange={(e) => setNewAttributeName(e.target.value)}
+                    placeholder="مثال: المقاس، الخامة، النوع..."
+                  />
+                </div>
+                <Button type="button" variant="outline" onClick={addCustomAttribute}>
+                  <Plus className="w-4 h-4 ml-1" />
+                  إضافة سمة
                 </Button>
               </div>
             </div>
