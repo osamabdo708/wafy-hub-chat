@@ -16,7 +16,7 @@ interface OrderData {
   shipping_methods?: { name: string; price: number } | null;
 }
 
-export const generateInvoicePDF = (order: OrderData): void => {
+export const generateInvoicePDF = (order: OrderData, openInNewTab: boolean = true): string => {
   const doc = new jsPDF();
   
   // Colors
@@ -218,8 +218,13 @@ export const generateInvoicePDF = (order: OrderData): void => {
   doc.setFontSize(9);
   doc.text('Thank you for your business!', 105, pageHeight - 10, { align: 'center' });
 
-  // Open in new tab
+  // Generate blob URL
   const pdfBlob = doc.output('blob');
   const pdfUrl = URL.createObjectURL(pdfBlob);
-  window.open(pdfUrl, '_blank');
+  
+  if (openInNewTab) {
+    window.open(pdfUrl, '_blank');
+  }
+  
+  return pdfUrl;
 };
