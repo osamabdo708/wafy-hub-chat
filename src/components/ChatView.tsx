@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Send, User, Phone, Mail, Bot, Package, ShoppingCart, X, LinkIcon, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
+import { generateInvoicePDF } from "@/utils/invoiceGenerator";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import { getChannelIconComponent } from "@/components/ChannelIcons";
@@ -301,6 +302,7 @@ const ChatView = ({
 
       // Generate order number
       const { data: orderNumber } = await supabase.rpc('generate_order_number');
+      const finalOrderNumber = orderNumber || `ORD-${Date.now()}`;
 
       const { error } = await supabase
         .from('orders')
@@ -311,7 +313,7 @@ const ChatView = ({
           product_id: orderForm.product_id,
           shipping_method_id: orderForm.shipping_method_id,
           price: totalPrice,
-          order_number: orderNumber || `ORD-${Date.now()}`,
+          order_number: finalOrderNumber,
           status: 'قيد الانتظار',
           conversation_id: conversationId,
           workspace_id: workspaceId,
@@ -323,6 +325,44 @@ const ChatView = ({
         });
 
       if (error) throw error;
+
+      // Generate invoice PDF and get the URL
+      const invoiceUrl = generateInvoicePDF({
+        order_number: finalOrderNumber,
+        customer_name: orderForm.customer_name,
+        customer_phone: orderForm.customer_phone,
+        customer_email: orderForm.customer_email,
+        shipping_address: orderForm.address,
+        price: totalPrice,
+        payment_status: orderForm.payment_method === 'نقدي' ? 'pending' : 'awaiting_payment',
+        status: 'قيد الانتظار',
+        created_at: new Date().toISOString(),
+        notes: `طريقة الدفع: ${orderForm.payment_method}`,
+        products: selectedProduct ? { name: selectedProduct.name } : null,
+        shipping_methods: selectedShipping ? { name: selectedShipping.name, price: shippingPrice } : null
+      }, false);
+
+      // Send order confirmation message with invoice URL
+      const orderMessage = `✅ تم إنشاء طلبك بنجاح!\n\n📋 رقم الطلب: #${finalOrderNumber}\n📦 المنتج: ${selectedProduct?.name || 'غير محدد'}\n💰 الإجمالي: ${totalPrice} ₪\n\n🧾 رابط الفاتورة:\n${invoiceUrl}`;
+
+      try {
+        await supabase.functions.invoke('send-channel-message', {
+          body: {
+            conversationId,
+            message: orderMessage
+          }
+        });
+      } catch (sendErr) {
+        console.warn('Could not send order message to channel:', sendErr);
+        // Save message locally even if sending failed
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          content: orderMessage,
+          sender_type: 'employee',
+          is_old: false,
+          reply_sent: false
+        });
+      }
 
       setShowOrderForm(false);
       setOrderForm({
