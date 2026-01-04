@@ -718,9 +718,11 @@ export type Database = {
           category_id: string | null
           created_at: string | null
           description: string | null
+          gallery_images: string[] | null
           id: string
           image_url: string | null
           is_active: boolean | null
+          min_negotiable_price: number | null
           name: string
           price: number
           stock: number | null
@@ -733,9 +735,11 @@ export type Database = {
           category_id?: string | null
           created_at?: string | null
           description?: string | null
+          gallery_images?: string[] | null
           id?: string
           image_url?: string | null
           is_active?: boolean | null
+          min_negotiable_price?: number | null
           name: string
           price: number
           stock?: number | null
@@ -748,9 +752,11 @@ export type Database = {
           category_id?: string | null
           created_at?: string | null
           description?: string | null
+          gallery_images?: string[] | null
           id?: string
           image_url?: string | null
           is_active?: boolean | null
+          min_negotiable_price?: number | null
           name?: string
           price?: number
           stock?: number | null

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Package, Edit, Loader2 } from "lucide-react";
+import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,9 +29,9 @@ const productSchema = z.object({
   name: z.string().trim().min(1, "اسم المنتج مطلوب").max(200, "الاسم طويل جداً"),
   description: z.string().trim().max(1000, "الوصف طويل جداً").optional(),
   price: z.string().trim().min(1, "السعر مطلوب"),
+  min_negotiable_price: z.string().trim().optional(),
   category: z.string().trim().max(100, "الفئة طويلة جداً").optional(),
   stock: z.string().trim(),
-  image_url: z.string().trim().url("رابط الصورة غير صحيح").optional().or(z.literal("")),
 });
 
 interface Product {
@@ -39,10 +39,12 @@ interface Product {
   name: string;
   description?: string;
   price: number;
+  min_negotiable_price?: number;
   category?: string;
   category_id?: string;
   stock: number;
   image_url?: string;
+  gallery_images?: string[];
   is_active: boolean;
 }
 
@@ -63,15 +65,20 @@ const Products = () => {
     name: "",
     description: "",
     price: "",
+    min_negotiable_price: "",
     category_id: "",
     stock: "0",
     image_url: "",
+    gallery_images: [] as string[],
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const init = async () => {
-      // Get user's workspace first
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -125,6 +132,78 @@ const Products = () => {
     }
   };
 
+  const uploadImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `products/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('فشل رفع الصورة');
+      return null;
+    }
+  };
+
+  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingThumbnail(true);
+    const url = await uploadImage(file);
+    if (url) {
+      setFormData({ ...formData, image_url: url });
+    }
+    setUploadingThumbnail(false);
+    if (thumbnailInputRef.current) {
+      thumbnailInputRef.current.value = '';
+    }
+  };
+
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingGallery(true);
+    const newUrls: string[] = [];
+
+    for (const file of Array.from(files)) {
+      const url = await uploadImage(file);
+      if (url) {
+        newUrls.push(url);
+      }
+    }
+
+    setFormData({
+      ...formData,
+      gallery_images: [...formData.gallery_images, ...newUrls],
+    });
+    setUploadingGallery(false);
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = '';
+    }
+  };
+
+  const removeGalleryImage = (index: number) => {
+    const newGallery = formData.gallery_images.filter((_, i) => i !== index);
+    setFormData({ ...formData, gallery_images: newGallery });
+  };
+
+  const removeThumbnail = () => {
+    setFormData({ ...formData, image_url: "" });
+  };
+
   const handleOpenDialog = (product?: Product) => {
     if (product) {
       setEditingProduct(product);
@@ -132,9 +211,11 @@ const Products = () => {
         name: product.name,
         description: product.description || "",
         price: product.price.toString(),
+        min_negotiable_price: product.min_negotiable_price?.toString() || "",
         category_id: product.category_id || "",
         stock: product.stock.toString(),
         image_url: product.image_url || "",
+        gallery_images: product.gallery_images || [],
       });
     } else {
       setEditingProduct(null);
@@ -142,9 +223,11 @@ const Products = () => {
         name: "",
         description: "",
         price: "",
+        min_negotiable_price: "",
         category_id: "",
         stock: "0",
         image_url: "",
+        gallery_images: [],
       });
     }
     setFormErrors({});
@@ -153,7 +236,6 @@ const Products = () => {
 
   const handleSaveProduct = async () => {
     try {
-      // Validate form
       const result = productSchema.safeParse(formData);
       if (!result.success) {
         const errors: Record<string, string> = {};
@@ -172,14 +254,15 @@ const Products = () => {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         price: parseFloat(formData.price),
+        min_negotiable_price: formData.min_negotiable_price ? parseFloat(formData.min_negotiable_price) : null,
         category_id: formData.category_id || null,
         stock: parseInt(formData.stock),
-        image_url: formData.image_url.trim() || null,
+        image_url: formData.image_url || null,
+        gallery_images: formData.gallery_images,
         is_active: true,
       };
 
       if (editingProduct) {
-        // Update existing product
         const { error } = await supabase
           .from('products')
           .update(productData)
@@ -188,7 +271,6 @@ const Products = () => {
         if (error) throw error;
         toast.success('تم تحديث المنتج بنجاح');
       } else {
-        // Create new product with workspace_id
         if (!workspaceId) {
           toast.error('فشل في تحديد مساحة العمل');
           return;
@@ -314,6 +396,11 @@ const Products = () => {
                 <div className="flex items-center justify-between mt-4">
                   <div>
                     <p className="text-2xl font-bold text-primary">{product.price} ريال</p>
+                    {product.min_negotiable_price && (
+                      <p className="text-xs text-muted-foreground">
+                        الحد الأدنى للتفاوض: {product.min_negotiable_price} ريال
+                      </p>
+                    )}
                     <p className="text-sm text-muted-foreground">
                       المخزون: {product.stock}
                     </p>
@@ -334,7 +421,7 @@ const Products = () => {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingProduct ? "تعديل المنتج" : "إضافة منتج جديد"}
@@ -389,6 +476,21 @@ const Products = () => {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="min_negotiable_price">الحد الأدنى للتفاوض (ريال)</Label>
+                <Input
+                  id="min_negotiable_price"
+                  type="number"
+                  step="0.01"
+                  value={formData.min_negotiable_price}
+                  onChange={(e) => setFormData({ ...formData, min_negotiable_price: e.target.value })}
+                  placeholder="0.00"
+                />
+                <p className="text-xs text-muted-foreground">للمارد الذكي</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label htmlFor="stock">الكمية *</Label>
                 <Input
                   id="stock"
@@ -401,37 +503,123 @@ const Products = () => {
                   <p className="text-sm text-destructive">{formErrors.stock}</p>
                 )}
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="category_id">الفئة</Label>
+                <Select 
+                  value={formData.category_id || "none"} 
+                  onValueChange={(value) => setFormData({ ...formData, category_id: value === "none" ? "" : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر فئة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">بدون فئة</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
+            {/* Thumbnail Upload */}
             <div className="space-y-2">
-              <Label htmlFor="category_id">الفئة</Label>
-              <Select 
-                value={formData.category_id || "none"} 
-                onValueChange={(value) => setFormData({ ...formData, category_id: value === "none" ? "" : value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر فئة" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">بدون فئة</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="image_url">رابط الصورة</Label>
-              <Input
-                id="image_url"
-                value={formData.image_url}
-                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                placeholder="https://example.com/image.jpg"
+              <Label>الصورة الرئيسية</Label>
+              <input
+                ref={thumbnailInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleThumbnailUpload}
+                className="hidden"
               />
-              {formErrors.image_url && (
-                <p className="text-sm text-destructive">{formErrors.image_url}</p>
+              {formData.image_url ? (
+                <div className="relative w-32 h-32 rounded-lg overflow-hidden border">
+                  <img
+                    src={formData.image_url}
+                    alt="Thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-1 right-1 w-6 h-6"
+                    onClick={removeThumbnail}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-24 border-dashed"
+                  onClick={() => thumbnailInputRef.current?.click()}
+                  disabled={uploadingThumbnail}
+                >
+                  {uploadingThumbnail ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Upload className="w-6 h-6" />
+                      <span className="text-sm">رفع صورة رئيسية</span>
+                    </div>
+                  )}
+                </Button>
               )}
+            </div>
+
+            {/* Gallery Upload */}
+            <div className="space-y-2">
+              <Label>معرض الصور</Label>
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleGalleryUpload}
+                className="hidden"
+              />
+              
+              <div className="grid grid-cols-4 gap-2">
+                {formData.gallery_images.map((url, index) => (
+                  <div key={index} className="relative aspect-square rounded-lg overflow-hidden border">
+                    <img
+                      src={url}
+                      alt={`Gallery ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-1 right-1 w-5 h-5"
+                      onClick={() => removeGalleryImage(index)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+                
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="aspect-square border-dashed"
+                  onClick={() => galleryInputRef.current?.click()}
+                  disabled={uploadingGallery}
+                >
+                  {uploadingGallery ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <ImageIcon className="w-5 h-5" />
+                      <span className="text-xs">إضافة</span>
+                    </div>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">يمكنك إضافة عدة صور للمنتج</p>
             </div>
           </div>
 
@@ -439,7 +627,7 @@ const Products = () => {
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               إلغاء
             </Button>
-            <Button onClick={handleSaveProduct} disabled={saving}>
+            <Button onClick={handleSaveProduct} disabled={saving || uploadingThumbnail || uploadingGallery}>
               {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
               {editingProduct ? "حفظ التعديلات" : "إضافة المنتج"}
             </Button>
