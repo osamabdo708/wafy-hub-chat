@@ -16,17 +16,18 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface ColorAttribute {
   name: string;
-  image?: string;
+  hex?: string;
+  image_url?: string;
   price?: number;
   attributes?: {
     name: string;
-    values: { value: string; price?: number; image?: string }[];
+    values: { value: string; price?: number; image_url?: string }[];
   }[];
 }
 
 interface CustomAttribute {
   name: string;
-  values: { value: string; price?: number; image?: string }[];
+  values: { value: string; price?: number; image_url?: string }[];
 }
 
 interface ProductAttributes {
@@ -121,8 +122,8 @@ const ProductDetails = () => {
       // Auto-select first color if available
       if (typedProduct.attributes?.colors?.length) {
         setSelectedColor(typedProduct.attributes.colors[0]);
-        if (typedProduct.attributes.colors[0].image) {
-          setSelectedImage(typedProduct.attributes.colors[0].image);
+        if (typedProduct.attributes.colors[0].image_url) {
+          setSelectedImage(typedProduct.attributes.colors[0].image_url);
         }
       }
 
@@ -147,19 +148,19 @@ const ProductDetails = () => {
   const handleColorSelect = (color: ColorAttribute) => {
     setSelectedColor(color);
     setSelectedColorSubAttributes({});
-    if (color.image) {
-      setSelectedImage(color.image);
+    if (color.image_url) {
+      setSelectedImage(color.image_url);
     }
   };
 
-  const calculateTotalPrice = () => {
+  const calculateUnitPrice = () => {
     if (!product) return 0;
     
-    let total = product.price;
+    let total = Number(product.price) || 0;
     
     // Add color price
     if (selectedColor?.price) {
-      total += selectedColor.price;
+      total += Number(selectedColor.price) || 0;
     }
     
     // Add color sub-attribute prices
@@ -168,7 +169,7 @@ const ProductDetails = () => {
         const selectedValue = selectedColorSubAttributes[attr.name];
         const valueObj = attr.values.find(v => v.value === selectedValue);
         if (valueObj?.price) {
-          total += valueObj.price;
+          total += Number(valueObj.price) || 0;
         }
       });
     }
@@ -179,12 +180,16 @@ const ProductDetails = () => {
         const selectedValue = selectedCustomAttributes[attr.name];
         const valueObj = attr.values.find(v => v.value === selectedValue);
         if (valueObj?.price) {
-          total += valueObj.price;
+          total += Number(valueObj.price) || 0;
         }
       });
     }
     
-    return total * quantity;
+    return total;
+  };
+
+  const calculateTotalPrice = () => {
+    return calculateUnitPrice() * quantity;
   };
 
   const getAllImages = () => {
@@ -201,8 +206,8 @@ const ProductDetails = () => {
     // Add color images
     if (product?.attributes?.colors) {
       product.attributes.colors.forEach(color => {
-        if (color.image && !images.includes(color.image)) {
-          images.push(color.image);
+        if (color.image_url && !images.includes(color.image_url)) {
+          images.push(color.image_url);
         }
       });
     }
@@ -330,8 +335,8 @@ const ProductDetails = () => {
                           : 'border-border hover:border-primary/50'
                       }`}
                     >
-                      {color.image ? (
-                        <img src={color.image} alt={color.name} className="w-16 h-16 object-cover" />
+                      {color.image_url ? (
+                        <img src={color.image_url} alt={color.name} className="w-16 h-16 object-cover" />
                       ) : (
                         <div className="w-16 h-16 bg-muted flex items-center justify-center text-xs font-medium">
                           {color.name}
@@ -343,9 +348,9 @@ const ProductDetails = () => {
                     </button>
                   ))}
                 </div>
-                {selectedColor?.price && selectedColor.price > 0 && (
+                {selectedColor?.price && Number(selectedColor.price) > 0 && (
                   <p className="text-sm text-muted-foreground">
-                    + {selectedColor.price} ريال
+                    + {Number(selectedColor.price)} ريال
                   </p>
                 )}
               </div>
@@ -372,9 +377,9 @@ const ProductDetails = () => {
                           }`}
                         >
                           <span>{val.value}</span>
-                          {val.price && val.price > 0 && (
+                          {val.price && Number(val.price) > 0 && (
                             <span className="text-xs text-muted-foreground mr-1">
-                              (+{val.price})
+                              (+{Number(val.price)} ريال)
                             </span>
                           )}
                         </button>
@@ -406,9 +411,9 @@ const ProductDetails = () => {
                           }`}
                         >
                           <span>{val.value}</span>
-                          {val.price && val.price > 0 && (
+                          {val.price && Number(val.price) > 0 && (
                             <span className="text-xs text-muted-foreground mr-1">
-                              (+{val.price})
+                              (+{Number(val.price)} ريال)
                             </span>
                           )}
                         </button>
@@ -453,7 +458,7 @@ const ProductDetails = () => {
               </div>
               {quantity > 1 && (
                 <p className="text-sm text-muted-foreground mt-1">
-                  ({calculateTotalPrice() / quantity} ريال × {quantity})
+                  ({calculateUnitPrice()} ريال × {quantity})
                 </p>
               )}
             </Card>
