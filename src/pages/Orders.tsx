@@ -131,6 +131,31 @@ const Orders = () => {
     },
   });
 
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: "مسودة" | "قيد الانتظار" | "مؤكد" | "مكتمل" | "ملغي" }) => {
+      const { error } = await supabase
+        .from("orders")
+        .update({ status })
+        .eq("id", orderId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast({
+        title: "تم تحديث الحالة",
+        description: "تم تغيير حالة الطلب بنجاح",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "خطأ",
+        description: "فشل تحديث حالة الطلب",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -412,14 +437,19 @@ const Orders = () => {
                   </TableCell>
                   <TableCell>{order.price} ريال</TableCell>
                   <TableCell>
-                    <Badge variant={
-                      order.status === "مؤكد" ? "default" :
-                      order.status === "قيد الانتظار" ? "secondary" :
-                      order.status === "مكتمل" ? "outline" :
-                      "destructive"
-                    }>
-                      {order.status}
-                    </Badge>
+                    <Select
+                      value={order.status || "قيد الانتظار"}
+                      onValueChange={(value: "مسودة" | "قيد الانتظار" | "مؤكد" | "مكتمل" | "ملغي") => updateStatusMutation.mutate({ orderId: order.id, status: value })}
+                    >
+                      <SelectTrigger className="w-[130px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="قيد الانتظار">قيد الانتظار</SelectItem>
+                        <SelectItem value="مؤكد">مؤكد</SelectItem>
+                        <SelectItem value="مكتمل">مكتمل</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
                     <TooltipProvider>
