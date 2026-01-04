@@ -284,45 +284,43 @@ const Store = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {filteredProducts.map((product) => (
-                <Card key={product.id} className="overflow-hidden group hover:shadow-xl transition-all">
-                  <div className="aspect-square bg-muted overflow-hidden">
-                    {product.image_url ? (
-                      <img 
-                        src={product.image_url} 
-                        alt={product.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Package className="w-20 h-20 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-lg mb-1 line-clamp-1">{product.name}</h3>
-                    {product.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                        {product.description}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <p className="text-xl font-bold text-primary">{product.price} ريال</p>
-                      {product.stock > 0 ? (
-                        <Badge variant="secondary" className="bg-green-100 text-green-700">
-                          متوفر
-                        </Badge>
+                <Link key={product.id} to={`/store/${storeSlug}/product/${product.id}`}>
+                  <Card className="overflow-hidden group hover:shadow-xl transition-all cursor-pointer">
+                    <div className="aspect-square bg-muted overflow-hidden">
+                      {product.image_url ? (
+                        <img 
+                          src={product.image_url} 
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
                       ) : (
-                        <Badge variant="secondary" className="bg-red-100 text-red-700">
-                          نفذ
-                        </Badge>
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Package className="w-20 h-20 text-muted-foreground" />
+                        </div>
                       )}
                     </div>
-                    <Button className="w-full mt-4" disabled={product.stock === 0}>
-                      <ShoppingCart className="w-4 h-4 ml-2" />
-                      {product.stock > 0 ? 'أضف للسلة' : 'غير متوفر'}
-                    </Button>
-                  </div>
-                </Card>
+                    <div className="p-4">
+                      <h3 className="font-bold text-lg mb-1 line-clamp-1">{product.name}</h3>
+                      {product.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                          {product.description}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <p className="text-xl font-bold text-primary">{product.price} ريال</p>
+                        {product.stock > 0 ? (
+                          <Badge variant="secondary" className="bg-green-100 text-green-700">
+                            متوفر
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-red-100 text-red-700">
+                            نفذ
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
               ))}
             </div>
           )}

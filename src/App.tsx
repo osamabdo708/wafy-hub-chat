@@ -14,6 +14,7 @@ import Categories from "./pages/Categories";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Store from "./pages/Store";
+import ProductDetails from "./pages/ProductDetails";
 import Auth from "./pages/Auth";
 import Installation from "./pages/Installation";
 import NotFound from "./pages/NotFound";
@@ -56,6 +57,7 @@ const App = () => (
             
             {/* Public store */}
             <Route path="/store/:storeSlug" element={<Store />} />
+            <Route path="/store/:storeSlug/product/:productId" element={<ProductDetails />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
