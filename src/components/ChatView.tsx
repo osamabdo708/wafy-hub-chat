@@ -326,6 +326,20 @@ const ChatView = ({
 
       if (error) throw error;
 
+      // Decrement product stock
+      if (selectedProduct && selectedProduct.stock !== null) {
+        const newStock = Math.max(0, selectedProduct.stock - orderForm.quantity);
+        await supabase
+          .from('products')
+          .update({ stock: newStock })
+          .eq('id', orderForm.product_id);
+        
+        // Update local products state
+        setProducts(prev => prev.map(p => 
+          p.id === orderForm.product_id ? { ...p, stock: newStock } : p
+        ));
+      }
+
       // Generate invoice PDF and get the URL
       const invoiceUrl = generateInvoicePDF({
         order_number: finalOrderNumber,
