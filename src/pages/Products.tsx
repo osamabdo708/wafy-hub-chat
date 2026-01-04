@@ -34,20 +34,23 @@ const productSchema = z.object({
   stock: z.string().trim(),
 });
 
-interface ColorAttribute {
-  name: string;
-  hex: string;
-  image_url?: string;
-}
-
 interface AttributeValue {
   value: string;
   image_url?: string;
+  price?: number;
 }
 
 interface CustomAttribute {
   name: string;
   values: AttributeValue[];
+}
+
+interface ColorAttribute {
+  name: string;
+  hex: string;
+  image_url?: string;
+  price?: number;
+  attributes?: CustomAttribute[];
 }
 
 interface ProductAttributes {
@@ -97,10 +100,14 @@ const Products = () => {
     colors: [] as ColorAttribute[],
     customAttributes: [] as CustomAttribute[],
   });
-  const [newColor, setNewColor] = useState({ name: "", hex: "#000000", image_url: "" });
+  const [newColor, setNewColor] = useState({ name: "", hex: "#000000", image_url: "", price: "" });
   const [newAttributeName, setNewAttributeName] = useState("");
-  const [newAttributeValue, setNewAttributeValue] = useState({ value: "", image_url: "" });
+  const [newAttributeValue, setNewAttributeValue] = useState({ value: "", image_url: "", price: "" });
   const [selectedAttributeIndex, setSelectedAttributeIndex] = useState<number | null>(null);
+  const [selectedColorIndex, setSelectedColorIndex] = useState<number | null>(null);
+  const [newColorAttributeName, setNewColorAttributeName] = useState("");
+  const [newColorAttributeValue, setNewColorAttributeValue] = useState({ value: "", image_url: "", price: "" });
+  const [selectedColorAttributeIndex, setSelectedColorAttributeIndex] = useState<number | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -268,10 +275,12 @@ const Products = () => {
       colors: [...formData.colors, { 
         name: newColor.name.trim(), 
         hex: newColor.hex,
-        image_url: newColor.image_url || undefined
+        image_url: newColor.image_url || undefined,
+        price: newColor.price ? parseFloat(newColor.price) : undefined,
+        attributes: []
       }],
     });
-    setNewColor({ name: "", hex: "#000000", image_url: "" });
+    setNewColor({ name: "", hex: "#000000", image_url: "", price: "" });
   };
 
   const removeColor = (index: number) => {
@@ -279,6 +288,73 @@ const Products = () => {
       ...formData,
       colors: formData.colors.filter((_, i) => i !== index),
     });
+    if (selectedColorIndex === index) {
+      setSelectedColorIndex(null);
+      setSelectedColorAttributeIndex(null);
+    }
+  };
+
+  // Color sub-attribute functions
+  const addColorAttribute = (colorIndex: number) => {
+    if (!newColorAttributeName.trim()) {
+      toast.error("يرجى إدخال اسم السمة");
+      return;
+    }
+    const updatedColors = [...formData.colors];
+    const colorAttrs = updatedColors[colorIndex].attributes || [];
+    if (colorAttrs.some(attr => attr.name.toLowerCase() === newColorAttributeName.trim().toLowerCase())) {
+      toast.error("هذه السمة موجودة بالفعل");
+      return;
+    }
+    updatedColors[colorIndex] = {
+      ...updatedColors[colorIndex],
+      attributes: [...colorAttrs, { name: newColorAttributeName.trim(), values: [] }]
+    };
+    setFormData({ ...formData, colors: updatedColors });
+    setNewColorAttributeName("");
+  };
+
+  const removeColorAttribute = (colorIndex: number, attrIndex: number) => {
+    const updatedColors = [...formData.colors];
+    updatedColors[colorIndex] = {
+      ...updatedColors[colorIndex],
+      attributes: updatedColors[colorIndex].attributes?.filter((_, i) => i !== attrIndex) || []
+    };
+    setFormData({ ...formData, colors: updatedColors });
+    if (selectedColorAttributeIndex === attrIndex) {
+      setSelectedColorAttributeIndex(null);
+    }
+  };
+
+  const addColorAttributeValue = (colorIndex: number, attrIndex: number) => {
+    if (!newColorAttributeValue.value.trim()) {
+      toast.error("يرجى إدخال القيمة");
+      return;
+    }
+    const updatedColors = [...formData.colors];
+    const attrs = updatedColors[colorIndex].attributes || [];
+    attrs[attrIndex] = {
+      ...attrs[attrIndex],
+      values: [...attrs[attrIndex].values, {
+        value: newColorAttributeValue.value.trim(),
+        image_url: newColorAttributeValue.image_url || undefined,
+        price: newColorAttributeValue.price ? parseFloat(newColorAttributeValue.price) : undefined
+      }]
+    };
+    updatedColors[colorIndex] = { ...updatedColors[colorIndex], attributes: attrs };
+    setFormData({ ...formData, colors: updatedColors });
+    setNewColorAttributeValue({ value: "", image_url: "", price: "" });
+  };
+
+  const removeColorAttributeValue = (colorIndex: number, attrIndex: number, valIndex: number) => {
+    const updatedColors = [...formData.colors];
+    const attrs = updatedColors[colorIndex].attributes || [];
+    attrs[attrIndex] = {
+      ...attrs[attrIndex],
+      values: attrs[attrIndex].values.filter((_, i) => i !== valIndex)
+    };
+    updatedColors[colorIndex] = { ...updatedColors[colorIndex], attributes: attrs };
+    setFormData({ ...formData, colors: updatedColors });
   };
 
   const handleOpenDialog = (product?: Product) => {
@@ -314,10 +390,14 @@ const Products = () => {
       });
     }
     setFormErrors({});
-    setNewColor({ name: "", hex: "#000000", image_url: "" });
+    setNewColor({ name: "", hex: "#000000", image_url: "", price: "" });
     setNewAttributeName("");
-    setNewAttributeValue({ value: "", image_url: "" });
+    setNewAttributeValue({ value: "", image_url: "", price: "" });
     setSelectedAttributeIndex(null);
+    setSelectedColorIndex(null);
+    setNewColorAttributeName("");
+    setNewColorAttributeValue({ value: "", image_url: "", price: "" });
+    setSelectedColorAttributeIndex(null);
     setDialogOpen(true);
   };
 
@@ -362,9 +442,10 @@ const Products = () => {
     updatedAttributes[attrIndex].values.push({
       value: newAttributeValue.value.trim(),
       image_url: newAttributeValue.image_url || undefined,
+      price: newAttributeValue.price ? parseFloat(newAttributeValue.price) : undefined,
     });
     setFormData({ ...formData, customAttributes: updatedAttributes });
-    setNewAttributeValue({ value: "", image_url: "" });
+    setNewAttributeValue({ value: "", image_url: "", price: "" });
   };
 
   const removeAttributeValue = (attrIndex: number, valueIndex: number) => {
@@ -800,37 +881,170 @@ const Products = () => {
               
               {/* Existing Colors */}
               {formData.colors.length > 0 && (
-                <div className="grid grid-cols-2 gap-3">
-                  {formData.colors.map((color, index) => (
+                <div className="space-y-3">
+                  {formData.colors.map((color, colorIndex) => (
                     <div
-                      key={index}
-                      className="flex items-center gap-3 p-2 rounded-lg border bg-muted/50"
+                      key={colorIndex}
+                      className="p-3 rounded-lg border bg-muted/30"
                     >
-                      {color.image_url ? (
-                        <img
-                          src={color.image_url}
-                          alt={color.name}
-                          className="w-12 h-12 rounded-lg object-cover border"
-                        />
-                      ) : (
-                        <div
-                          className="w-12 h-12 rounded-lg border"
-                          style={{ backgroundColor: color.hex }}
-                        />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{color.name}</p>
-                        <p className="text-xs text-muted-foreground">{color.hex}</p>
+                      <div className="flex items-center gap-3">
+                        {color.image_url ? (
+                          <img
+                            src={color.image_url}
+                            alt={color.name}
+                            className="w-12 h-12 rounded-lg object-cover border"
+                          />
+                        ) : (
+                          <div
+                            className="w-12 h-12 rounded-lg border"
+                            style={{ backgroundColor: color.hex }}
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{color.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {color.price ? `${color.price} ريال` : color.hex}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant={selectedColorIndex === colorIndex ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSelectedColorIndex(selectedColorIndex === colorIndex ? null : colorIndex)}
+                          >
+                            <Plus className="w-3 h-3 ml-1" />
+                            سمات
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="w-7 h-7 hover:bg-destructive hover:text-destructive-foreground"
+                            onClick={() => removeColor(colorIndex)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="w-6 h-6 hover:bg-destructive hover:text-destructive-foreground"
-                        onClick={() => removeColor(index)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
+
+                      {/* Color Sub-Attributes */}
+                      {selectedColorIndex === colorIndex && (
+                        <div className="mt-3 pt-3 border-t space-y-3">
+                          {/* Existing sub-attributes */}
+                          {(color.attributes || []).map((attr, attrIndex) => (
+                            <div key={attrIndex} className="p-2 rounded border bg-background">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-sm font-medium">{attr.name}</p>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    type="button"
+                                    variant={selectedColorAttributeIndex === attrIndex ? "default" : "outline"}
+                                    size="sm"
+                                    className="text-xs h-6"
+                                    onClick={() => setSelectedColorAttributeIndex(selectedColorAttributeIndex === attrIndex ? null : attrIndex)}
+                                  >
+                                    <Plus className="w-3 h-3 ml-1" />
+                                    قيمة
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="w-6 h-6 hover:bg-destructive hover:text-destructive-foreground"
+                                    onClick={() => removeColorAttribute(colorIndex, attrIndex)}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                              
+                              {/* Sub-attribute values */}
+                              {attr.values.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mb-2">
+                                  {attr.values.map((val, valIndex) => (
+                                    <div
+                                      key={valIndex}
+                                      className="flex items-center gap-1 px-2 py-0.5 rounded border bg-muted/50 text-xs"
+                                    >
+                                      {val.image_url && (
+                                        <img src={val.image_url} alt={val.value} className="w-4 h-4 rounded object-cover" />
+                                      )}
+                                      <span>{val.value}</span>
+                                      {val.price && <span className="text-muted-foreground">({val.price} ر)</span>}
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="w-4 h-4 hover:bg-destructive hover:text-destructive-foreground"
+                                        onClick={() => removeColorAttributeValue(colorIndex, attrIndex, valIndex)}
+                                      >
+                                        <X className="w-2 h-2" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Add value form */}
+                              {selectedColorAttributeIndex === attrIndex && (
+                                <div className="flex items-end gap-2 pt-2 border-t">
+                                  <div className="flex-1 space-y-1">
+                                    <Label className="text-xs">القيمة</Label>
+                                    <Input
+                                      value={newColorAttributeValue.value}
+                                      onChange={(e) => setNewColorAttributeValue({ ...newColorAttributeValue, value: e.target.value })}
+                                      placeholder="مثال: XL"
+                                      className="h-8 text-sm"
+                                    />
+                                  </div>
+                                  <div className="w-20 space-y-1">
+                                    <Label className="text-xs">السعر</Label>
+                                    <Input
+                                      type="number"
+                                      value={newColorAttributeValue.price}
+                                      onChange={(e) => setNewColorAttributeValue({ ...newColorAttributeValue, price: e.target.value })}
+                                      placeholder="0"
+                                      className="h-8 text-sm"
+                                    />
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-8"
+                                    onClick={() => addColorAttributeValue(colorIndex, attrIndex)}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+
+                          {/* Add new sub-attribute */}
+                          <div className="flex items-end gap-2">
+                            <div className="flex-1 space-y-1">
+                              <Label className="text-xs">إضافة سمة للون</Label>
+                              <Input
+                                value={newColorAttributeName}
+                                onChange={(e) => setNewColorAttributeName(e.target.value)}
+                                placeholder="مثال: المقاس"
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => addColorAttribute(colorIndex)}
+                            >
+                              <Plus className="w-3 h-3 ml-1" />
+                              إضافة
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -851,23 +1065,35 @@ const Products = () => {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="colorHex" className="text-xs">كود اللون</Label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="colorPicker"
-                        value={newColor.hex}
-                        onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
-                        className="w-10 h-10 rounded cursor-pointer border"
-                      />
-                      <Input
-                        id="colorHex"
-                        value={newColor.hex}
-                        onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
-                        placeholder="#000000"
-                        className="flex-1"
-                      />
-                    </div>
+                    <Label htmlFor="colorPrice" className="text-xs">سعر اللون (اختياري)</Label>
+                    <Input
+                      id="colorPrice"
+                      type="number"
+                      step="0.01"
+                      value={newColor.price}
+                      onChange={(e) => setNewColor({ ...newColor, price: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="colorHex" className="text-xs">كود اللون</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      id="colorPicker"
+                      value={newColor.hex}
+                      onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
+                      className="w-10 h-10 rounded cursor-pointer border"
+                    />
+                    <Input
+                      id="colorHex"
+                      value={newColor.hex}
+                      onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
+                      placeholder="#000000"
+                      className="flex-1"
+                    />
                   </div>
                 </div>
 
@@ -989,6 +1215,7 @@ const Products = () => {
                                 />
                               )}
                               <span className="text-sm">{val.value}</span>
+                              {val.price && <span className="text-xs text-muted-foreground">({val.price} ر)</span>}
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1013,6 +1240,15 @@ const Products = () => {
                                 value={newAttributeValue.value}
                                 onChange={(e) => setNewAttributeValue({ ...newAttributeValue, value: e.target.value })}
                                 placeholder={`مثال: ${attr.name === 'المقاس' ? 'XL' : 'قيمة'}`}
+                              />
+                            </div>
+                            <div className="w-20 space-y-1">
+                              <Label className="text-xs">السعر</Label>
+                              <Input
+                                type="number"
+                                value={newAttributeValue.price}
+                                onChange={(e) => setNewAttributeValue({ ...newAttributeValue, price: e.target.value })}
+                                placeholder="0"
                               />
                             </div>
                             <input
