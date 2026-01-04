@@ -44,15 +44,87 @@ serve(async (req) => {
       });
     }
 
-    // Get all products from database
+    // Get all products from database with full details
     const { data: products, error: productsError } = await supabase
       .from('products')
-      .select('*')
+      .select('*, categories:category_id(name)')
       .eq('is_active', true);
 
     if (productsError) {
       console.error('Error fetching products:', productsError);
     }
+
+    // Helper function to format product attributes
+    const formatProductAttributes = (product: any): string => {
+      const attrs = product.attributes;
+      if (!attrs) return '';
+      
+      let attrText = '';
+      
+      // Format colors
+      if (attrs.colors && attrs.colors.length > 0) {
+        attrText += '\nالألوان المتاحة:\n';
+        attrs.colors.forEach((color: any) => {
+          attrText += `  - ${color.name}`;
+          if (color.price) attrText += ` (${color.price} ريال)`;
+          attrText += '\n';
+          
+          // Color sub-attributes (like sizes per color)
+          if (color.attributes && color.attributes.length > 0) {
+            color.attributes.forEach((subAttr: any) => {
+              attrText += `    ${subAttr.name}: `;
+              const values = subAttr.values.map((v: any) => {
+                let valText = v.value;
+                if (v.price) valText += ` (+${v.price} ر)`;
+                return valText;
+              }).join(', ');
+              attrText += values + '\n';
+            });
+          }
+        });
+      }
+      
+      // Format custom attributes
+      if (attrs.custom && attrs.custom.length > 0) {
+        attrs.custom.forEach((attr: any) => {
+          attrText += `\n${attr.name}: `;
+          const values = attr.values.map((v: any) => {
+            let valText = v.value;
+            if (v.price) valText += ` (+${v.price} ر)`;
+            return valText;
+          }).join(', ');
+          attrText += values;
+        });
+      }
+      
+      return attrText;
+    };
+
+    // Build products catalog text with full details
+    const productsCatalog = products?.map(p => {
+      let productInfo = `المنتج: ${p.name}`;
+      productInfo += `\nالوصف: ${p.description || 'لا يوجد وصف'}`;
+      productInfo += `\nالسعر: ${p.price} ريال`;
+      
+      if (p.min_negotiable_price) {
+        productInfo += `\nالحد الأدنى للتفاوض: ${p.min_negotiable_price} ريال`;
+      }
+      
+      productInfo += `\nالمخزون: ${p.stock > 0 ? `${p.stock} متوفر` : 'غير متوفر'}`;
+      productInfo += `\nالفئة: ${p.categories?.name || p.category || 'غير محدد'}`;
+      
+      // Add attributes
+      const attrText = formatProductAttributes(p);
+      if (attrText) {
+        productInfo += attrText;
+      }
+      
+      if (p.gallery_images && p.gallery_images.length > 0) {
+        productInfo += `\nعدد الصور: ${p.gallery_images.length + (p.image_url ? 1 : 0)}`;
+      }
+      
+      return productInfo;
+    }).join('\n\n---\n\n') || 'لا توجد منتجات متاحة';
 
     // Get conversation history
     const { data: messages, error: messagesError } = await supabase
@@ -72,17 +144,16 @@ serve(async (req) => {
       content: msg.content
     })) || [];
 
-    // Build products catalog text
-    const productsCatalog = products?.map(p => 
-      `المنتج: ${p.name}\nالوصف: ${p.description || 'لا يوجد وصف'}\nالسعر: ${p.price} ريال\nالمخزون: ${p.stock}\nالفئة: ${p.category || 'غير محدد'}`
-    ).join('\n\n') || 'لا توجد منتجات متاحة';
-
     const systemPrompt = `أنت مساعد مبيعات ذكي في متجر إلكتروني. مهمتك هي:
-1. مساعدة العملاء في العثور على المنتجات المناسبة
+1. مساعدة العملاء في العثور على المنتجات المناسبة بناءً على احتياجاتهم
 2. الإجابة على أسئلة العملاء حول المنتجات من المعلومات المتاحة فقط
 3. إذا سأل العميل عن منتج غير موجود في القائمة، أخبره بأن هذا المنتج غير متوفر في المتجر حالياً
-4. جمع تفاصيل الطلب (الاسم، رقم الهاتف، العنوان) إذا أكد العميل رغبته في الطلب
-5. كن ودوداً ومحترفاً دائماً
+4. عند عرض المنتجات، اذكر الألوان المتاحة وأسعارها إن وجدت
+5. اذكر المقاسات أو السمات الأخرى المتاحة لكل لون مع أسعارها الإضافية
+6. احسب السعر الإجمالي عند طلب العميل (سعر المنتج + سعر اللون + سعر المقاس/السمة)
+7. جمع تفاصيل الطلب (الاسم، رقم الهاتف، العنوان، اللون، المقاس) إذا أكد العميل رغبته في الطلب
+8. كن ودوداً ومحترفاً دائماً
+9. يمكنك التفاوض على السعر ضمن الحد الأدنى للتفاوض إن وجد
 
 المنتجات المتاحة:
 ${productsCatalog}
