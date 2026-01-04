@@ -84,7 +84,7 @@ serve(async (req) => {
       tran_class: "ecom",
       cart_id: order.order_number,
       cart_description: order.products?.name || `Order ${order.order_number}`,
-      cart_currency: "SAR",
+      cart_currency: "ILS",
       cart_amount: order.price,
       callback: callbackUrl,
       return: returnUrl,
