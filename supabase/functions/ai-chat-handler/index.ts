@@ -28,7 +28,7 @@ serve(async (req) => {
     // Get conversation details
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('*')
+      .select('*, workspaces:workspace_id(id)')
       .eq('id', conversationId)
       .maybeSingle();
 
@@ -44,17 +44,18 @@ serve(async (req) => {
       });
     }
 
-    // Get all products from database with full details
+    // Get all products from database with full details (excluding purchase_price - internal only)
     const { data: products, error: productsError } = await supabase
       .from('products')
-      .select('*, categories:category_id(name)')
-      .eq('is_active', true);
+      .select('id, name, description, price, min_negotiable_price, stock, category, category_id, attributes, image_url, gallery_images, categories:category_id(name)')
+      .eq('is_active', true)
+      .eq('workspace_id', conversation.workspace_id);
 
     if (productsError) {
       console.error('Error fetching products:', productsError);
     }
 
-    // Helper function to format product attributes
+    // Helper function to format product attributes (never include purchase_price)
     const formatProductAttributes = (product: any): string => {
       const attrs = product.attributes;
       if (!attrs) return '';
@@ -100,9 +101,9 @@ serve(async (req) => {
       return attrText;
     };
 
-    // Build products catalog text with full details
+    // Build products catalog text with full details (NO purchase_price - it's internal)
     const productsCatalog = products?.map(p => {
-      let productInfo = `المنتج: ${p.name}`;
+      let productInfo = `[معرف: ${p.id}] المنتج: ${p.name}`;
       productInfo += `\nالوصف: ${p.description || 'لا يوجد وصف'}`;
       productInfo += `\nالسعر: ${p.price} ريال`;
       
@@ -117,10 +118,6 @@ serve(async (req) => {
       const attrText = formatProductAttributes(p);
       if (attrText) {
         productInfo += attrText;
-      }
-      
-      if (p.gallery_images && p.gallery_images.length > 0) {
-        productInfo += `\nعدد الصور: ${p.gallery_images.length + (p.image_url ? 1 : 0)}`;
       }
       
       return productInfo;
@@ -151,9 +148,10 @@ serve(async (req) => {
 4. عند عرض المنتجات، اذكر الألوان المتاحة وأسعارها إن وجدت
 5. اذكر المقاسات أو السمات الأخرى المتاحة لكل لون مع أسعارها الإضافية
 6. احسب السعر الإجمالي عند طلب العميل (سعر المنتج + سعر اللون + سعر المقاس/السمة)
-7. جمع تفاصيل الطلب (الاسم، رقم الهاتف، العنوان، اللون، المقاس) إذا أكد العميل رغبته في الطلب
+7. عندما يؤكد العميل رغبته في الطلب ويوفر جميع التفاصيل (الاسم، الهاتف، العنوان، اللون، المقاس إن وجد)، استخدم أداة create_order لإنشاء الطلب
 8. كن ودوداً ومحترفاً دائماً
 9. يمكنك التفاوض على السعر ضمن الحد الأدنى للتفاوض إن وجد
+10. لا تذكر أبداً سعر الشراء أو تكلفة المنتج الداخلية للعميل - هذه معلومات سرية
 
 المنتجات المتاحة:
 ${productsCatalog}
@@ -165,7 +163,53 @@ ${productsCatalog}
 
 تحدث بالعربية دائماً وكن مختصراً وواضحاً في ردودك.`;
 
-    // Call OpenAI
+    // Define tools for order creation
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "create_order",
+          description: "إنشاء طلب جديد عندما يؤكد العميل رغبته في الشراء ويوفر جميع التفاصيل المطلوبة",
+          parameters: {
+            type: "object",
+            properties: {
+              product_id: {
+                type: "string",
+                description: "معرف المنتج (UUID)"
+              },
+              customer_name: {
+                type: "string",
+                description: "اسم العميل"
+              },
+              customer_phone: {
+                type: "string",
+                description: "رقم هاتف العميل"
+              },
+              shipping_address: {
+                type: "string",
+                description: "عنوان الشحن"
+              },
+              quantity: {
+                type: "number",
+                description: "الكمية المطلوبة",
+                default: 1
+              },
+              total_price: {
+                type: "number",
+                description: "السعر الإجمالي بعد حساب اللون والمقاس"
+              },
+              notes: {
+                type: "string",
+                description: "ملاحظات الطلب (اللون، المقاس، أي تفاصيل أخرى)"
+              }
+            },
+            required: ["product_id", "customer_name", "customer_phone", "shipping_address", "total_price"]
+          }
+        }
+      }
+    ];
+
+    // Call OpenAI with tools
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -179,13 +223,83 @@ ${productsCatalog}
           ...conversationHistory,
           { role: 'user', content: newMessage }
         ],
+        tools: tools,
+        tool_choice: "auto",
         temperature: 0.7,
         max_tokens: 500
       }),
     });
 
     const aiData = await response.json();
-    const aiReply = aiData.choices[0].message.content;
+    console.log('AI Response:', JSON.stringify(aiData, null, 2));
+
+    let aiReply = '';
+    const assistantMessage = aiData.choices[0].message;
+
+    // Check if AI wants to call a tool
+    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      const toolCall = assistantMessage.tool_calls[0];
+      
+      if (toolCall.function.name === 'create_order') {
+        const args = JSON.parse(toolCall.function.arguments);
+        console.log('Creating order with args:', args);
+
+        // Check product stock
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('id, name, stock, price')
+          .eq('id', args.product_id)
+          .maybeSingle();
+
+        if (productError || !product) {
+          aiReply = 'عذراً، حدث خطأ في العثور على المنتج. يرجى المحاولة مرة أخرى.';
+        } else if (product.stock < (args.quantity || 1)) {
+          aiReply = `عذراً، الكمية المطلوبة (${args.quantity || 1}) غير متوفرة. المخزون المتاح: ${product.stock}`;
+        } else {
+          // Create the order
+          const quantity = args.quantity || 1;
+          
+          const { data: newOrder, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              workspace_id: conversation.workspace_id,
+              conversation_id: conversationId,
+              product_id: args.product_id,
+              customer_name: args.customer_name,
+              customer_phone: args.customer_phone,
+              shipping_address: args.shipping_address,
+              price: args.total_price,
+              notes: args.notes || `الكمية: ${quantity}`,
+              status: 'قيد الانتظار',
+              ai_generated: true,
+              source_platform: conversation.channel
+            })
+            .select('order_number')
+            .single();
+
+          if (orderError) {
+            console.error('Error creating order:', orderError);
+            aiReply = 'عذراً، حدث خطأ في إنشاء الطلب. يرجى المحاولة مرة أخرى.';
+          } else {
+            // Reduce product stock
+            const newStock = product.stock - quantity;
+            const { error: stockError } = await supabase
+              .from('products')
+              .update({ stock: newStock })
+              .eq('id', args.product_id);
+
+            if (stockError) {
+              console.error('Error updating stock:', stockError);
+            }
+
+            aiReply = `🎉 تم إنشاء طلبك بنجاح!\n\nرقم الطلب: ${newOrder.order_number}\nالمنتج: ${product.name}\nالكمية: ${quantity}\nالسعر الإجمالي: ${args.total_price} ريال\n\nسيتم التواصل معك قريباً لتأكيد الطلب. شكراً لتسوقك معنا! 🛍️`;
+          }
+        }
+      }
+    } else {
+      // Normal response without tool call
+      aiReply = assistantMessage.content;
+    }
 
     console.log('AI Reply:', aiReply);
 
@@ -218,7 +332,8 @@ ${productsCatalog}
         .from('channel_integrations')
         .select('config')
         .eq('channel', 'facebook')
-        .single();
+        .eq('workspace_id', conversation.workspace_id)
+        .maybeSingle();
 
       if (integration?.config?.page_access_token) {
         const recipientId = conversation.customer_phone; // Facebook PSID stored in customer_phone
@@ -241,7 +356,8 @@ ${productsCatalog}
         .from('channel_integrations')
         .select('config')
         .eq('channel', 'whatsapp')
-        .single();
+        .eq('workspace_id', conversation.workspace_id)
+        .maybeSingle();
 
       if (integration?.config?.phone_number_id && integration?.config?.access_token) {
         await fetch(`https://graph.facebook.com/v18.0/${integration.config.phone_number_id}/messages`, {
