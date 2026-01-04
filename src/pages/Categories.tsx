@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FolderTree, Edit, Trash2, Loader2, GripVertical } from "lucide-react";
+import { Plus, FolderTree, Edit, Trash2, Loader2, GripVertical, Upload, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -44,7 +44,9 @@ const Categories = () => {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -88,6 +90,49 @@ const Categories = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `categories/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('فشل رفع الصورة');
+      return null;
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const url = await uploadImage(file);
+    if (url) {
+      setFormData({ ...formData, image_url: url });
+    }
+    setUploading(false);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+
+  const removeImage = () => {
+    setFormData({ ...formData, image_url: "" });
   };
 
   const handleOpenDialog = (category?: Category) => {
@@ -345,13 +390,50 @@ const Categories = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="image_url">رابط الصورة</Label>
-              <Input
-                id="image_url"
-                value={formData.image_url}
-                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                placeholder="https://example.com/image.jpg"
+              <Label>صورة التصنيف</Label>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
               />
+              
+              {formData.image_url ? (
+                <div className="relative w-full h-32 rounded-lg overflow-hidden border">
+                  <img
+                    src={formData.image_url}
+                    alt="Category"
+                    className="w-full h-full object-cover"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-2 right-2 w-7 h-7"
+                    onClick={removeImage}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-24 border-dashed"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Upload className="w-6 h-6" />
+                      <span className="text-sm">رفع صورة</span>
+                    </div>
+                  )}
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center justify-between">
@@ -369,10 +451,10 @@ const Categories = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving || uploading}>
               إلغاء
             </Button>
-            <Button onClick={handleSaveCategory} disabled={saving}>
+            <Button onClick={handleSaveCategory} disabled={saving || uploading}>
               {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
               {editingCategory ? "حفظ التعديلات" : "إضافة التصنيف"}
             </Button>
