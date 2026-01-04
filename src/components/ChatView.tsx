@@ -335,6 +335,11 @@ const ChatView = ({
         return;
       }
 
+      if (order.payment_link) {
+        toast.error('تم إنشاء رابط دفع لهذا الطلب مسبقاً');
+        return;
+      }
+
       // Call PayTabs edge function to create real payment link
       const { data: response, error: functionError } = await supabase.functions.invoke('create-paytabs-payment', {
         body: { orderId: selectedOrderForPayment }
@@ -374,6 +379,9 @@ const ChatView = ({
       setGeneratingPaymentLink(false);
     }
   };
+
+
+  const payableOrders = orders.filter((o) => !o.payment_link);
 
   return (
     <Card className="h-full flex flex-col">
@@ -444,9 +452,9 @@ const ChatView = ({
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  {orders.length === 0 ? (
+                  {payableOrders.length === 0 ? (
                     <p className="text-center text-muted-foreground py-4">
-                      لا توجد طلبات لهذه المحادثة
+                      لا توجد طلبات بدون رابط دفع لهذه المحادثة
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -456,7 +464,7 @@ const ChatView = ({
                           <SelectValue placeholder="اختر طلب" />
                         </SelectTrigger>
                         <SelectContent>
-                          {orders.map((order) => (
+                          {payableOrders.map((order) => (
                             <SelectItem key={order.id} value={order.id}>
                               {order.order_number} - {order.price} ريال
                             </SelectItem>
