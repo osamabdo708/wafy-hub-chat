@@ -20,12 +20,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { generateInvoicePDF } from "@/utils/invoiceGenerator";
 
 const Orders = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -51,7 +52,8 @@ const Orders = () => {
         .select(`
           *,
           products (name),
-          services (name)
+          services (name),
+          shipping_methods (name, price)
         `)
         .order("created_at", { ascending: false });
       
@@ -394,6 +396,7 @@ const Orders = () => {
                 <TableHead className="text-right">حالة الدفع</TableHead>
                 <TableHead className="text-right">التاريخ</TableHead>
                 <TableHead className="text-right">المصدر</TableHead>
+                <TableHead className="text-right">الفاتورة</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -462,6 +465,16 @@ const Orders = () => {
                     ) : (
                       <Badge variant="outline">يدوي</Badge>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => generateInvoicePDF(order)}
+                      title="عرض الفاتورة"
+                    >
+                      <FileText className="w-4 h-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
