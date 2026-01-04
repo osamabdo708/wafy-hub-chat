@@ -61,6 +61,7 @@ interface Product {
   description?: string;
   price: number;
   min_negotiable_price?: number;
+  purchase_price?: number;
   category?: string;
   category_id?: string;
   stock: number;
@@ -88,6 +89,7 @@ const Products = () => {
     description: "",
     price: "",
     min_negotiable_price: "",
+    purchase_price: "",
     category_id: "",
     stock: "0",
     image_url: "",
@@ -287,6 +289,7 @@ const Products = () => {
         description: product.description || "",
         price: product.price.toString(),
         min_negotiable_price: product.min_negotiable_price?.toString() || "",
+        purchase_price: product.purchase_price?.toString() || "",
         category_id: product.category_id || "",
         stock: product.stock.toString(),
         image_url: product.image_url || "",
@@ -301,6 +304,7 @@ const Products = () => {
         description: "",
         price: "",
         min_negotiable_price: "",
+        purchase_price: "",
         category_id: "",
         stock: "0",
         image_url: "",
@@ -405,6 +409,7 @@ const Products = () => {
         description: formData.description.trim() || null,
         price: parseFloat(formData.price),
         min_negotiable_price: formData.min_negotiable_price ? parseFloat(formData.min_negotiable_price) : null,
+        purchase_price: formData.purchase_price ? parseFloat(formData.purchase_price) : null,
         category_id: formData.category_id || null,
         stock: parseInt(formData.stock),
         image_url: formData.image_url || null,
@@ -638,6 +643,19 @@ const Products = () => {
                 />
                 <p className="text-xs text-muted-foreground">للمارد الذكي</p>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="purchase_price">سعر الشراء (ريال)</Label>
+              <Input
+                id="purchase_price"
+                type="number"
+                step="0.01"
+                value={formData.purchase_price}
+                onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
+                placeholder="0.00"
+              />
+              <p className="text-xs text-muted-foreground">اختياري - لحساب الأرباح لاحقاً</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

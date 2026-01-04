@@ -725,6 +725,7 @@ export type Database = {
           min_negotiable_price: number | null
           name: string
           price: number
+          purchase_price: number | null
           stock: number | null
           updated_at: string | null
           workspace_id: string | null
@@ -742,6 +743,7 @@ export type Database = {
           min_negotiable_price?: number | null
           name: string
           price: number
+          purchase_price?: number | null
           stock?: number | null
           updated_at?: string | null
           workspace_id?: string | null
@@ -759,6 +761,7 @@ export type Database = {
           min_negotiable_price?: number | null
           name?: string
           price?: number
+          purchase_price?: number | null
           stock?: number | null
           updated_at?: string | null
           workspace_id?: string | null
