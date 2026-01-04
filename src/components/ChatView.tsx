@@ -346,21 +346,52 @@ const ChatView = ({
       const orderMessage = `✅ تم إنشاء طلبك بنجاح!\n\n📋 رقم الطلب: #${finalOrderNumber}\n📦 المنتج: ${selectedProduct?.name || 'غير محدد'}\n💰 الإجمالي: ${totalPrice} ₪\n\n🧾 رابط الفاتورة:\n${invoiceUrl}`;
 
       try {
-        await supabase.functions.invoke('send-channel-message', {
-          body: {
-            conversationId,
-            message: orderMessage
+        const { data: sendResponse, error: sendError } = await supabase.functions.invoke(
+          'send-channel-message',
+          {
+            body: {
+              conversationId,
+              message: orderMessage,
+            },
           }
-        });
+        );
+
+        if (sendError || !sendResponse?.success) {
+          console.warn(
+            'Could not send order message to channel (API restriction):',
+            sendError || sendResponse?.error
+          );
+
+          // Save message locally even if sending failed
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            content: orderMessage,
+            sender_type: 'employee',
+            is_old: false,
+            reply_sent: false,
+          });
+
+          const channelName =
+            channel === 'instagram'
+              ? 'إنستغرام'
+              : channel === 'facebook'
+                ? 'فيسبوك'
+                : 'القناة';
+
+          toast.warning(
+            `تم إنشاء الطلب، لكن تعذر إرسال رسالة التأكيد تلقائياً عبر ${channelName} بسبب قيود المنصة. يمكنك نسخ الرابط وإرساله يدوياً للعميل.`
+          );
+        }
       } catch (sendErr) {
         console.warn('Could not send order message to channel:', sendErr);
+
         // Save message locally even if sending failed
         await supabase.from('messages').insert({
           conversation_id: conversationId,
           content: orderMessage,
           sender_type: 'employee',
           is_old: false,
-          reply_sent: false
+          reply_sent: false,
         });
       }
 
