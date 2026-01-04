@@ -94,6 +94,7 @@ serve(async (req) => {
     };
 
     console.log('Creating PayTabs payment:', JSON.stringify(paymentRequest));
+    console.log('Using profile_id:', profileId);
 
     const paytabsResponse = await fetch('https://secure.paytabs.sa/payment/request', {
       method: 'POST',
