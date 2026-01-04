@@ -75,12 +75,14 @@ const ChatView = ({
     quantity: 1,
     notes: ''
   });
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchMessages();
     fetchProducts();
     fetchOrders();
+    fetchWorkspaceId();
 
     // Subscribe to new messages
     const channel = supabase
@@ -103,6 +105,24 @@ const ChatView = ({
       supabase.removeChannel(channel);
     };
   }, [conversationId]);
+
+  const fetchWorkspaceId = async () => {
+    try {
+      // Get workspace_id from conversation
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('workspace_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data?.workspace_id) {
+        setWorkspaceId(data.workspace_id);
+      }
+    } catch (error) {
+      console.error('Error fetching workspace_id:', error);
+    }
+  };
 
   useEffect(() => {
     // Scroll to bottom when messages change
@@ -246,6 +266,11 @@ const ChatView = ({
     }
 
     try {
+      if (!workspaceId) {
+        toast.error('لم يتم العثور على بيانات المحادثة');
+        return;
+      }
+
       const selectedProduct = products.find(p => p.id === orderForm.product_id);
       const totalPrice = selectedProduct ? selectedProduct.price * orderForm.quantity : 0;
 
@@ -263,9 +288,12 @@ const ChatView = ({
           order_number: orderNumber || `ORD-${Date.now()}`,
           status: 'قيد الانتظار',
           conversation_id: conversationId,
+          workspace_id: workspaceId,
           source_platform: channel,
           created_by: 'employee',
-          notes: `العنوان: ${orderForm.address}\nطريقة الدفع: ${orderForm.payment_method}${orderForm.notes ? `\n${orderForm.notes}` : ''}`
+          shipping_address: orderForm.address,
+          payment_status: orderForm.payment_method === 'نقدي' ? 'pending' : 'awaiting_payment',
+          notes: `طريقة الدفع: ${orderForm.payment_method}${orderForm.notes ? `\n${orderForm.notes}` : ''}`
         });
 
       if (error) throw error;
@@ -543,10 +571,8 @@ const ChatView = ({
                     <SelectValue placeholder="اختر طريقة الدفع" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="نقدي">نقدي</SelectItem>
-                    <SelectItem value="بطاقة ائتمان">بطاقة ائتمان</SelectItem>
-                    <SelectItem value="تحويل بنكي">تحويل بنكي</SelectItem>
-                    <SelectItem value="محفظة إلكترونية">محفظة إلكترونية</SelectItem>
+                    <SelectItem value="نقدي">نقدي (الدفع عند الاستلام)</SelectItem>
+                    <SelectItem value="رابط دفع PayTabs">رابط دفع PayTabs</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
