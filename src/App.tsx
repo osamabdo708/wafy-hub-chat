@@ -20,6 +20,7 @@ import Installation from "./pages/Installation";
 import NotFound from "./pages/NotFound";
 import Agents from "./pages/Agents";
 import SuperAdmin from "./pages/SuperAdmin";
+import PaymentStatus from "./pages/PaymentStatus";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,9 @@ const App = () => (
             {/* Public store */}
             <Route path="/store/:storeSlug" element={<Store />} />
             <Route path="/store/:storeSlug/product/:productId" element={<ProductDetails />} />
+            
+            {/* Payment status page */}
+            <Route path="/pay/:orderNumber" element={<PaymentStatus />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
