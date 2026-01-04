@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
+import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon, Palette } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,11 @@ const productSchema = z.object({
   stock: z.string().trim(),
 });
 
+interface ColorAttribute {
+  name: string;
+  hex: string;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -45,6 +50,7 @@ interface Product {
   stock: number;
   image_url?: string;
   gallery_images?: string[];
+  attributes?: { colors?: ColorAttribute[] };
   is_active: boolean;
 }
 
@@ -70,7 +76,9 @@ const Products = () => {
     stock: "0",
     image_url: "",
     gallery_images: [] as string[],
+    colors: [] as ColorAttribute[],
   });
+  const [newColor, setNewColor] = useState({ name: "", hex: "#000000" });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -123,7 +131,12 @@ const Products = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setProducts(data || []);
+      // Cast the data to our Product type
+      const typedProducts = (data || []).map((p) => ({
+        ...p,
+        attributes: p.attributes as { colors?: ColorAttribute[] } | undefined,
+      })) as Product[];
+      setProducts(typedProducts);
     } catch (error) {
       console.error('Error fetching products:', error);
       toast.error('فشل تحميل المنتجات');
@@ -204,6 +217,25 @@ const Products = () => {
     setFormData({ ...formData, image_url: "" });
   };
 
+  const addColor = () => {
+    if (!newColor.name.trim()) {
+      toast.error("يرجى إدخال اسم اللون");
+      return;
+    }
+    setFormData({
+      ...formData,
+      colors: [...formData.colors, { name: newColor.name.trim(), hex: newColor.hex }],
+    });
+    setNewColor({ name: "", hex: "#000000" });
+  };
+
+  const removeColor = (index: number) => {
+    setFormData({
+      ...formData,
+      colors: formData.colors.filter((_, i) => i !== index),
+    });
+  };
+
   const handleOpenDialog = (product?: Product) => {
     if (product) {
       setEditingProduct(product);
@@ -216,6 +248,7 @@ const Products = () => {
         stock: product.stock.toString(),
         image_url: product.image_url || "",
         gallery_images: product.gallery_images || [],
+        colors: product.attributes?.colors || [],
       });
     } else {
       setEditingProduct(null);
@@ -228,9 +261,11 @@ const Products = () => {
         stock: "0",
         image_url: "",
         gallery_images: [],
+        colors: [],
       });
     }
     setFormErrors({});
+    setNewColor({ name: "", hex: "#000000" });
     setDialogOpen(true);
   };
 
@@ -259,6 +294,7 @@ const Products = () => {
         stock: parseInt(formData.stock),
         image_url: formData.image_url || null,
         gallery_images: formData.gallery_images,
+        attributes: JSON.parse(JSON.stringify({ colors: formData.colors })),
         is_active: true,
       };
 
@@ -278,7 +314,7 @@ const Products = () => {
 
         const { error } = await supabase
           .from('products')
-          .insert({ ...productData, workspace_id: workspaceId });
+          .insert([{ ...productData, workspace_id: workspaceId }]);
 
         if (error) throw error;
         toast.success('تم إضافة المنتج بنجاح');
@@ -620,6 +656,78 @@ const Products = () => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">يمكنك إضافة عدة صور للمنتج</p>
+            </div>
+
+            {/* Color Attributes */}
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Palette className="w-4 h-4" />
+                الألوان المتوفرة
+              </Label>
+              
+              {/* Existing Colors */}
+              {formData.colors.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {formData.colors.map((color, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-full border bg-muted/50"
+                    >
+                      <div
+                        className="w-4 h-4 rounded-full border"
+                        style={{ backgroundColor: color.hex }}
+                      />
+                      <span className="text-sm">{color.name}</span>
+                      <span className="text-xs text-muted-foreground">{color.hex}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="w-5 h-5 hover:bg-destructive hover:text-destructive-foreground"
+                        onClick={() => removeColor(index)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add New Color */}
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="colorName" className="text-xs">اسم اللون</Label>
+                  <Input
+                    id="colorName"
+                    value={newColor.name}
+                    onChange={(e) => setNewColor({ ...newColor, name: e.target.value })}
+                    placeholder="مثال: أحمر"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="colorHex" className="text-xs">كود اللون</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      id="colorPicker"
+                      value={newColor.hex}
+                      onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
+                      className="w-10 h-10 rounded cursor-pointer border"
+                    />
+                    <Input
+                      id="colorHex"
+                      value={newColor.hex}
+                      onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
+                      placeholder="#000000"
+                      className="w-24"
+                    />
+                  </div>
+                </div>
+                <Button type="button" variant="secondary" onClick={addColor}>
+                  <Plus className="w-4 h-4 ml-1" />
+                  إضافة
+                </Button>
+              </div>
             </div>
           </div>
 
