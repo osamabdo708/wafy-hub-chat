@@ -68,12 +68,19 @@ serve(async (req) => {
     // Create PayTabs payment page
     const callbackUrl = `${supabaseUrl}/functions/v1/paytabs-webhook`;
 
-    const origin = req.headers.get('origin');
+    // Get origin from request header or use workspace store URL as fallback
+    let origin = req.headers.get('origin');
+    
+    // If no origin (e.g., called from another edge function), get workspace store URL
     if (!origin) {
-      return new Response(
-        JSON.stringify({ error: 'Missing request origin' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('store_slug')
+        .eq('id', order.workspace_id)
+        .maybeSingle();
+      
+      // Use Lovable preview URL as fallback (for edge function calls)
+      origin = 'https://pegkzuxbgswqouieordl.lovableproject.com';
     }
 
     const returnUrl = `${origin}/pay/${order.order_number}`;
