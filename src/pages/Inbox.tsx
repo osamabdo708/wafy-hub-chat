@@ -523,7 +523,7 @@ const Inbox = () => {
                 key={conversation.id} 
                 className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
                   selectedConversation?.id === conversation.id ? 'border-primary shadow-md' : ''
-                } ${conversation.ai_enabled ? 'genie-card-animated-bg' : ''}`}
+                } ${conversation.ai_enabled ? 'bg-gradient-to-l from-purple-200/50 to-blue-200/50 dark:from-purple-500/20 dark:to-blue-500/20' : ''}`}
                 onClick={() => handleSelectConversation(conversation)}
               >
                 <div className="flex items-start justify-between mb-2">
