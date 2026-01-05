@@ -65,7 +65,7 @@ serve(async (req) => {
     }
 
     // Determine payment status based on PayTabs response
-    let paymentStatus = 'pending';
+    let paymentStatus = 'في انتظار الدفع';
     const responseStatus = payment_result?.response_status;
     const responseCode = payment_result?.response_code;
 
@@ -73,19 +73,10 @@ serve(async (req) => {
 
     if (responseStatus === 'A' || responseCode === '000') {
       // Payment authorized/successful
-      paymentStatus = 'paid';
-    } else if (responseStatus === 'D' || responseStatus === 'E') {
-      // Payment declined or error
-      paymentStatus = 'failed';
-    } else if (responseStatus === 'P') {
-      // Pending
-      paymentStatus = 'pending';
-    } else if (responseStatus === 'V') {
-      // Voided
-      paymentStatus = 'voided';
-    } else if (responseStatus === 'R') {
-      // Refunded
-      paymentStatus = 'refunded';
+      paymentStatus = 'مدفوع';
+    } else {
+      // Any other status remains as waiting
+      paymentStatus = 'في انتظار الدفع';
     }
 
     // Update order payment status
