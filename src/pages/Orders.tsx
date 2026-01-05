@@ -184,7 +184,9 @@ const Orders = () => {
       product_id: formData.product_id || null,
       service_id: formData.service_id || null,
       price: parseFloat(formData.price) || 0,
-      notes: `العنوان: ${formData.address}\nطريقة الدفع: ${formData.payment_method}${formData.notes ? `\n${formData.notes}` : ""}`,
+      payment_method: formData.payment_method === 'رابط دفع PayTabs' ? 'الكتروني' : 'نقدي',
+      payment_status: 'في انتظار الدفع',
+      notes: `العنوان: ${formData.address}${formData.notes ? `\n${formData.notes}` : ""}`,
     });
   };
 
@@ -418,6 +420,7 @@ const Orders = () => {
                 <TableHead className="text-right">المنتج/الخدمة</TableHead>
                 <TableHead className="text-right">السعر</TableHead>
                 <TableHead className="text-right">الحالة</TableHead>
+                <TableHead className="text-right">طريقة الدفع</TableHead>
                 <TableHead className="text-right">حالة الدفع</TableHead>
                 <TableHead className="text-right">التاريخ</TableHead>
                 <TableHead className="text-right">المصدر</TableHead>
@@ -452,28 +455,29 @@ const Orders = () => {
                     </Select>
                   </TableCell>
                   <TableCell>
+                    <Badge variant="outline" className={
+                      order.payment_method === 'الكتروني' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                      'bg-amber-100 text-amber-800 border-amber-300'
+                    }>
+                      {order.payment_method === 'الكتروني' && <CreditCard className="w-3 h-3 ml-1" />}
+                      {order.payment_method !== 'الكتروني' && <Banknote className="w-3 h-3 ml-1" />}
+                      {order.payment_method || 'نقدي'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger>
                           <Badge 
                             variant="outline" 
                             className={
-                              order.payment_status === 'paid' ? 'bg-green-100 text-green-800 border-green-300' :
-                              order.payment_status === 'awaiting_payment' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
-                              order.payment_status === 'failed' ? 'bg-red-100 text-red-800 border-red-300' :
-                              'bg-gray-100 text-gray-800 border-gray-300'
+                              order.payment_status === 'مدفوع' ? 'bg-green-100 text-green-800 border-green-300' :
+                              'bg-yellow-100 text-yellow-800 border-yellow-300'
                             }
                           >
-                            {order.payment_status === 'paid' && <CheckCircle className="w-3 h-3 ml-1" />}
-                            {order.payment_status === 'awaiting_payment' && <Clock className="w-3 h-3 ml-1" />}
-                            {order.payment_status === 'failed' && <XCircle className="w-3 h-3 ml-1" />}
-                            {order.payment_status === 'pending' && <AlertCircle className="w-3 h-3 ml-1" />}
-                            {!order.payment_status && <Banknote className="w-3 h-3 ml-1" />}
-                            {order.payment_status === 'paid' ? 'مدفوع' :
-                             order.payment_status === 'awaiting_payment' ? 'في انتظار الدفع' :
-                             order.payment_status === 'failed' ? 'فشل الدفع' :
-                             order.payment_status === 'pending' ? 'معلق' :
-                             'غير محدد'}
+                            {order.payment_status === 'مدفوع' && <CheckCircle className="w-3 h-3 ml-1" />}
+                            {order.payment_status !== 'مدفوع' && <Clock className="w-3 h-3 ml-1" />}
+                            {order.payment_status || 'في انتظار الدفع'}
                           </Badge>
                         </TooltipTrigger>
                         <TooltipContent>
