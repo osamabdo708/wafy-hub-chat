@@ -435,7 +435,7 @@ ${customerOrdersHistory ? `\n📜 طلبات سابقة للعميل: ${customer
                   notes: orderNotes.trim(),
                   status: 'قيد الانتظار',
                   payment_method: args.payment_method === 'electronic' ? 'الكتروني' : 'نقدي',
-                  payment_status: args.payment_method === 'cod' ? 'cod' : 'pending',
+                  payment_status: args.payment_method === 'electronic' ? 'في انتظار الدفع' : 'الدفع عند الاستلام',
                   ai_generated: true,
                   source_platform: conversation.channel
                 })
