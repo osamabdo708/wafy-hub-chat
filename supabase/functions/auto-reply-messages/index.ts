@@ -7,8 +7,138 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Simple in-memory lock to prevent duplicate processing
-const processingLock = new Set<string>();
+// Parse product attributes dynamically
+function parseProductAttributes(product: any) {
+  const attrs = product.attributes as any;
+  const result: {
+    hasVariants: boolean;
+    variants: {
+      name: string;
+      type: 'color' | 'subAttribute' | 'custom';
+      options: {
+        value: string;
+        price: number;
+        subVariants?: { name: string; options: string[] }[];
+      }[];
+    }[];
+  } = { hasVariants: false, variants: [] };
+
+  // 1. Colors (if exists)
+  if (attrs?.colors?.length > 0) {
+    result.hasVariants = true;
+    result.variants.push({
+      name: 'اللون',
+      type: 'color',
+      options: attrs.colors.map((c: any) => ({
+        value: c.name,
+        price: c.price || product.price, // Color price IS the final variant price
+        subVariants: c.attributes?.map((a: any) => ({
+          name: a.name,
+          options: a.values?.map((v: any) => v.value) || []
+        })).filter((sv: any) => sv.options.length > 0) || []
+      }))
+    });
+  }
+
+  // 2. Custom attributes
+  if (attrs?.custom?.length > 0) {
+    result.hasVariants = true;
+    for (const custom of attrs.custom) {
+      if (custom.values?.length > 0) {
+        result.variants.push({
+          name: custom.name,
+          type: 'custom',
+          options: custom.values.map((v: any) => ({
+            value: v.value,
+            price: v.price || 0
+          }))
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+// Build product context string dynamically
+function buildProductContext(products: any[]) {
+  if (!products || products.length === 0) return 'لا توجد منتجات';
+
+  return products.map(p => {
+    const parsed = parseProductAttributes(p);
+    let info = `[${p.id}] ${p.name}`;
+
+    if (!parsed.hasVariants) {
+      info += `: ${p.price}₪`;
+    } else {
+      for (const variant of parsed.variants) {
+        if (variant.type === 'color') {
+          info += `\n   ${variant.name}: `;
+          info += variant.options.map(o => `${o.value} (${o.price}₪)`).join('، ');
+
+          // Sub-variants for each color
+          for (const option of variant.options) {
+            if (option.subVariants && option.subVariants.length > 0) {
+              for (const sub of option.subVariants) {
+                info += `\n     ↳ ${sub.name} لـ ${option.value}: ${sub.options.join('، ')}`;
+              }
+            }
+          }
+        } else {
+          info += `\n   ${variant.name}: `;
+          info += variant.options.map(o =>
+            o.price > 0 ? `${o.value} (+${o.price}₪)` : o.value
+          ).join('، ');
+        }
+      }
+    }
+
+    if (p.stock !== null) info += `\n   المخزون: ${p.stock}`;
+    return info;
+  }).join('\n\n');
+}
+
+// Try to acquire DB lock for conversation
+async function acquireLock(supabase: any, conversationId: string): Promise<boolean> {
+  try {
+    // Clean up expired locks first
+    await supabase
+      .from('ai_processing_locks')
+      .delete()
+      .lt('expires_at', new Date().toISOString());
+
+    // Try to insert lock
+    const { error } = await supabase
+      .from('ai_processing_locks')
+      .insert({
+        conversation_id: conversationId,
+        locked_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30000).toISOString()
+      });
+
+    if (error) {
+      // Lock already exists
+      console.log(`[AI-REPLY] Lock exists for ${conversationId}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[AI-REPLY] Lock error:', e);
+    return false;
+  }
+}
+
+// Release DB lock
+async function releaseLock(supabase: any, conversationId: string) {
+  try {
+    await supabase
+      .from('ai_processing_locks')
+      .delete()
+      .eq('conversation_id', conversationId);
+  } catch (e) {
+    console.error('[AI-REPLY] Release lock error:', e);
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -21,9 +151,12 @@ serve(async (req) => {
     const openaiKey = Deno.env.get('OPENAI_API_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Get public app URL for invoice links
+    const publicAppUrl = 'https://wafy-hub-chat.lovable.app';
+
     console.log('[AUTO-REPLY] Starting AI auto-reply check...');
 
-    // Find conversations with AI enabled that have unreplied messages
+    // Find conversations with AI enabled
     const { data: conversations } = await supabase
       .from('conversations')
       .select('id, customer_name, customer_phone, customer_email, thread_id, platform, channel, ai_enabled, workspace_id')
@@ -40,13 +173,7 @@ serve(async (req) => {
     let processedCount = 0;
 
     for (const conversation of conversations) {
-      // Check if already processing this conversation (prevent duplicates)
-      if (processingLock.has(conversation.id)) {
-        console.log(`[AUTO-REPLY] Skipping ${conversation.id} - already processing`);
-        continue;
-      }
-
-      // Get ALL unreplied messages
+      // Get unreplied messages
       const { data: unrepliedMessages } = await supabase
         .from('messages')
         .select('*')
@@ -58,7 +185,7 @@ serve(async (req) => {
 
       if (!unrepliedMessages || unrepliedMessages.length === 0) continue;
 
-      // Check if the most recent unreplied message is at least 6 seconds old (wait for customer to finish typing)
+      // Wait for customer to finish typing (6 seconds)
       const mostRecentMessage = unrepliedMessages[unrepliedMessages.length - 1];
       const messageAge = Date.now() - new Date(mostRecentMessage.created_at).getTime();
       const WAIT_TIME = 6 * 1000;
@@ -68,11 +195,15 @@ serve(async (req) => {
         continue;
       }
 
-      // Lock this conversation
-      processingLock.add(conversation.id);
+      // Try to acquire DB lock
+      const lockAcquired = await acquireLock(supabase, conversation.id);
+      if (!lockAcquired) {
+        console.log(`[AI-REPLY] Skipping ${conversation.id} - locked`);
+        continue;
+      }
 
       try {
-        // Double-check no AI message was sent in last 5 seconds (prevent race conditions)
+        // Double-check no AI message was sent in last 5 seconds
         const { data: recentAiMessages } = await supabase
           .from('messages')
           .select('id, created_at')
@@ -84,12 +215,12 @@ serve(async (req) => {
         if (recentAiMessages && recentAiMessages.length > 0) {
           const lastAiTime = new Date(recentAiMessages[0].created_at).getTime();
           if (Date.now() - lastAiTime < 5000) {
-            console.log(`[AI-REPLY] Skipping ${conversation.id} - AI replied ${Math.floor((Date.now() - lastAiTime) / 1000)}s ago`);
+            console.log(`[AI-REPLY] Skipping ${conversation.id} - AI replied recently`);
             continue;
           }
         }
 
-        // Mark messages as replied FIRST to prevent duplicate processing
+        // Mark messages as replied FIRST
         const messageIds = unrepliedMessages.map(m => m.id);
         await supabase
           .from('messages')
@@ -98,7 +229,7 @@ serve(async (req) => {
 
         console.log(`[AI-REPLY] Processing ${conversation.id} with ${unrepliedMessages.length} messages`);
 
-        // Get products for this workspace with full details
+        // Get products
         const { data: products } = await supabase
           .from('products')
           .select('id, name, description, price, stock, attributes, min_negotiable_price')
@@ -127,7 +258,7 @@ serve(async (req) => {
           .order('created_at', { ascending: false })
           .limit(3);
 
-        // Get last 20 messages for context
+        // Get message history
         const { data: contextMessages } = await supabase
           .from('messages')
           .select('*')
@@ -140,37 +271,12 @@ serve(async (req) => {
           content: m.content
         })) || [];
 
-        // Build products context with attributes
-        const productsContext = products?.map(p => {
-          let info = `[${p.id}] ${p.name}: ${p.price}ر`;
-          if (p.stock !== null) info += ` (مخزون: ${p.stock})`;
-          
-          const attrs = p.attributes as any;
-          if (attrs?.colors?.length > 0) {
-            info += `\n   ألوان: ${attrs.colors.map((c: any) => {
-              let colorInfo = c.name;
-              if (c.price) colorInfo += ` (+${c.price}ر)`;
-              return colorInfo;
-            }).join('، ')}`;
-            
-            // Add sizes for each color if available
-            for (const color of attrs.colors) {
-              if (color.attributes?.length > 0) {
-                for (const subAttr of color.attributes) {
-                  if (subAttr.name?.includes('مقاس') || subAttr.name?.includes('size')) {
-                    info += `\n   مقاسات ${color.name}: ${subAttr.values.map((v: any) => v.value).join('، ')}`;
-                  }
-                }
-              }
-            }
-          }
-          
-          return info;
-        }).join('\n') || 'لا توجد منتجات';
+        // Build dynamic product context
+        const productsContext = buildProductContext(products || []);
 
         // Build shipping context
-        const shippingContext = shippingMethods?.map(s => 
-          `[${s.id}] ${s.name}: ${s.price}ر (${s.estimated_days || '؟'} يوم)`
+        const shippingContext = shippingMethods?.map(s =>
+          `[${s.id}] ${s.name}: ${s.price}₪ (${s.estimated_days || '؟'} يوم)`
         ).join('\n') || 'شحن مجاني';
 
         // Payment methods
@@ -180,83 +286,100 @@ serve(async (req) => {
         const paymentContext = paymentMethods.length > 0 ? paymentMethods.join(' أو ') : 'نقدي فقط';
 
         // Customer history
-        const historyContext = customerOrders && customerOrders.length > 0 
+        const historyContext = customerOrders && customerOrders.length > 0
           ? customerOrders.map(o => `#${o.order_number} (${o.status})`).join('، ')
           : '';
 
-        // Human-like prompt with full context
-        const systemPrompt = `أنت مساعد مبيعات ودود وذكي. تتكلم بشكل طبيعي مثل الإنسان.
+        // System prompt with dynamic variants and customer data collection
+        const systemPrompt = `أنت مساعد مبيعات ودود وذكي. تتكلم بشكل طبيعي ومختصر.
 
-📦 المنتجات المتوفرة:
+📦 المنتجات:
 ${productsContext}
 
-🚚 طرق الشحن:
+🚚 الشحن:
 ${shippingContext}
 
-💳 طرق الدفع: ${paymentContext}
+💳 الدفع: ${paymentContext}
 
-${historyContext ? `📜 طلبات العميل السابقة: ${historyContext}` : ''}
+${historyContext ? `📜 طلبات سابقة: ${historyContext}` : ''}
 
-👤 العميل: ${conversation.customer_name || 'زائر'} | هاتف: ${conversation.customer_phone || 'غير معروف'}
+👤 بيانات العميل الحالية:
+- الاسم: ${conversation.customer_name || 'غير معروف'}
+- الهاتف: ${conversation.customer_phone || 'غير معروف'}
 
-⚠️ قواعد مهمة:
-1. ردود قصيرة (جملة أو جملتين)
-2. إذا المنتج له ألوان/مقاسات، اسأل عنها واحدة واحدة
-3. قبل إنشاء الطلب، لازم تجمع: المنتج + اللون + المقاس + العنوان + طريقة الشحن + طريقة الدفع
-4. لما تكون كل المعلومات جاهزة، استخدم create_order
-5. بعد الطلب الناجح، اشكر العميل وأرسل تفاصيل الطلب
+⚠️ قواعد المتغيرات:
+1. انظر للمنتج وشوف المتغيرات الموجودة فعلاً
+2. اسأل عن كل متغير بالترتيب (واحد واحد)
+3. لا تسأل عن متغيرات غير موجودة في وصف المنتج
+4. سعر اللون = السعر النهائي للمنتج (ليس إضافة)
+5. إذا اللون له متغيرات فرعية (تحت ↳)، اسأل عنها بعد اختيار اللون
 
-💬 تدفق المحادثة:
-- العميل يسأل عن منتج ← أجب عن السعر والمواصفات
-- العميل يريد يطلب ← اسأل: "تمام! أي لون تحب؟"
-- العميل يختار لون ← اسأل: "ممتاز! أي مقاس؟"
-- العميل يختار مقاس ← اسأل: "وين أوصلك الطلب؟"
-- العميل يعطي عنوان ← اسأل: "تحب دفع ${paymentContext}؟"
-- العميل يختار دفع ← أنشئ الطلب بـ create_order
+📋 قواعد جمع بيانات العميل (قبل إنشاء الطلب):
+1. إذا الاسم غير معروف ← "ممكن اسمك الكريم؟"
+2. إذا الهاتف غير معروف ← "رقم الجوال؟"
+3. بعدها اسأل عن العنوان ← "وين أوصلك الطلب؟"
+4. لا تتخطى أي خطوة!
 
-مثال محادثة طبيعية:
-العميل: "أبغى حذاء"
-أنت: "عندنا حذاء اديداس بـ150ر! أي لون يعجبك؟ 😊"
-العميل: "أسود"
-أنت: "تمام أسود! أي مقاس؟"
-العميل: "42"
-أنت: "ممتاز! وين أوصلك؟"
-العميل: "الرياض حي النخيل"
-أنت: "تمام! تحب تدفع نقدي عند الاستلام أو إلكتروني؟"
+💬 تدفق الطلب الكامل:
+1. العميل يسأل عن منتج ← أخبره بالسعر والخيارات
+2. إذا يريد يطلب وفيه متغيرات ← اسأل عنها بالترتيب
+3. بعد المتغيرات ← "ممكن اسمك الكريم؟" (إذا غير معروف)
+4. بعد الاسم ← "رقم الجوال؟" (إذا غير معروف)
+5. بعد الهاتف ← "وين أوصلك؟"
+6. بعد العنوان ← عرض طرق الشحن
+7. بعد الشحن ← "نقدي أو إلكتروني؟"
+8. بعد الدفع ← create_order
+
+مثال:
+العميل: "أبغى الحذاء"
+أنت: "عندنا اديداس! الألوان: أبيض (150₪)، بيج (170₪). أي لون؟"
+العميل: "بيج"
+أنت: "بيج ممتاز! ممكن اسمك الكريم؟"
+العميل: "أسامة"
+أنت: "أهلاً أسامة! رقم الجوال؟"
+العميل: "0599123456"
+أنت: "تمام! وين أوصلك الطلب؟"
+العميل: "رام الله"
+أنت: "عندنا: الضفة (20₪)، القدس (40₪). أي واحدة؟"
+العميل: "الضفة"
+أنت: "الدفع نقدي أو إلكتروني؟"
 العميل: "نقدي"
-أنت: [تستخدم create_order وترسل التأكيد]`;
+[create_order]`;
 
-        // Define order creation tool
+        // Define order creation tool with customer data
         const tools = [
           {
             type: "function",
             function: {
               name: "create_order",
-              description: "أنشئ طلب جديد بعد جمع كل المعلومات المطلوبة من العميل",
+              description: "أنشئ طلب جديد بعد جمع كل المعلومات",
               parameters: {
                 type: "object",
                 properties: {
                   product_id: { type: "string", description: "معرف المنتج UUID" },
                   product_name: { type: "string", description: "اسم المنتج" },
-                  selected_color: { type: "string", description: "اللون المختار" },
-                  selected_size: { type: "string", description: "المقاس المختار" },
-                  quantity: { type: "number", description: "الكمية" },
-                  shipping_address: { type: "string", description: "عنوان التوصيل الكامل" },
+                  selected_variants: {
+                    type: "object",
+                    description: "المتغيرات المختارة: {اللون: 'أبيض', المقاس: '42'}",
+                    additionalProperties: { type: "string" }
+                  },
+                  quantity: { type: "number", description: "الكمية", default: 1 },
+                  customer_name: { type: "string", description: "اسم العميل" },
+                  customer_phone: { type: "string", description: "رقم هاتف العميل" },
+                  shipping_address: { type: "string", description: "عنوان التوصيل" },
                   shipping_method_id: { type: "string", description: "معرف طريقة الشحن UUID" },
                   payment_method: { type: "string", enum: ["cod", "electronic"], description: "طريقة الدفع" },
-                  product_price: { type: "number", description: "سعر المنتج" },
-                  extras_price: { type: "number", description: "سعر الإضافات (لون/مقاس)" },
+                  final_product_price: { type: "number", description: "سعر المنتج النهائي (سعر اللون المختار)" },
                   shipping_price: { type: "number", description: "سعر الشحن" },
-                  total_price: { type: "number", description: "الإجمالي" },
-                  notes: { type: "string", description: "ملاحظات إضافية" }
+                  total_price: { type: "number", description: "الإجمالي" }
                 },
-                required: ["product_id", "shipping_address", "shipping_method_id", "payment_method", "total_price"]
+                required: ["product_id", "customer_name", "customer_phone", "shipping_address", "shipping_method_id", "payment_method", "total_price"]
               }
             }
           }
         ];
 
-        // Call OpenAI with tools
+        // Call OpenAI
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -272,7 +395,7 @@ ${historyContext ? `📜 طلبات العميل السابقة: ${historyContex
             tools: tools,
             tool_choice: "auto",
             temperature: 0.8,
-            max_tokens: 300
+            max_tokens: 400
           }),
         });
 
@@ -292,7 +415,7 @@ ${historyContext ? `📜 طلبات العميل السابقة: ${historyContex
         // Check if AI wants to create an order
         if (assistantMessage?.tool_calls?.length > 0) {
           const toolCall = assistantMessage.tool_calls[0];
-          
+
           if (toolCall.function.name === 'create_order') {
             try {
               const args = JSON.parse(toolCall.function.arguments);
@@ -301,114 +424,165 @@ ${historyContext ? `📜 طلبات العميل السابقة: ${historyContex
               // Get product details
               const { data: product } = await supabase
                 .from('products')
-                .select('id, name, stock, price')
+                .select('id, name, stock, price, attributes')
                 .eq('id', args.product_id)
                 .maybeSingle();
 
               if (!product) {
                 aiReply = 'معليش ما لقيت المنتج، ممكن تحدده مرة ثانية؟ 🤔';
-              } else if (product.stock < (args.quantity || 1)) {
-                aiReply = `للأسف نفذ المخزون 😔 متبقي ${product.stock} فقط`;
               } else {
-                // Get shipping method
-                const { data: shippingMethod } = await supabase
-                  .from('shipping_methods')
-                  .select('id, name, price')
-                  .eq('id', args.shipping_method_id)
-                  .maybeSingle();
-
                 const quantity = args.quantity || 1;
-                
-                // Build order notes
-                let orderNotes = '';
-                if (args.selected_color) orderNotes += `اللون: ${args.selected_color}\n`;
-                if (args.selected_size) orderNotes += `المقاس: ${args.selected_size}\n`;
-                if (args.notes) orderNotes += args.notes;
-                orderNotes += `\nالكمية: ${quantity}`;
-                orderNotes += `\n(تم الطلب بواسطة الذكاء الاصطناعي)`;
 
-                // Create the order
-                const { data: newOrder, error: orderError } = await supabase
-                  .from('orders')
-                  .insert({
-                    workspace_id: conversation.workspace_id,
-                    conversation_id: conversation.id,
-                    product_id: args.product_id,
-                    customer_name: conversation.customer_name || 'عميل',
-                    customer_phone: conversation.customer_phone,
-                    customer_email: conversation.customer_email || null,
-                    shipping_address: args.shipping_address,
-                    shipping_method_id: args.shipping_method_id,
-                    price: args.total_price,
-                    notes: orderNotes.trim(),
-                    status: 'قيد الانتظار',
-                    payment_status: args.payment_method === 'cod' ? 'cod' : 'pending',
-                    ai_generated: true,
-                    source_platform: conversation.channel
-                  })
-                  .select('id, order_number')
-                  .single();
-
-                if (orderError) {
-                  console.error('[AI-REPLY] Order creation error:', orderError);
-                  aiReply = 'صار مشكلة بسيطة، ممكن نحاول مرة ثانية؟ 😅';
+                if (product.stock !== null && product.stock < quantity) {
+                  aiReply = `للأسف نفذ المخزون 😔 متبقي ${product.stock} فقط`;
                 } else {
-                  console.log('[AI-REPLY] ✅ Order created:', newOrder.order_number);
+                  // Calculate correct price based on selected variant
+                  let finalProductPrice = args.final_product_price || product.price;
 
-                  // Reduce stock
-                  await supabase
-                    .from('products')
-                    .update({ stock: product.stock - quantity })
-                    .eq('id', args.product_id);
+                  // If color was selected, get the color's price
+                  if (args.selected_variants?.اللون) {
+                    const parsed = parseProductAttributes(product);
+                    const colorVariant = parsed.variants.find(v => v.name === 'اللون');
+                    if (colorVariant) {
+                      const selectedColor = colorVariant.options.find(o => o.value === args.selected_variants.اللون);
+                      if (selectedColor) {
+                        finalProductPrice = selectedColor.price;
+                      }
+                    }
+                  }
 
-                  const shippingName = shippingMethod?.name || 'توصيل';
+                  // Get shipping method
+                  const { data: shippingMethod } = await supabase
+                    .from('shipping_methods')
+                    .select('id, name, price')
+                    .eq('id', args.shipping_method_id)
+                    .maybeSingle();
+
                   const shippingPrice = args.shipping_price || shippingMethod?.price || 0;
+                  const totalPrice = (finalProductPrice * quantity) + shippingPrice;
 
-                  // Handle electronic payment
-                  if (args.payment_method === 'electronic' && paymentSettings?.paytabs_enabled) {
-                    try {
-                      const paymentResponse = await fetch(`${supabaseUrl}/functions/v1/create-paytabs-payment`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${supabaseKey}`
-                        },
-                        body: JSON.stringify({ orderId: newOrder.id })
-                      });
-                      
-                      const paymentData = await paymentResponse.json();
+                  // Build order notes from selected_variants
+                  let orderNotes = '';
+                  if (args.selected_variants) {
+                    for (const [key, value] of Object.entries(args.selected_variants)) {
+                      orderNotes += `${key}: ${value}\n`;
+                    }
+                  }
+                  orderNotes += `الكمية: ${quantity}`;
+                  orderNotes += `\n(تم الطلب بواسطة الذكاء الاصطناعي)`;
 
-                      if (paymentData.payment_url) {
-                        aiReply = `🎉 تم طلبك بنجاح!
+                  // Create the order (order_number is auto-generated by trigger)
+                  const { data: newOrder, error: orderError } = await supabase
+                    .from('orders')
+                    .insert({
+                      workspace_id: conversation.workspace_id,
+                      conversation_id: conversation.id,
+                      product_id: args.product_id,
+                      customer_name: args.customer_name || conversation.customer_name || 'عميل',
+                      customer_phone: args.customer_phone || conversation.customer_phone,
+                      customer_email: conversation.customer_email || null,
+                      shipping_address: args.shipping_address,
+                      shipping_method_id: args.shipping_method_id,
+                      price: totalPrice,
+                      notes: orderNotes.trim(),
+                      status: 'قيد الانتظار',
+                      payment_status: args.payment_method === 'cod' ? 'cod' : 'pending',
+                      ai_generated: true,
+                      source_platform: conversation.channel
+                    })
+                    .select('id, order_number')
+                    .single();
+
+                  if (orderError) {
+                    console.error('[AI-REPLY] Order creation error:', orderError);
+                    aiReply = 'صار مشكلة بسيطة، ممكن نحاول مرة ثانية؟ 😅';
+                  } else {
+                    console.log('[AI-REPLY] ✅ Order created:', newOrder.order_number);
+
+                    // Update conversation with customer data
+                    await supabase
+                      .from('conversations')
+                      .update({
+                        customer_name: args.customer_name || conversation.customer_name,
+                        customer_phone: args.customer_phone || conversation.customer_phone
+                      })
+                      .eq('id', conversation.id);
+
+                    // Reduce stock
+                    if (product.stock !== null) {
+                      await supabase
+                        .from('products')
+                        .update({ stock: product.stock - quantity })
+                        .eq('id', args.product_id);
+                    }
+
+                    const shippingName = shippingMethod?.name || 'توصيل';
+
+                    // Build variants text for confirmation
+                    let variantsText = '';
+                    if (args.selected_variants) {
+                      const variants = Object.entries(args.selected_variants)
+                        .map(([k, v]) => `${v}`)
+                        .join(' - ');
+                      if (variants) variantsText = ` (${variants})`;
+                    }
+
+                    // Invoice URL
+                    const invoiceUrl = `${publicAppUrl}/pay/${newOrder.order_number}`;
+
+                    // Handle electronic payment
+                    if (args.payment_method === 'electronic' && paymentSettings?.paytabs_enabled) {
+                      try {
+                        const paymentResponse = await fetch(`${supabaseUrl}/functions/v1/create-paytabs-payment`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${supabaseKey}`
+                          },
+                          body: JSON.stringify({ orderId: newOrder.id })
+                        });
+
+                        const paymentData = await paymentResponse.json();
+
+                        if (paymentData.payment_url) {
+                          aiReply = `🎉 تم طلبك بنجاح!
 
 📋 رقم الطلب: ${newOrder.order_number}
-📦 ${product.name}${args.selected_color ? ` (${args.selected_color})` : ''}${args.selected_size ? ` - مقاس ${args.selected_size}` : ''}
-🚚 ${shippingName}
-💰 الإجمالي: ${args.total_price}ر
+👤 ${args.customer_name} - ${args.customer_phone}
+📦 ${product.name}${variantsText}
+📍 ${args.shipping_address}
+🚚 ${shippingName}: ${shippingPrice}₪
+💰 الإجمالي: ${totalPrice}₪
 
 💳 ادفع من هنا:
 ${paymentData.payment_url}
 
+🧾 الفاتورة: ${invoiceUrl}
+
 ⏰ يرجى الدفع خلال 24 ساعة`;
-                      } else {
-                        aiReply = `تم طلبك #${newOrder.order_number}! 🎉 لكن صار مشكلة برابط الدفع، راح نتواصل معك قريباً 📞`;
+                        } else {
+                          aiReply = `تم طلبك #${newOrder.order_number}! 🎉 لكن صار مشكلة برابط الدفع، راح نتواصل معك قريباً 📞`;
+                        }
+                      } catch (paymentError) {
+                        console.error('[AI-REPLY] Payment error:', paymentError);
+                        aiReply = `تم طلبك #${newOrder.order_number}! 🎉 راح نتواصل معك لإتمام الدفع 📞`;
                       }
-                    } catch (paymentError) {
-                      console.error('[AI-REPLY] Payment error:', paymentError);
-                      aiReply = `تم طلبك #${newOrder.order_number}! 🎉 راح نتواصل معك لإتمام الدفع 📞`;
-                    }
-                  } else {
-                    // COD confirmation
-                    aiReply = `🎉 تم طلبك بنجاح!
+                    } else {
+                      // COD confirmation with real invoice link
+                      aiReply = `🎉 تم طلبك بنجاح!
 
 📋 رقم الطلب: ${newOrder.order_number}
-📦 ${product.name}${args.selected_color ? ` (${args.selected_color})` : ''}${args.selected_size ? ` - مقاس ${args.selected_size}` : ''}
+👤 ${args.customer_name} - ${args.customer_phone}
+📦 ${product.name}${variantsText}
 📍 ${args.shipping_address}
-🚚 ${shippingName}
-💰 الإجمالي: ${args.total_price}ر
+🚚 ${shippingName}: ${shippingPrice}₪
+💰 الإجمالي: ${totalPrice}₪
 💵 الدفع عند الاستلام
 
-شكراً لك! راح نتواصل معك قريباً 🛍️✨`;
+🧾 الفاتورة: ${invoiceUrl}
+
+شكراً لك! ✨`;
+                    }
                   }
                 }
               }
@@ -444,7 +618,7 @@ ${paymentData.payment_url}
         processedCount++;
       } finally {
         // Always release the lock
-        processingLock.delete(conversation.id);
+        await releaseLock(supabase, conversation.id);
       }
     }
 
@@ -479,7 +653,7 @@ async function sendToChannel(supabase: any, conversation: any, message: string) 
       if (channelConfig?.config) {
         const config = channelConfig.config as any;
         const sendUrl = `https://graph.facebook.com/v18.0/me/messages?access_token=${config.page_access_token}`;
-        
+
         const sendResponse = await fetch(sendUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

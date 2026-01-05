@@ -58,6 +58,32 @@ export type Database = {
           },
         ]
       }
+      ai_processing_locks: {
+        Row: {
+          conversation_id: string
+          expires_at: string
+          locked_at: string
+        }
+        Insert: {
+          conversation_id: string
+          expires_at?: string
+          locked_at?: string
+        }
+        Update: {
+          conversation_id?: string
+          expires_at?: string
+          locked_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_processing_locks_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_settings: {
         Row: {
           category: string | null
