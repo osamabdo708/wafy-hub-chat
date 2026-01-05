@@ -1,8 +1,9 @@
-import { Bell, Search, Moon, Sun } from "lucide-react";
+import { Search, Moon, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
 import genieLogo from "@/assets/genie-logo.png";
+import { NotificationDropdown } from "@/components/NotificationDropdown";
 
 export const Header = () => {
   const { theme, setTheme } = useTheme();
@@ -38,10 +39,7 @@ export const Header = () => {
             <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
             <span className="sr-only">تبديل الوضع</span>
           </Button>
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full"></span>
-          </Button>
+          <NotificationDropdown />
         </div>
       </div>
     </header>
