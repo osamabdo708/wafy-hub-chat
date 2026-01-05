@@ -194,20 +194,16 @@ async function sendInstagramMessage(
   message: string,
   config: any
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  // Prefer page access token (recommended for Instagram messaging). Fallback to access_token if present.
+  // Use page access token - same approach as auto-reply-messages which works
   const accessToken = config.page_access_token ?? config.access_token;
-  const igAccountId = config.instagram_account_id;
   
   if (!accessToken) {
     return { success: false, error: "Instagram access token missing. Please reconnect Instagram with instagram_manage_messages permission." };
   }
 
-  // Instagram uses /{ig-user-id}/messages endpoint
-  const endpoint = igAccountId 
-    ? `https://graph.facebook.com/v21.0/${igAccountId}/messages`
-    : "https://graph.facebook.com/v21.0/me/messages";
-
-  const response = await fetch(endpoint, {
+  // Instagram also uses /me/messages endpoint with page access token (same as Facebook)
+  // This is the working approach used in auto-reply-messages
+  const response = await fetch("https://graph.facebook.com/v18.0/me/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
