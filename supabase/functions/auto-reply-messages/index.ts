@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Parse product attributes dynamically
+// Parse product attributes DYNAMICALLY - looks at what exists, no hardcoded checks
 function parseProductAttributes(product: any) {
   const attrs = product.attributes as any;
   const result: {
@@ -23,28 +23,41 @@ function parseProductAttributes(product: any) {
     }[];
   } = { hasVariants: false, variants: [] };
 
+  if (!attrs) return result;
+
   // 1. Colors (if exists)
-  if (attrs?.colors?.length > 0) {
+  if (attrs.colors && Array.isArray(attrs.colors) && attrs.colors.length > 0) {
     result.hasVariants = true;
     result.variants.push({
       name: 'اللون',
       type: 'color',
-      options: attrs.colors.map((c: any) => ({
-        value: c.name,
-        price: c.price || product.price, // Color price IS the final variant price
-        subVariants: c.attributes?.map((a: any) => ({
-          name: a.name,
-          options: a.values?.map((v: any) => v.value) || []
-        })).filter((sv: any) => sv.options.length > 0) || []
-      }))
+      options: attrs.colors.map((c: any) => {
+        // Get ALL sub-attributes for this color dynamically
+        const subVariants: { name: string; options: string[] }[] = [];
+        if (c.attributes && Array.isArray(c.attributes)) {
+          for (const subAttr of c.attributes) {
+            if (subAttr.values && Array.isArray(subAttr.values) && subAttr.values.length > 0) {
+              subVariants.push({
+                name: subAttr.name,
+                options: subAttr.values.map((v: any) => v.value)
+              });
+            }
+          }
+        }
+        return {
+          value: c.name,
+          price: c.price || product.price,
+          subVariants: subVariants.length > 0 ? subVariants : undefined
+        };
+      })
     });
   }
 
   // 2. Custom attributes
-  if (attrs?.custom?.length > 0) {
+  if (attrs.custom && Array.isArray(attrs.custom) && attrs.custom.length > 0) {
     result.hasVariants = true;
     for (const custom of attrs.custom) {
-      if (custom.values?.length > 0) {
+      if (custom.values && Array.isArray(custom.values) && custom.values.length > 0) {
         result.variants.push({
           name: custom.name,
           type: 'custom',
@@ -66,26 +79,31 @@ function buildProductContext(products: any[]) {
 
   return products.map(p => {
     const parsed = parseProductAttributes(p);
-    let info = `[${p.id}] ${p.name}`;
+    let info = `[${p.id}] ${p.name} - المخزون: ${p.stock !== null ? (p.stock > 0 ? p.stock : '❌نفذ') : 'متوفر'}`;
 
     if (!parsed.hasVariants) {
-      info += `: ${p.price}₪`;
+      // No variants - just show base price
+      info += `\n   السعر: ${p.price}₪`;
     } else {
+      // Has variants - show them dynamically
+      info += '\n   المتغيرات المتوفرة:';
+      
       for (const variant of parsed.variants) {
         if (variant.type === 'color') {
-          info += `\n   ${variant.name}: `;
+          info += `\n   • ${variant.name}: `;
           info += variant.options.map(o => `${o.value} (${o.price}₪)`).join('، ');
 
-          // Sub-variants for each color
+          // Show sub-variants for each color
           for (const option of variant.options) {
             if (option.subVariants && option.subVariants.length > 0) {
               for (const sub of option.subVariants) {
-                info += `\n     ↳ ${sub.name} لـ ${option.value}: ${sub.options.join('، ')}`;
+                info += `\n     ↳ ${sub.name} لـ${option.value}: ${sub.options.join('، ')}`;
               }
             }
           }
         } else {
-          info += `\n   ${variant.name}: `;
+          // Custom attribute
+          info += `\n   • ${variant.name}: `;
           info += variant.options.map(o =>
             o.price > 0 ? `${o.value} (+${o.price}₪)` : o.value
           ).join('، ');
@@ -93,7 +111,6 @@ function buildProductContext(products: any[]) {
       }
     }
 
-    if (p.stock !== null) info += `\n   المخزون: ${p.stock}`;
     return info;
   }).join('\n\n');
 }
@@ -101,13 +118,11 @@ function buildProductContext(products: any[]) {
 // Try to acquire DB lock for conversation
 async function acquireLock(supabase: any, conversationId: string): Promise<boolean> {
   try {
-    // Clean up expired locks first
     await supabase
       .from('ai_processing_locks')
       .delete()
       .lt('expires_at', new Date().toISOString());
 
-    // Try to insert lock
     const { error } = await supabase
       .from('ai_processing_locks')
       .insert({
@@ -117,7 +132,6 @@ async function acquireLock(supabase: any, conversationId: string): Promise<boole
       });
 
     if (error) {
-      // Lock already exists
       console.log(`[AI-REPLY] Lock exists for ${conversationId}`);
       return false;
     }
@@ -150,8 +164,6 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const openaiKey = Deno.env.get('OPENAI_API_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Get public app URL for invoice links
     const publicAppUrl = 'https://wafy-hub-chat.lovable.app';
 
     console.log('[AUTO-REPLY] Starting AI auto-reply check...');
@@ -188,7 +200,7 @@ serve(async (req) => {
       // Wait for customer to finish typing (6 seconds)
       const mostRecentMessage = unrepliedMessages[unrepliedMessages.length - 1];
       const messageAge = Date.now() - new Date(mostRecentMessage.created_at).getTime();
-      const WAIT_TIME = 6 * 1000;
+      const WAIT_TIME = 6000;
 
       if (messageAge < WAIT_TIME) {
         console.log(`[AI-REPLY] Waiting for ${conversation.id} - message only ${Math.floor(messageAge / 1000)}s old`);
@@ -290,8 +302,8 @@ serve(async (req) => {
           ? customerOrders.map(o => `#${o.order_number} (${o.status})`).join('، ')
           : '';
 
-        // System prompt with dynamic variants and customer data collection
-        const systemPrompt = `أنت مساعد مبيعات ودود وذكي. تتكلم بشكل طبيعي ومختصر.
+        // DYNAMIC system prompt - no hardcoded attribute checks
+        const systemPrompt = `أنت مساعد مبيعات ودود وطبيعي. تتكلم كأنك إنسان حقيقي.
 
 📦 المنتجات:
 ${productsContext}
@@ -307,77 +319,73 @@ ${historyContext ? `📜 طلبات سابقة: ${historyContext}` : ''}
 - الاسم: ${conversation.customer_name || 'غير معروف'}
 - الهاتف: ${conversation.customer_phone || 'غير معروف'}
 
-⚠️ قواعد المتغيرات:
-1. انظر للمنتج وشوف المتغيرات الموجودة فعلاً
-2. اسأل عن كل متغير بالترتيب (واحد واحد)
-3. لا تسأل عن متغيرات غير موجودة في وصف المنتج
+⚠️ قواعد المتغيرات (مهم جداً):
+1. انظر لكل منتج وشوف "المتغيرات المتوفرة" تحته
+2. اسأل فقط عن المتغيرات الموجودة في وصف المنتج
+3. لا تسأل عن مقاس أو حجم أو نوع إذا غير موجود في المنتج
 4. سعر اللون = السعر النهائي للمنتج (ليس إضافة)
-5. إذا اللون له متغيرات فرعية (تحت ↳)، اسأل عنها بعد اختيار اللون
+5. إذا اللون له متغيرات فرعية (↳)، اسأل عنها بعد اختيار اللون
 
-📋 قواعد جمع بيانات العميل (قبل إنشاء الطلب):
-1. إذا الاسم غير معروف ← "ممكن اسمك الكريم؟"
-2. إذا الهاتف غير معروف ← "رقم الجوال؟"
-3. بعدها اسأل عن العنوان ← "وين أوصلك الطلب؟"
-4. لا تتخطى أي خطوة!
-
-💬 تدفق الطلب الكامل:
-1. العميل يسأل عن منتج ← أخبره بالسعر والخيارات
-2. إذا يريد يطلب وفيه متغيرات ← اسأل عنها بالترتيب
+📋 تدفق الطلب الكامل (اتبعه بالترتيب):
+1. العميل يسأل عن منتج ← أخبره بالسعر والخيارات المتوفرة
+2. إذا يريد يطلب وفيه متغيرات ← اسأل عنها واحدة واحدة
 3. بعد المتغيرات ← "ممكن اسمك الكريم؟" (إذا غير معروف)
 4. بعد الاسم ← "رقم الجوال؟" (إذا غير معروف)
-5. بعد الهاتف ← "وين أوصلك؟"
-6. بعد العنوان ← عرض طرق الشحن
+5. بعد الهاتف ← "وين أوصلك الطلب؟"
+6. بعد العنوان ← اعرض طرق الشحن
 7. بعد الشحن ← "نقدي أو إلكتروني؟"
 8. بعد الدفع ← create_order
 
-مثال:
+💬 أمثلة:
+
+منتج بألوان فقط (بدون مقاسات):
 العميل: "أبغى الحذاء"
 أنت: "عندنا اديداس! الألوان: أبيض (150₪)، بيج (170₪). أي لون؟"
 العميل: "بيج"
 أنت: "بيج ممتاز! ممكن اسمك الكريم؟"
-العميل: "أسامة"
-أنت: "أهلاً أسامة! رقم الجوال؟"
-العميل: "0599123456"
-أنت: "تمام! وين أوصلك الطلب؟"
-العميل: "رام الله"
-أنت: "عندنا: الضفة (20₪)، القدس (40₪). أي واحدة؟"
-العميل: "الضفة"
-أنت: "الدفع نقدي أو إلكتروني؟"
-العميل: "نقدي"
-[create_order]`;
 
-        // Define order creation tool with customer data
-        const tools = [
-          {
-            type: "function",
-            function: {
-              name: "create_order",
-              description: "أنشئ طلب جديد بعد جمع كل المعلومات",
-              parameters: {
-                type: "object",
-                properties: {
-                  product_id: { type: "string", description: "معرف المنتج UUID" },
-                  product_name: { type: "string", description: "اسم المنتج" },
-                  selected_variants: {
-                    type: "object",
-                    description: "المتغيرات المختارة: {اللون: 'أبيض', المقاس: '42'}",
-                    additionalProperties: { type: "string" }
-                  },
-                  quantity: { type: "number", description: "الكمية", default: 1 },
-                  customer_name: { type: "string", description: "اسم العميل" },
-                  customer_phone: { type: "string", description: "رقم هاتف العميل" },
-                  shipping_address: { type: "string", description: "عنوان التوصيل" },
-                  shipping_method_id: { type: "string", description: "معرف طريقة الشحن UUID" },
-                  payment_method: { type: "string", enum: ["cod", "electronic"], description: "طريقة الدفع" },
-                  final_product_price: { type: "number", description: "سعر المنتج النهائي (سعر اللون المختار)" },
-                  shipping_price: { type: "number", description: "سعر الشحن" },
-                  total_price: { type: "number", description: "الإجمالي" }
+منتج بألوان ومقاسات:
+العميل: "أبغى التيشيرت"
+أنت: "عندنا تيشيرت! الألوان: أبيض، أسود. أي لون؟"
+العميل: "أسود"
+أنت: "أسود! المقاسات: S، M، L. أي مقاس؟"
+العميل: "L"
+أنت: "تمام L! ممكن اسمك؟"
+
+منتج بدون متغيرات:
+العميل: "أبغى الكتاب"
+أنت: "الكتاب بـ50₪! ممكن اسمك الكريم؟"`;
+
+        // Define order creation tool
+        const tools = [{
+          type: "function",
+          function: {
+            name: "create_order",
+            description: "أنشئ طلب بعد جمع: المنتج + المتغيرات (إذا موجودة) + الاسم + الهاتف + العنوان + الشحن + الدفع",
+            parameters: {
+              type: "object",
+              properties: {
+                product_id: { type: "string", description: "معرف المنتج UUID" },
+                product_name: { type: "string", description: "اسم المنتج" },
+                selected_variants: {
+                  type: "object",
+                  description: "المتغيرات المختارة ديناميكياً: {اللون: 'أبيض', المقاس: '42', النوع: 'قطن'...}",
+                  additionalProperties: { type: "string" }
                 },
-                required: ["product_id", "customer_name", "customer_phone", "shipping_address", "shipping_method_id", "payment_method", "total_price"]
-              }
+                quantity: { type: "number", description: "الكمية", default: 1 },
+                customer_name: { type: "string", description: "اسم العميل (مطلوب)" },
+                customer_phone: { type: "string", description: "رقم هاتف العميل (مطلوب)" },
+                shipping_address: { type: "string", description: "عنوان التوصيل" },
+                shipping_method_id: { type: "string", description: "معرف طريقة الشحن UUID" },
+                payment_method: { type: "string", enum: ["cod", "electronic"], description: "طريقة الدفع" },
+                final_product_price: { type: "number", description: "سعر المنتج النهائي (سعر اللون المختار)" },
+                shipping_price: { type: "number", description: "سعر الشحن" },
+                total_price: { type: "number", description: "الإجمالي" }
+              },
+              required: ["product_id", "customer_name", "customer_phone", "shipping_address", "shipping_method_id", "payment_method", "total_price"]
             }
           }
-        ];
+        }];
 
         // Call OpenAI
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -394,7 +402,7 @@ ${historyContext ? `📜 طلبات سابقة: ${historyContext}` : ''}
             ],
             tools: tools,
             tool_choice: "auto",
-            temperature: 0.8,
+            temperature: 0.7,
             max_tokens: 400
           }),
         });
@@ -461,7 +469,7 @@ ${historyContext ? `📜 طلبات سابقة: ${historyContext}` : ''}
                   const shippingPrice = args.shipping_price || shippingMethod?.price || 0;
                   const totalPrice = (finalProductPrice * quantity) + shippingPrice;
 
-                  // Build order notes from selected_variants
+                  // Build order notes from selected_variants dynamically
                   let orderNotes = '';
                   if (args.selected_variants) {
                     for (const [key, value] of Object.entries(args.selected_variants)) {
@@ -471,7 +479,7 @@ ${historyContext ? `📜 طلبات سابقة: ${historyContext}` : ''}
                   orderNotes += `الكمية: ${quantity}`;
                   orderNotes += `\n(تم الطلب بواسطة الذكاء الاصطناعي)`;
 
-                  // Create the order (order_number is auto-generated by trigger)
+                  // Create the order
                   const { data: newOrder, error: orderError } = await supabase
                     .from('orders')
                     .insert({
@@ -568,7 +576,7 @@ ${paymentData.payment_url}
                         aiReply = `تم طلبك #${newOrder.order_number}! 🎉 راح نتواصل معك لإتمام الدفع 📞`;
                       }
                     } else {
-                      // COD confirmation with real invoice link
+                      // COD confirmation
                       aiReply = `🎉 تم طلبك بنجاح!
 
 📋 رقم الطلب: ${newOrder.order_number}
