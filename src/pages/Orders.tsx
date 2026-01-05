@@ -498,7 +498,7 @@ const Orders = () => {
                   <TableCell>
                     <Badge variant="outline" className={
                       order.payment_method === 'الكتروني' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                      'bg-amber-100 text-amber-800 border-amber-300'
+                      'bg-green-100 text-green-800 border-green-300'
                     }>
                       {order.payment_method === 'الكتروني' && <CreditCard className="w-3 h-3 ml-1" />}
                       {order.payment_method !== 'الكتروني' && <Banknote className="w-3 h-3 ml-1" />}
