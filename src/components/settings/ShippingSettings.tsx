@@ -309,7 +309,7 @@ const ShippingSettings = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                    <span>{method.price} ريال</span>
+                    <span>{method.price} ₪</span>
                     {method.estimated_days && (
                       <span>{method.estimated_days} أيام</span>
                     )}
@@ -397,7 +397,7 @@ const ShippingSettings = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="price">سعر الشحن (ريال) *</Label>
+                <Label htmlFor="price">سعر الشحن (₪) *</Label>
                 <Input
                   id="price"
                   type="number"
