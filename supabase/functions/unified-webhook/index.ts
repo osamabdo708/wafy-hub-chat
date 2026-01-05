@@ -495,6 +495,40 @@ async function saveIncomingMessage(
     
     name = name || `${channel.charAt(0).toUpperCase() + channel.slice(1)} User ${senderId.slice(-8)}`;
 
+    // Check workspace settings for default AI enabled
+    let defaultAiEnabled = false;
+    let aiAgentId: string | null = null;
+    
+    try {
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('settings')
+        .eq('id', workspaceId)
+        .single();
+      
+      if (workspace?.settings) {
+        const settings = workspace.settings as { default_ai_enabled?: boolean };
+        defaultAiEnabled = settings.default_ai_enabled || false;
+      }
+
+      // If AI is enabled by default, find the AI agent for this workspace
+      if (defaultAiEnabled) {
+        const { data: aiAgent } = await supabase
+          .from('agents')
+          .select('id')
+          .eq('workspace_id', workspaceId)
+          .eq('is_ai', true)
+          .limit(1)
+          .maybeSingle();
+        
+        if (aiAgent) {
+          aiAgentId = aiAgent.id;
+        }
+      }
+    } catch (e) {
+      console.log('[UNIFIED-WEBHOOK] Could not fetch workspace settings:', e);
+    }
+
     // Create new conversation IN THIS WORKSPACE
     const { data: newConv, error: convError } = await supabase
       .from('conversations')
@@ -506,7 +540,8 @@ async function saveIncomingMessage(
         platform: `${channel}_${accountId}`,
         thread_id: threadId,
         status: 'جديد',
-        ai_enabled: false,
+        ai_enabled: defaultAiEnabled,
+        assigned_agent_id: aiAgentId,
         last_message_at: messageTime
       })
       .select('id')
