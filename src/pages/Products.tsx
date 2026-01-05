@@ -632,10 +632,10 @@ const Products = () => {
                 
                 <div className="flex items-center justify-between mt-4">
                   <div>
-                    <p className="text-2xl font-bold text-primary">{product.price} ريال</p>
+                    <p className="text-2xl font-bold text-primary">{product.price} ₪</p>
                     {product.min_negotiable_price && (
                       <p className="text-xs text-muted-foreground">
-                        الحد الأدنى للتفاوض: {product.min_negotiable_price} ريال
+                        الحد الأدنى للتفاوض: {product.min_negotiable_price} ₪
                       </p>
                     )}
                     <p className="text-sm text-muted-foreground">
@@ -698,7 +698,7 @@ const Products = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="price">السعر (ريال) *</Label>
+                <Label htmlFor="price">السعر (₪) *</Label>
                 <Input
                   id="price"
                   type="number"
@@ -713,7 +713,7 @@ const Products = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="min_negotiable_price">الحد الأدنى للتفاوض (ريال)</Label>
+                <Label htmlFor="min_negotiable_price">الحد الأدنى للتفاوض (₪)</Label>
                 <Input
                   id="min_negotiable_price"
                   type="number"
@@ -727,7 +727,7 @@ const Products = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="purchase_price">سعر الشراء (ريال)</Label>
+              <Label htmlFor="purchase_price">سعر الشراء (₪)</Label>
               <Input
                 id="purchase_price"
                 type="number"
@@ -903,7 +903,7 @@ const Products = () => {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{color.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {color.price ? `${color.price} ريال` : color.hex}
+                            {color.price ? `${color.price} ₪` : color.hex}
                           </p>
                         </div>
                         <div className="flex items-center gap-1">

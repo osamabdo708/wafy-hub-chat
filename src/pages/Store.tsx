@@ -307,7 +307,7 @@ const Store = () => {
                         </p>
                       )}
                       <div className="flex items-center justify-between">
-                        <p className="text-xl font-bold text-primary">{product.price} ريال</p>
+                        <p className="text-xl font-bold text-primary">{product.price} ₪</p>
                         {product.stock > 0 ? (
                           <Badge variant="secondary" className="bg-green-100 text-green-700">
                             متوفر

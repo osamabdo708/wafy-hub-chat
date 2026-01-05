@@ -350,7 +350,7 @@ const ProductDetails = () => {
                 </div>
                 {selectedColor?.price && Number(selectedColor.price) > 0 && (
                   <p className="text-sm text-muted-foreground">
-                    + {Number(selectedColor.price)} ريال
+                    + {Number(selectedColor.price)} ₪
                   </p>
                 )}
               </div>
@@ -379,7 +379,7 @@ const ProductDetails = () => {
                           <span>{val.value}</span>
                           {val.price && Number(val.price) > 0 && (
                             <span className="text-xs text-muted-foreground mr-1">
-                              (+{Number(val.price)} ريال)
+                              (+{Number(val.price)} ₪)
                             </span>
                           )}
                         </button>
@@ -413,7 +413,7 @@ const ProductDetails = () => {
                           <span>{val.value}</span>
                           {val.price && Number(val.price) > 0 && (
                             <span className="text-xs text-muted-foreground mr-1">
-                              (+{Number(val.price)} ريال)
+                              (+{Number(val.price)} ₪)
                             </span>
                           )}
                         </button>
@@ -454,11 +454,11 @@ const ProductDetails = () => {
             <Card className="p-4 bg-muted/30">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">السعر الإجمالي</span>
-                <span className="text-3xl font-bold text-primary">{totalPrice} ريال</span>
+                <span className="text-3xl font-bold text-primary">{totalPrice} ₪</span>
               </div>
               {quantity > 1 && (
                 <p className="text-sm text-muted-foreground mt-1">
-                  ({calculateUnitPrice()} ريال × {quantity})
+                  ({calculateUnitPrice()} ₪ × {quantity})
                 </p>
               )}
             </Card>

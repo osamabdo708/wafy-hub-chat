@@ -336,7 +336,7 @@ const Orders = () => {
                   <SelectContent>
                     {products.map((product) => (
                       <SelectItem key={product.id} value={product.id}>
-                        {product.name} - {product.price} ريال
+                        {product.name} - {product.price} ₪
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -363,7 +363,7 @@ const Orders = () => {
                   <SelectContent>
                     {services.map((service) => (
                       <SelectItem key={service.id} value={service.id}>
-                        {service.name} - {service.price} ريال
+                        {service.name} - {service.price} ₪
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -479,7 +479,7 @@ const Orders = () => {
                   <TableCell>
                     {order.products?.name || order.services?.name || "-"}
                   </TableCell>
-                  <TableCell>{order.price} ريال</TableCell>
+                  <TableCell>{order.price} ₪</TableCell>
                   <TableCell>
                     <Select
                       value={order.status || "قيد الانتظار"}
