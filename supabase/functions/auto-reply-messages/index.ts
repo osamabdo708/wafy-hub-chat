@@ -498,12 +498,12 @@ ${historyContext ? `\n📜 طلبات سابقة للعميل: ${historyContext}
                   } else {
                     console.log('[AI-REPLY] ✅ Order created:', newOrder.order_number);
 
-                    // Update conversation with customer data
+                    // Update conversation with customer data (save real phone to customer_contact_phone, NOT customer_phone which is the channel recipient ID)
                     await supabase
                       .from('conversations')
                       .update({
                         customer_name: args.customer_name || conversation.customer_name,
-                        customer_phone: args.customer_phone || conversation.customer_phone
+                        customer_contact_phone: args.customer_phone || null
                       })
                       .eq('id', conversation.id);
 
