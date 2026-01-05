@@ -527,7 +527,7 @@ const ChatView = ({
   };
 
 
-  const payableOrders = orders.filter((o) => !o.payment_link);
+  const payableOrders = orders.filter((o) => !o.payment_link && o.payment_method !== 'نقدي');
 
   return (
     <Card className="h-full flex flex-col">
