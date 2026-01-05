@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText } from "lucide-react";
+import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -156,6 +156,31 @@ const Orders = () => {
     },
   });
 
+  const deleteAllOrdersMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("orders")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast({
+        title: "تم الحذف",
+        description: "تم حذف جميع الطلبات بنجاح",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "خطأ",
+        description: "فشل حذف الطلبات",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -203,10 +228,26 @@ const Orders = () => {
           <h1 className="text-3xl font-bold">الطلبات</h1>
           <p className="text-muted-foreground mt-1">إدارة جميع طلبات العملاء</p>
         </div>
-        <Button onClick={() => setShowCreateForm(!showCreateForm)}>
-          {showCreateForm ? <X className="w-4 h-4 ml-2" /> : <Plus className="w-4 h-4 ml-2" />}
-          {showCreateForm ? "إلغاء" : "طلب جديد"}
-        </Button>
+        <div className="flex gap-2">
+          {orders.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={() => {
+                if (confirm("هل أنت متأكد من حذف جميع الطلبات؟ لا يمكن التراجع عن هذا الإجراء.")) {
+                  deleteAllOrdersMutation.mutate();
+                }
+              }}
+              disabled={deleteAllOrdersMutation.isPending}
+            >
+              <Trash2 className="w-4 h-4 ml-2" />
+              {deleteAllOrdersMutation.isPending ? "جاري الحذف..." : "حذف الكل"}
+            </Button>
+          )}
+          <Button onClick={() => setShowCreateForm(!showCreateForm)}>
+            {showCreateForm ? <X className="w-4 h-4 ml-2" /> : <Plus className="w-4 h-4 ml-2" />}
+            {showCreateForm ? "إلغاء" : "طلب جديد"}
+          </Button>
+        </div>
       </div>
 
       {showCreateForm && (
