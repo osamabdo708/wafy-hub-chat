@@ -15,6 +15,7 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Store from "./pages/Store";
 import ProductDetails from "./pages/ProductDetails";
+import OrderDetails from "./pages/OrderDetails";
 import Auth from "./pages/Auth";
 import Installation from "./pages/Installation";
 import NotFound from "./pages/NotFound";
@@ -46,6 +47,7 @@ const App = () => (
             <Route element={<AuthGuard><Layout /></AuthGuard>}>
               <Route path="/inbox" element={<Inbox />} />
               <Route path="/orders" element={<Orders />} />
+              <Route path="/orders/:orderId" element={<OrderDetails />} />
               <Route path="/products" element={<Products />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/reports" element={<Reports />} />
