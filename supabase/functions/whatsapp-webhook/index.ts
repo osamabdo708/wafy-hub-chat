@@ -160,6 +160,39 @@ serve(async (req) => {
                 customerName = contacts[0].profile.name;
               }
 
+              // Check workspace settings for default AI enabled
+              let defaultAiEnabled = false;
+              let aiAgentId: string | null = null;
+              
+              try {
+                const { data: workspace } = await supabase
+                  .from('workspaces')
+                  .select('settings')
+                  .eq('id', workspaceId)
+                  .single();
+                
+                if (workspace?.settings) {
+                  const settings = workspace.settings as { default_ai_enabled?: boolean };
+                  defaultAiEnabled = settings.default_ai_enabled || false;
+                }
+
+                if (defaultAiEnabled) {
+                  const { data: aiAgent } = await supabase
+                    .from('agents')
+                    .select('id')
+                    .eq('workspace_id', workspaceId)
+                    .eq('is_ai', true)
+                    .limit(1)
+                    .maybeSingle();
+                  
+                  if (aiAgent) {
+                    aiAgentId = aiAgent.id;
+                  }
+                }
+              } catch (e) {
+                console.log('[WHATSAPP-WEBHOOK] Could not fetch workspace settings:', e);
+              }
+
               const { data: newConv, error: convError } = await supabase
                 .from('conversations')
                 .insert({
@@ -169,8 +202,9 @@ serve(async (req) => {
                   platform: 'whatsapp',
                   thread_id: threadId,
                   status: 'جديد',
-                  ai_enabled: false,
-                  workspace_id: workspaceId, // Add workspace_id
+                  ai_enabled: defaultAiEnabled,
+                  assigned_agent_id: aiAgentId,
+                  workspace_id: workspaceId,
                   last_message_at: new Date(parseInt(timestamp) * 1000).toISOString()
                 })
                 .select('id')
