@@ -518,7 +518,9 @@ const Orders = () => {
                           >
                             {order.payment_status === 'مدفوع' && <CheckCircle className="w-3 h-3 ml-1" />}
                             {order.payment_status !== 'مدفوع' && <Clock className="w-3 h-3 ml-1" />}
-                            {order.payment_status || 'في انتظار الدفع'}
+                            {order.payment_status === 'مدفوع' ? 'مدفوع' : 
+                             order.payment_status === 'awaiting_payment' ? 'في انتظار الدفع' : 
+                             order.payment_status || 'في انتظار الدفع'}
                           </Badge>
                         </TooltipTrigger>
                         <TooltipContent>
