@@ -12,8 +12,7 @@ verify_jwt = false
 [functions.facebook-webhook]
 verify_jwt = false
 
-[functions.instagram-webhook]
-verify_jwt = false
+# instagram-webhook removed - using unified-webhook only
 
 [functions.whatsapp-webhook]
 verify_jwt = false
