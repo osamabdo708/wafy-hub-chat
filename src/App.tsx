@@ -20,6 +20,7 @@ import Auth from "./pages/Auth";
 import Installation from "./pages/Installation";
 import NotFound from "./pages/NotFound";
 import Agents from "./pages/Agents";
+import Clients from "./pages/Clients";
 import SuperAdmin from "./pages/SuperAdmin";
 import PaymentStatus from "./pages/PaymentStatus";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
@@ -48,6 +49,7 @@ const App = () => (
               <Route path="/inbox" element={<Inbox />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/orders/:orderId" element={<OrderDetails />} />
+              <Route path="/clients" element={<Clients />} />
               <Route path="/products" element={<Products />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/reports" element={<Reports />} />

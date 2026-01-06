@@ -356,6 +356,44 @@ export type Database = {
           },
         ]
       }
+      clients: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          updated_at: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clients_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           ai_enabled: boolean | null
@@ -585,6 +623,7 @@ export type Database = {
         Row: {
           ai_generated: boolean | null
           assigned_to: string | null
+          client_id: string | null
           conversation_id: string | null
           created_at: string | null
           created_by: string | null
@@ -610,6 +649,7 @@ export type Database = {
         Insert: {
           ai_generated?: boolean | null
           assigned_to?: string | null
+          client_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -635,6 +675,7 @@ export type Database = {
         Update: {
           ai_generated?: boolean | null
           assigned_to?: string | null
+          client_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -663,6 +704,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {

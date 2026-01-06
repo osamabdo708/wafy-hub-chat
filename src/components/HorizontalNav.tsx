@@ -11,7 +11,8 @@ import {
   Settings,
   LogOut,
   Users,
-  FolderTree
+  FolderTree,
+  UserCheck
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ import {
 const navItems = [
   { title: "البريد الوارد", url: "/inbox", icon: MessageSquare },
   { title: "الطلبات", url: "/orders", icon: ShoppingCart },
+  { title: "العملاء", url: "/clients", icon: UserCheck },
   { title: "المنتجات", url: "/products", icon: Package },
   { title: "التصنيفات", url: "/categories", icon: FolderTree },
   { title: "الوكلاء", url: "/agents", icon: Users },
