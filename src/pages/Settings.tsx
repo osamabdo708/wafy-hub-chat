@@ -78,34 +78,11 @@ const Settings = () => {
 
       if (error) throw error;
 
-      // If enabling, also update all existing conversations and assign AI agent
-      if (enabled) {
-        // Find the AI agent for this workspace
-        const { data: aiAgent } = await supabase
-          .from('agents')
-          .select('id')
-          .eq('workspace_id', workspace.id)
-          .eq('is_ai', true)
-          .limit(1)
-          .maybeSingle();
-
-        if (aiAgent) {
-          // Update all conversations in this workspace to enable AI and assign the agent
-          await supabase
-            .from('conversations')
-            .update({ 
-              ai_enabled: true,
-              assigned_agent_id: aiAgent.id
-            })
-            .eq('workspace_id', workspace.id);
-        }
-      }
-
       setDefaultAiEnabled(enabled);
       toast({
         title: enabled ? "تم تفعيل المارد" : "تم تعطيل المارد",
         description: enabled 
-          ? "تم تفعيل المارد لجميع المحادثات الحالية والجديدة" 
+          ? "سيتم تفعيل المارد تلقائياً للمحادثات الجديدة فقط" 
           : "لن يتم تفعيل المارد تلقائياً للمحادثات الجديدة",
       });
     } catch (error) {
