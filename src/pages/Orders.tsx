@@ -566,40 +566,32 @@ const Orders = () => {
                   </TableCell>
                   <TableCell>
                     {order.ai_generated || order.created_by === 'ai' ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-6 h-6 rounded-full border bg-gradient-to-br from-purple-500/10 to-pink-500/10 flex items-center justify-center">
-                          <img src={agentIcon} alt="المارد" className="w-4 h-4" />
-                        </div>
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-gradient-to-br from-purple-500/10 to-pink-500/10">
+                        <img src={agentIcon} alt="المارد" className="w-4 h-4" />
                         <span className="text-sm">المارد</span>
                       </div>
                     ) : order.source_platform === 'store' || order.created_by === 'store' ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Store className="w-3 h-3 text-primary" />
-                        </div>
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-primary/10">
+                        <Store className="w-4 h-4 text-primary" />
                         <span className="text-sm">المتجر</span>
                       </div>
                     ) : order.created_by && order.created_by !== 'employee' ? (
                       (() => {
                         const profile = profiles.find(p => p.id === order.created_by);
                         return (
-                          <div className="flex items-center gap-1.5">
+                          <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-muted/50">
                             {profile?.avatar_url ? (
-                              <img src={profile.avatar_url} alt={profile.full_name || 'مستخدم'} className="w-5 h-5 rounded-full object-cover" />
+                              <img src={profile.avatar_url} alt={profile.full_name || 'مستخدم'} className="w-4 h-4 rounded-full object-cover" />
                             ) : (
-                              <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center">
-                                <User className="w-3 h-3 text-muted-foreground" />
-                              </div>
+                              <User className="w-4 h-4 text-muted-foreground" />
                             )}
                             <span className="text-sm">{profile?.full_name || 'موظف'}</span>
                           </div>
                         );
                       })()
                     ) : (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center">
-                          <User className="w-3 h-3 text-muted-foreground" />
-                        </div>
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-muted/50">
+                        <User className="w-4 h-4 text-muted-foreground" />
                         <span className="text-sm">موظف</span>
                       </div>
                     )}
