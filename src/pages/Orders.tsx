@@ -20,7 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2 } from "lucide-react";
+import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2, Store, User } from "lucide-react";
+import genieIcon from "@/assets/genie-icon.png";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -62,6 +63,31 @@ const Orders = () => {
     },
   });
 
+  // Fetch profiles for orders created by users
+  const userCreatedOrders = orders.filter(o => 
+    o.created_by && 
+    o.created_by !== 'employee' && 
+    o.created_by !== 'ai' && 
+    o.created_by !== 'store'
+  );
+  
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["order-creator-profiles", userCreatedOrders.map(o => o.created_by)],
+    queryFn: async () => {
+      const userIds = userCreatedOrders.map(o => o.created_by).filter(Boolean);
+      if (userIds.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", userIds);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: userCreatedOrders.length > 0,
+  });
+
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
@@ -89,6 +115,7 @@ const Orders = () => {
   const createOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
       const { data: orderNumberData } = await supabase.rpc("generate_order_number");
+      const { data: { user } } = await supabase.auth.getUser();
       
       const { data, error } = await supabase
         .from("orders")
@@ -96,6 +123,7 @@ const Orders = () => {
           ...orderData,
           order_number: orderNumberData,
           status: "قيد الانتظار",
+          created_by: user?.id || 'employee',
         })
         .select()
         .single();
@@ -537,10 +565,41 @@ const Orders = () => {
                     {order.created_at ? format(new Date(order.created_at), "yyyy-MM-dd") : "-"}
                   </TableCell>
                   <TableCell>
-                    {order.ai_generated ? (
-                      <Badge variant="outline" className="bg-primary/10">AI</Badge>
+                    {order.ai_generated || order.created_by === 'ai' ? (
+                      <div className="flex items-center gap-1.5">
+                        <img src={genieIcon} alt="المارد" className="w-5 h-5 rounded-full" />
+                        <span className="text-sm">المارد</span>
+                      </div>
+                    ) : order.source_platform === 'store' || order.created_by === 'store' ? (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Store className="w-3 h-3 text-primary" />
+                        </div>
+                        <span className="text-sm">المتجر</span>
+                      </div>
+                    ) : order.created_by && order.created_by !== 'employee' ? (
+                      (() => {
+                        const profile = profiles.find(p => p.id === order.created_by);
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            {profile?.avatar_url ? (
+                              <img src={profile.avatar_url} alt={profile.full_name || 'مستخدم'} className="w-5 h-5 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center">
+                                <User className="w-3 h-3 text-muted-foreground" />
+                              </div>
+                            )}
+                            <span className="text-sm">{profile?.full_name || 'موظف'}</span>
+                          </div>
+                        );
+                      })()
                     ) : (
-                      <Badge variant="outline">يدوي</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center">
+                          <User className="w-3 h-3 text-muted-foreground" />
+                        </div>
+                        <span className="text-sm">موظف</span>
+                      </div>
                     )}
                   </TableCell>
                   <TableCell>
