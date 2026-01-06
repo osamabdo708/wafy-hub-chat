@@ -567,7 +567,9 @@ const Orders = () => {
                   <TableCell>
                     {order.ai_generated || order.created_by === 'ai' ? (
                       <div className="flex items-center gap-1.5">
-                        <img src={agentIcon} alt="المارد" className="w-5 h-5 rounded-full" />
+                        <div className="w-6 h-6 rounded-full border bg-gradient-to-br from-purple-500/10 to-pink-500/10 flex items-center justify-center">
+                          <img src={agentIcon} alt="المارد" className="w-4 h-4" />
+                        </div>
                         <span className="text-sm">المارد</span>
                       </div>
                     ) : order.source_platform === 'store' || order.created_by === 'store' ? (
