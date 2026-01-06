@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2, Store, User } from "lucide-react";
-import genieIcon from "@/assets/genie-icon.png";
+import agentIcon from "@/assets/agent-icon.png";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -567,7 +567,7 @@ const Orders = () => {
                   <TableCell>
                     {order.ai_generated || order.created_by === 'ai' ? (
                       <div className="flex items-center gap-1.5">
-                        <img src={genieIcon} alt="المارد" className="w-5 h-5 rounded-full" />
+                        <img src={agentIcon} alt="المارد" className="w-5 h-5 rounded-full" />
                         <span className="text-sm">المارد</span>
                       </div>
                     ) : order.source_platform === 'store' || order.created_by === 'store' ? (
