@@ -578,7 +578,7 @@ const Orders = () => {
                     ) : order.source_platform === 'POS' ? (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-blue-500/10 border-blue-500/30">
                         <Store className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm text-blue-700">نقطة البيع</span>
+                        <span className="text-sm text-blue-700">POS</span>
                       </div>
                     ) : order.created_by && order.created_by !== 'employee' ? (
                       (() => {
