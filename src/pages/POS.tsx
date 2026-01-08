@@ -78,7 +78,7 @@ const POS = () => {
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [selectedShipping, setSelectedShipping] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<"cod" | "paid">("cod");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "electronic">("cash");
 
   useEffect(() => {
     fetchData();
@@ -219,8 +219,8 @@ const POS = () => {
             shipping_method_id: isWalkingCustomer ? null : (selectedShipping || null),
             product_id: item.id,
             price: item.price * item.quantity,
-            payment_method: paymentMethod === "cod" ? "الدفع عند الاستلام" : "تم الدفع",
-            payment_status: paymentMethod === "paid" ? "مدفوع" : "غير مدفوع",
+            payment_method: paymentMethod === "cash" ? "نقدي" : "الكتروني",
+            payment_status: "مدفوع",
             status: "قيد الانتظار",
             source_platform: "نقطة البيع",
             notes: `الكمية: ${item.quantity}`,
@@ -237,7 +237,7 @@ const POS = () => {
       setCustomerPhone("");
       setCustomerAddress("");
       setSelectedShipping("");
-      setPaymentMethod("cod");
+      setPaymentMethod("cash");
       setCheckoutOpen(false);
     } catch (error) {
       console.error('Error creating order:', error);
@@ -492,21 +492,21 @@ const POS = () => {
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
-                  variant={paymentMethod === "cod" ? "default" : "outline"}
+                  variant={paymentMethod === "cash" ? "default" : "outline"}
                   className="flex items-center gap-2"
-                  onClick={() => setPaymentMethod("cod")}
+                  onClick={() => setPaymentMethod("cash")}
                 >
                   <Banknote className="w-4 h-4" />
-                  عند الاستلام
+                  نقدي
                 </Button>
                 <Button
                   type="button"
-                  variant={paymentMethod === "paid" ? "default" : "outline"}
+                  variant={paymentMethod === "electronic" ? "default" : "outline"}
                   className="flex items-center gap-2"
-                  onClick={() => setPaymentMethod("paid")}
+                  onClick={() => setPaymentMethod("electronic")}
                 >
                   <CreditCard className="w-4 h-4" />
-                  تم الدفع
+                  الكتروني
                 </Button>
               </div>
             </div>
