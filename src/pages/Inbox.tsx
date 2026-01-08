@@ -18,7 +18,6 @@ import {
   MessengerIcon, 
   InstagramIcon, 
   WhatsAppIcon, 
-  TikTokChannelIcon,
   getChannelIconComponent 
 } from "@/components/ChannelIcons";
 
@@ -44,7 +43,7 @@ interface Conversation {
 }
 
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email';
-type FilterType = 'all' | 'facebook' | 'instagram' | 'whatsapp' | 'tiktok';
+type FilterType = 'all' | 'facebook' | 'instagram' | 'whatsapp';
 
 interface ConnectedChannel {
   channel: ChannelType;
@@ -479,7 +478,7 @@ const Inbox = () => {
 
       {/* Channel Filter Tabs */}
       <Tabs value={activeFilter} onValueChange={(v) => setActiveFilter(v as FilterType)} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 h-12">
+        <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="all" className="flex items-center gap-2 text-sm">
             <MessageSquare className="w-4 h-4" />
             الكل
@@ -495,10 +494,6 @@ const Inbox = () => {
           <TabsTrigger value="whatsapp" className="flex items-center gap-2 text-sm">
             <WhatsAppIcon className="w-4 h-4" />
             واتساب
-          </TabsTrigger>
-          <TabsTrigger value="tiktok" className="flex items-center gap-2 text-sm">
-            <TikTokChannelIcon className="w-4 h-4" />
-            تيك توك
           </TabsTrigger>
         </TabsList>
       </Tabs>
