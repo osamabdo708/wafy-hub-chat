@@ -494,8 +494,10 @@ ${historyContext ? `\n📜 طلبات سابقة للعميل: ${historyContext}
                     .single();
 
                   if (orderError) {
-                    console.error('[AI-REPLY] Order creation error:', orderError);
-                    aiReply = 'صار مشكلة بسيطة، ممكن نحاول مرة ثانية؟ 😅';
+                    console.error('[AI-REPLY] Order creation error:', JSON.stringify(orderError));
+                    // Reset messages so customer can retry
+                    await supabase.from('messages').update({ reply_sent: false }).in('id', messageIds);
+                    aiReply = 'عذراً حدث خطأ في إنشاء الطلب، هل يمكنك إرسال رسالة أخرى لنحاول مرة ثانية؟ 😅';
                   } else {
                     console.log('[AI-REPLY] ✅ Order created:', newOrder.order_number);
 
@@ -588,7 +590,9 @@ ${paymentData.payment_url}
               }
             } catch (parseError) {
               console.error('[AI-REPLY] Tool parse error:', parseError);
-              aiReply = 'معليش صار خطأ، ممكن نحاول مرة ثانية؟';
+              // Reset messages so customer can retry
+              await supabase.from('messages').update({ reply_sent: false }).in('id', messageIds);
+              aiReply = 'عذراً حدث خطأ، هل يمكنك المحاولة مرة أخرى؟';
             }
           }
         } else {
