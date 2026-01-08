@@ -35,6 +35,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Product {
   id: string;
@@ -72,6 +73,7 @@ const POS = () => {
   const [submitting, setSubmitting] = useState(false);
   
   // Customer info
+  const [isWalkingCustomer, setIsWalkingCustomer] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -185,10 +187,12 @@ const POS = () => {
   const total = subtotal + shippingCost;
 
   const handleCheckout = async () => {
-    if (!customerName.trim()) {
+    if (!isWalkingCustomer && !customerName.trim()) {
       toast.error("يرجى إدخال اسم العميل");
       return;
     }
+
+    const finalCustomerName = isWalkingCustomer ? "عميل عابر" : customerName;
 
     setSubmitting(true);
     try {
@@ -209,10 +213,10 @@ const POS = () => {
           .from('orders')
           .insert({
             workspace_id: workspace.id,
-            customer_name: customerName,
-            customer_phone: customerPhone || null,
-            shipping_address: customerAddress || null,
-            shipping_method_id: selectedShipping || null,
+            customer_name: finalCustomerName,
+            customer_phone: isWalkingCustomer ? null : (customerPhone || null),
+            shipping_address: isWalkingCustomer ? null : (customerAddress || null),
+            shipping_method_id: isWalkingCustomer ? null : (selectedShipping || null),
             product_id: item.id,
             price: item.price * item.quantity,
             payment_method: paymentMethod === "cod" ? "الدفع عند الاستلام" : "تم الدفع",
@@ -228,6 +232,7 @@ const POS = () => {
 
       toast.success("تم إنشاء الطلب بنجاح");
       setCart([]);
+      setIsWalkingCustomer(false);
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
@@ -411,58 +416,75 @@ const POS = () => {
           </DialogHeader>
           
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                اسم العميل *
-              </Label>
-              <Input
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="أدخل اسم العميل"
+            {/* Walking Customer Checkbox */}
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+              <Checkbox
+                id="walking-customer"
+                checked={isWalkingCustomer}
+                onCheckedChange={(checked) => setIsWalkingCustomer(checked === true)}
               />
+              <Label htmlFor="walking-customer" className="cursor-pointer flex-1">
+                <span className="font-medium">عميل عابر</span>
+                <p className="text-xs text-muted-foreground">بيع مباشر بدون بيانات عميل</p>
+              </Label>
             </div>
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Phone className="w-4 h-4" />
-                رقم الهاتف
-              </Label>
-              <Input
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="أدخل رقم الهاتف"
-              />
-            </div>
+            {!isWalkingCustomer && (
+              <>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    اسم العميل *
+                  </Label>
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="أدخل اسم العميل"
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                العنوان
-              </Label>
-              <Input
-                value={customerAddress}
-                onChange={(e) => setCustomerAddress(e.target.value)}
-                placeholder="أدخل عنوان التوصيل"
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Phone className="w-4 h-4" />
+                    رقم الهاتف
+                  </Label>
+                  <Input
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="أدخل رقم الهاتف"
+                  />
+                </div>
 
-            {shippingMethods.length > 0 && (
-              <div className="space-y-2">
-                <Label>طريقة الشحن</Label>
-                <Select value={selectedShipping} onValueChange={setSelectedShipping}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر طريقة الشحن" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {shippingMethods.map(method => (
-                      <SelectItem key={method.id} value={method.id}>
-                        {method.name} - {method.price} ر.س
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4" />
+                    العنوان
+                  </Label>
+                  <Input
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                    placeholder="أدخل عنوان التوصيل"
+                  />
+                </div>
+
+                {shippingMethods.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>طريقة الشحن</Label>
+                    <Select value={selectedShipping} onValueChange={setSelectedShipping}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر طريقة الشحن" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {shippingMethods.map(method => (
+                          <SelectItem key={method.id} value={method.id}>
+                            {method.name} - {method.price} ر.س
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="space-y-2">
