@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,15 @@ import {
   ShoppingCart,
   Package,
   Loader2,
-  ArrowRight
+  ArrowRight,
+  Zap,
+  Heart
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useStoreCart } from "@/hooks/useStoreCart";
+import { CartSheet } from "@/components/store/CartSheet";
+import { CheckoutDialog } from "@/components/store/CheckoutDialog";
 
 interface ColorAttribute {
   name: string;
@@ -63,11 +69,14 @@ interface StoreData {
 
 const ProductDetails = () => {
   const { storeSlug, productId } = useParams<{ storeSlug: string; productId: string }>();
+  const navigate = useNavigate();
   const [product, setProduct] = useState<Product | null>(null);
   const [store, setStore] = useState<StoreData | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   
   // Selection state
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -75,6 +84,16 @@ const ProductDetails = () => {
   const [selectedColorSubAttributes, setSelectedColorSubAttributes] = useState<Record<string, string>>({});
   const [selectedCustomAttributes, setSelectedCustomAttributes] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(1);
+
+  const { 
+    cart, 
+    addToCart, 
+    removeFromCart, 
+    updateQuantity: updateCartQuantity, 
+    clearCart, 
+    getTotalItems, 
+    getTotalPrice 
+  } = useStoreCart(store?.id || '');
 
   useEffect(() => {
     if (storeSlug && productId) {
@@ -84,7 +103,6 @@ const ProductDetails = () => {
 
   const fetchData = async () => {
     try {
-      // Fetch store
       const { data: workspaceData, error: workspaceError } = await supabase
         .from('workspaces')
         .select('id, name, store_slug, store_logo_url')
@@ -100,7 +118,6 @@ const ProductDetails = () => {
 
       setStore(workspaceData);
 
-      // Fetch product
       const { data: productData, error: productError } = await supabase
         .from('products')
         .select('*')
@@ -119,7 +136,6 @@ const ProductDetails = () => {
       setProduct(typedProduct);
       setSelectedImage(typedProduct.image_url || null);
 
-      // Auto-select first color if available
       if (typedProduct.attributes?.colors?.length) {
         setSelectedColor(typedProduct.attributes.colors[0]);
         if (typedProduct.attributes.colors[0].image_url) {
@@ -127,7 +143,6 @@ const ProductDetails = () => {
         }
       }
 
-      // Fetch category
       if (typedProduct.category_id) {
         const { data: categoryData } = await supabase
           .from('categories')
@@ -158,12 +173,10 @@ const ProductDetails = () => {
     
     let total = Number(product.price) || 0;
     
-    // Add color price
     if (selectedColor?.price) {
       total += Number(selectedColor.price) || 0;
     }
     
-    // Add color sub-attribute prices
     if (selectedColor?.attributes) {
       selectedColor.attributes.forEach(attr => {
         const selectedValue = selectedColorSubAttributes[attr.name];
@@ -174,7 +187,6 @@ const ProductDetails = () => {
       });
     }
     
-    // Add custom attribute prices
     if (product.attributes?.custom) {
       product.attributes.custom.forEach(attr => {
         const selectedValue = selectedCustomAttributes[attr.name];
@@ -203,7 +215,6 @@ const ProductDetails = () => {
       images.push(...product.gallery_images);
     }
     
-    // Add color images
     if (product?.attributes?.colors) {
       product.attributes.colors.forEach(color => {
         if (color.image_url && !images.includes(color.image_url)) {
@@ -215,22 +226,73 @@ const ProductDetails = () => {
     return images;
   };
 
+  const handleAddToCart = () => {
+    if (!product) return;
+    
+    addToCart({
+      productId: product.id,
+      name: product.name,
+      price: calculateUnitPrice(),
+      quantity: quantity,
+      imageUrl: selectedImage || product.image_url,
+      selectedColor: selectedColor?.name,
+      selectedAttributes: {
+        ...selectedColorSubAttributes,
+        ...selectedCustomAttributes
+      }
+    });
+    toast.success('تمت الإضافة للسلة');
+  };
+
+  const handleBuyNow = () => {
+    if (!product) return;
+    
+    addToCart({
+      productId: product.id,
+      name: product.name,
+      price: calculateUnitPrice(),
+      quantity: quantity,
+      imageUrl: selectedImage || product.image_url,
+      selectedColor: selectedColor?.name,
+      selectedAttributes: {
+        ...selectedColorSubAttributes,
+        ...selectedCustomAttributes
+      }
+    });
+    setCheckoutOpen(true);
+  };
+
+  const handleCheckout = () => {
+    setCartOpen(false);
+    setCheckoutOpen(true);
+  };
+
+  const handleCheckoutSuccess = () => {
+    clearCart();
+    setCheckoutOpen(false);
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-12 h-12 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/30">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">جاري تحميل المنتج...</p>
+        </div>
       </div>
     );
   }
 
   if (notFound || !product || !store) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
-        <Package className="w-24 h-24 text-muted-foreground mb-4" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background to-muted/30 p-4">
+        <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center mb-6">
+          <Package className="w-12 h-12 text-muted-foreground" />
+        </div>
         <h1 className="text-2xl font-bold mb-2">المنتج غير موجود</h1>
-        <p className="text-muted-foreground mb-4">لم نتمكن من العثور على هذا المنتج</p>
+        <p className="text-muted-foreground mb-6">لم نتمكن من العثور على هذا المنتج</p>
         <Link to={`/store/${storeSlug}`}>
-          <Button>العودة للمتجر</Button>
+          <Button size="lg">العودة للمتجر</Button>
         </Link>
       </div>
     );
@@ -240,34 +302,47 @@ const ProductDetails = () => {
   const totalPrice = calculateTotalPrice();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       {/* Header */}
-      <header className="bg-card border-b sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Link to={`/store/${storeSlug}`} className="flex items-center gap-2 hover:text-primary transition-colors">
-            {store.store_logo_url ? (
-              <img src={store.store_logo_url} alt={store.name} className="w-8 h-8 rounded-lg object-cover" />
-            ) : (
-              <Package className="w-8 h-8 text-primary" />
+      <header className="bg-card/80 backdrop-blur-md border-b sticky top-0 z-50 shadow-sm">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm overflow-hidden">
+            <Link to={`/store/${storeSlug}`} className="flex items-center gap-2 hover:text-primary transition-colors flex-shrink-0">
+              {store.store_logo_url ? (
+                <img src={store.store_logo_url} alt={store.name} className="w-8 h-8 rounded-lg object-cover" />
+              ) : (
+                <Package className="w-8 h-8 text-primary" />
+              )}
+              <span className="font-bold hidden md:inline">{store.name}</span>
+            </Link>
+            <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            {category && (
+              <>
+                <span className="text-muted-foreground truncate hidden sm:inline">{category.name}</span>
+                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 hidden sm:inline" />
+              </>
             )}
-            <span className="font-bold">{store.name}</span>
-          </Link>
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          {category && (
-            <>
-              <span className="text-muted-foreground">{category.name}</span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </>
-          )}
-          <span className="text-muted-foreground line-clamp-1">{product.name}</span>
+            <span className="text-muted-foreground truncate max-w-[150px] md:max-w-none">{product.name}</span>
+          </div>
+          
+          <CartSheet
+            cart={cart}
+            totalItems={getTotalItems()}
+            totalPrice={getTotalPrice()}
+            onUpdateQuantity={updateCartQuantity}
+            onRemove={removeFromCart}
+            onCheckout={handleCheckout}
+            open={cartOpen}
+            onOpenChange={setCartOpen}
+          />
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
           {/* Image Gallery */}
           <div className="space-y-4">
-            <div className="aspect-square bg-muted rounded-2xl overflow-hidden">
+            <div className="aspect-square bg-card rounded-3xl overflow-hidden shadow-lg">
               {selectedImage ? (
                 <img 
                   src={selectedImage} 
@@ -275,20 +350,22 @@ const ProductDetails = () => {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Package className="w-32 h-32 text-muted-foreground" />
+                <div className="w-full h-full flex items-center justify-center bg-muted">
+                  <Package className="w-32 h-32 text-muted-foreground/50" />
                 </div>
               )}
             </div>
             
             {allImages.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-2">
+              <div className="flex gap-3 overflow-x-auto pb-2">
                 {allImages.map((img, index) => (
                   <button
                     key={index}
                     onClick={() => setSelectedImage(img)}
-                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
-                      selectedImage === img ? 'border-primary' : 'border-transparent hover:border-primary/50'
+                    className={`flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden transition-all ${
+                      selectedImage === img 
+                        ? 'ring-4 ring-primary ring-offset-2 scale-105' 
+                        : 'border-2 border-border hover:border-primary/50 hover:scale-105'
                     }`}
                   >
                     <img src={img} alt="" className="w-full h-full object-cover" />
@@ -301,22 +378,25 @@ const ProductDetails = () => {
           {/* Product Info */}
           <div className="space-y-6">
             <div>
-              <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
+              <div className="flex items-start justify-between gap-4">
+                <h1 className="text-3xl md:text-4xl font-bold">{product.name}</h1>
+                <Button variant="ghost" size="icon" className="rounded-full flex-shrink-0">
+                  <Heart className="w-5 h-5" />
+                </Button>
+              </div>
               {product.description && (
-                <p className="text-muted-foreground leading-relaxed">{product.description}</p>
+                <p className="text-muted-foreground leading-relaxed mt-3">{product.description}</p>
               )}
             </div>
 
             {/* Stock Badge */}
             <div>
               {product.stock > 0 ? (
-                <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-100">
+                <Badge className="bg-green-500/10 text-green-600 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
                   متوفر ({product.stock} قطعة)
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-100">
-                  غير متوفر
-                </Badge>
+                <Badge variant="destructive">غير متوفر</Badge>
               )}
             </div>
 
@@ -329,10 +409,10 @@ const ProductDetails = () => {
                     <button
                       key={index}
                       onClick={() => handleColorSelect(color)}
-                      className={`relative rounded-xl overflow-hidden border-2 transition-all ${
+                      className={`relative rounded-xl overflow-hidden transition-all ${
                         selectedColor?.name === color.name 
-                          ? 'border-primary ring-2 ring-primary/20' 
-                          : 'border-border hover:border-primary/50'
+                          ? 'ring-4 ring-primary ring-offset-2 scale-105' 
+                          : 'border-2 border-border hover:border-primary/50 hover:scale-105'
                       }`}
                     >
                       {color.image_url ? (
@@ -349,14 +429,14 @@ const ProductDetails = () => {
                   ))}
                 </div>
                 {selectedColor?.price && Number(selectedColor.price) > 0 && (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-primary font-medium">
                     + {Number(selectedColor.price)} ₪
                   </p>
                 )}
               </div>
             )}
 
-            {/* Color Sub-Attributes (e.g., sizes per color) */}
+            {/* Color Sub-Attributes */}
             {selectedColor?.attributes && selectedColor.attributes.length > 0 && (
               <div className="space-y-4">
                 {selectedColor.attributes.map((attr, attrIndex) => (
@@ -370,15 +450,15 @@ const ProductDetails = () => {
                             ...prev,
                             [attr.name]: val.value
                           }))}
-                          className={`px-4 py-2 rounded-lg border-2 transition-all ${
+                          className={`px-4 py-2.5 rounded-xl transition-all ${
                             selectedColorSubAttributes[attr.name] === val.value
-                              ? 'border-primary bg-primary/10'
-                              : 'border-border hover:border-primary/50'
+                              ? 'bg-primary text-primary-foreground shadow-md'
+                              : 'bg-muted hover:bg-muted/80 border border-border'
                           }`}
                         >
                           <span>{val.value}</span>
                           {val.price && Number(val.price) > 0 && (
-                            <span className="text-xs text-muted-foreground mr-1">
+                            <span className="text-xs opacity-75 mr-1">
                               (+{Number(val.price)} ₪)
                             </span>
                           )}
@@ -404,15 +484,15 @@ const ProductDetails = () => {
                             ...prev,
                             [attr.name]: val.value
                           }))}
-                          className={`px-4 py-2 rounded-lg border-2 transition-all ${
+                          className={`px-4 py-2.5 rounded-xl transition-all ${
                             selectedCustomAttributes[attr.name] === val.value
-                              ? 'border-primary bg-primary/10'
-                              : 'border-border hover:border-primary/50'
+                              ? 'bg-primary text-primary-foreground shadow-md'
+                              : 'bg-muted hover:bg-muted/80 border border-border'
                           }`}
                         >
                           <span>{val.value}</span>
                           {val.price && Number(val.price) > 0 && (
-                            <span className="text-xs text-muted-foreground mr-1">
+                            <span className="text-xs opacity-75 mr-1">
                               (+{Number(val.price)} ₪)
                             </span>
                           )}
@@ -428,19 +508,21 @@ const ProductDetails = () => {
             <div className="space-y-3">
               <h3 className="font-semibold">الكمية</h3>
               <div className="flex items-center gap-4">
-                <div className="flex items-center border rounded-lg">
+                <div className="flex items-center bg-muted rounded-xl overflow-hidden">
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="rounded-none h-12 w-12"
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
                     disabled={quantity <= 1}
                   >
                     <Minus className="w-4 h-4" />
                   </Button>
-                  <span className="w-12 text-center font-semibold">{quantity}</span>
+                  <span className="w-14 text-center font-bold text-lg">{quantity}</span>
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="rounded-none h-12 w-12"
                     onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
                     disabled={quantity >= product.stock}
                   >
@@ -450,32 +532,45 @@ const ProductDetails = () => {
               </div>
             </div>
 
-            {/* Price */}
-            <Card className="p-4 bg-muted/30">
+            {/* Price Card */}
+            <Card className="p-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">السعر الإجمالي</span>
-                <span className="text-3xl font-bold text-primary">{totalPrice} ₪</span>
+                <span className="text-muted-foreground font-medium">السعر الإجمالي</span>
+                <span className="text-4xl font-bold text-primary">{totalPrice} ₪</span>
               </div>
               {quantity > 1 && (
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-sm text-muted-foreground mt-2">
                   ({calculateUnitPrice()} ₪ × {quantity})
                 </p>
               )}
             </Card>
 
-            {/* Add to Cart */}
-            <Button 
-              size="lg" 
-              className="w-full text-lg h-14" 
-              disabled={product.stock === 0}
-            >
-              <ShoppingCart className="w-5 h-5 ml-2" />
-              {product.stock > 0 ? 'أضف للسلة' : 'غير متوفر'}
-            </Button>
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="flex-1 h-14 text-base font-semibold"
+                onClick={handleAddToCart}
+                disabled={product.stock === 0}
+              >
+                <ShoppingCart className="w-5 h-5 ml-2" />
+                أضف للسلة
+              </Button>
+              <Button 
+                size="lg" 
+                className="flex-1 h-14 text-base font-semibold"
+                onClick={handleBuyNow}
+                disabled={product.stock === 0}
+              >
+                <Zap className="w-5 h-5 ml-2" />
+                اشتري الآن
+              </Button>
+            </div>
 
             {/* Back to Store */}
             <Link to={`/store/${storeSlug}`}>
-              <Button variant="outline" className="w-full">
+              <Button variant="ghost" className="w-full">
                 <ArrowRight className="w-4 h-4 ml-2" />
                 العودة للمتجر
               </Button>
@@ -485,11 +580,22 @@ const ProductDetails = () => {
       </div>
 
       {/* Footer */}
-      <footer className="bg-muted/50 border-t mt-16 py-8">
+      <footer className="bg-card border-t mt-16 py-8">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
           <p>© {new Date().getFullYear()} {store.name}. جميع الحقوق محفوظة</p>
         </div>
       </footer>
+
+      {/* Checkout Dialog */}
+      <CheckoutDialog
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        cart={cart}
+        totalPrice={getTotalPrice()}
+        storeId={store.id}
+        storeName={store.name}
+        onSuccess={handleCheckoutSuccess}
+      />
     </div>
   );
 };
