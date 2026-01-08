@@ -318,20 +318,20 @@ export const CheckoutDialog = ({
                   </Label>
                   <RadioGroup value={selectedShipping} onValueChange={setSelectedShipping} className="space-y-2">
                     {shippingMethods.map((method) => (
-                      <div
+                      <label
                         key={method.id}
+                        htmlFor={`shipping-${method.id}`}
                         className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                           selectedShipping === method.id 
                             ? 'border-primary bg-primary/5' 
                             : 'border-border hover:border-primary/50'
                         }`}
-                        onClick={() => setSelectedShipping(method.id)}
                       >
-                        <RadioGroupItem value={method.id} id={method.id} />
+                        <RadioGroupItem value={method.id} id={`shipping-${method.id}`} />
                         <div className="flex-1">
-                          <label htmlFor={method.id} className="font-medium cursor-pointer">
+                          <span className="font-medium">
                             {method.name}
-                          </label>
+                          </span>
                           {method.description && (
                             <p className="text-xs text-muted-foreground">{method.description}</p>
                           )}
@@ -344,7 +344,7 @@ export const CheckoutDialog = ({
                         <span className="font-semibold text-primary">
                           {method.price === 0 ? 'مجاني' : `${method.price} ₪`}
                         </span>
-                      </div>
+                      </label>
                     ))}
                   </RadioGroup>
                 </div>
@@ -359,46 +359,46 @@ export const CheckoutDialog = ({
                   </Label>
                   <RadioGroup value={selectedPayment} onValueChange={setSelectedPayment} className="space-y-2">
                     {paymentSettings?.cod_enabled && (
-                      <div
+                      <label
+                        htmlFor="payment-cod"
                         className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                           selectedPayment === 'cod' 
                             ? 'border-primary bg-primary/5' 
                             : 'border-border hover:border-primary/50'
                         }`}
-                        onClick={() => setSelectedPayment('cod')}
                       >
-                        <RadioGroupItem value="cod" id="cod" />
+                        <RadioGroupItem value="cod" id="payment-cod" />
                         <Banknote className="w-5 h-5 text-muted-foreground" />
                         <div className="flex-1">
-                          <label htmlFor="cod" className="font-medium cursor-pointer">
+                          <span className="font-medium">
                             الدفع عند الاستلام
-                          </label>
+                          </span>
                           <p className="text-xs text-muted-foreground">
                             ادفع نقداً عند استلام طلبك
                           </p>
                         </div>
-                      </div>
+                      </label>
                     )}
                     {paymentSettings?.paytabs_enabled && (
-                      <div
+                      <label
+                        htmlFor="payment-paytabs"
                         className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                           selectedPayment === 'paytabs' 
                             ? 'border-primary bg-primary/5' 
                             : 'border-border hover:border-primary/50'
                         }`}
-                        onClick={() => setSelectedPayment('paytabs')}
                       >
-                        <RadioGroupItem value="paytabs" id="paytabs" />
+                        <RadioGroupItem value="paytabs" id="payment-paytabs" />
                         <CreditCard className="w-5 h-5 text-muted-foreground" />
                         <div className="flex-1">
-                          <label htmlFor="paytabs" className="font-medium cursor-pointer">
+                          <span className="font-medium">
                             دفع إلكتروني
-                          </label>
+                          </span>
                           <p className="text-xs text-muted-foreground">
                             ادفع باستخدام بطاقة الائتمان أو الخصم
                           </p>
                         </div>
-                      </div>
+                      </label>
                     )}
                   </RadioGroup>
                 </div>
