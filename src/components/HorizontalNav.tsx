@@ -21,9 +21,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { Store } from "lucide-react";
+
 const navItems = [
   { title: "البريد الوارد", url: "/inbox", icon: MessageSquare },
   { title: "الطلبات", url: "/orders", icon: ShoppingCart },
+  { title: "نقطة البيع", url: "/pos", icon: Store },
   { title: "العملاء", url: "/clients", icon: UserCheck },
   { title: "المنتجات", url: "/products", icon: Package },
   { title: "التصنيفات", url: "/categories", icon: FolderTree },
