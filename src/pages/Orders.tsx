@@ -575,6 +575,11 @@ const Orders = () => {
                         <Store className="w-4 h-4 text-emerald-600" />
                         <span className="text-sm text-emerald-700">المتجر</span>
                       </div>
+                    ) : order.source_platform === 'POS' ? (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-blue-500/10 border-blue-500/30">
+                        <Store className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm text-blue-700">نقطة البيع</span>
+                      </div>
                     ) : order.created_by && order.created_by !== 'employee' ? (
                       (() => {
                         const profile = profiles.find(p => p.id === order.created_by);

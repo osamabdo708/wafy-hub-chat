@@ -222,7 +222,7 @@ const POS = () => {
             payment_method: paymentMethod === "cash" ? "نقدي" : "الكتروني",
             payment_status: "مدفوع",
             status: "قيد الانتظار",
-            source_platform: "نقطة البيع",
+            source_platform: "POS",
             notes: `الكمية: ${item.quantity}`,
             order_number: ''
           });
