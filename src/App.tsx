@@ -9,6 +9,7 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { InstallationGuard } from "@/components/InstallationGuard";
 import Inbox from "./pages/Inbox";
 import Orders from "./pages/Orders";
+import POS from "./pages/POS";
 import Products from "./pages/Products";
 import Categories from "./pages/Categories";
 import Reports from "./pages/Reports";
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/inbox" element={<Inbox />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/orders/:orderId" element={<OrderDetails />} />
+              <Route path="/pos" element={<POS />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/products" element={<Products />} />
               <Route path="/categories" element={<Categories />} />
