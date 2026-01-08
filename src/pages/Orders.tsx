@@ -570,10 +570,10 @@ const Orders = () => {
                         <img src={agentIcon} alt="المارد" className="w-4 h-4" />
                         <span className="text-sm">المارد</span>
                       </div>
-                    ) : order.source_platform === 'store' || order.created_by === 'store' ? (
-                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-primary/10">
-                        <Store className="w-4 h-4 text-primary" />
-                        <span className="text-sm">المتجر</span>
+                    ) : order.source_platform === 'المتجر' || order.source_platform === 'store' || order.created_by === 'store' ? (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-emerald-500/10 border-emerald-500/30">
+                        <Store className="w-4 h-4 text-emerald-600" />
+                        <span className="text-sm text-emerald-700">المتجر</span>
                       </div>
                     ) : order.created_by && order.created_by !== 'employee' ? (
                       (() => {
