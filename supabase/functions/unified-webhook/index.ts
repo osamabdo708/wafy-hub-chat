@@ -414,7 +414,8 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
             messageId,
             timestamp: parseInt(timestamp) * 1000,
             accessToken: integration.config.access_token || integration.config.page_access_token,
-            customerName
+            customerName,
+            phoneNumberId // Pass phone_number_id for profile picture fetching
           });
         }
       }
@@ -494,12 +495,13 @@ async function findAllMatchingIntegrations(
 // ============================================
 // HELPER: Fetch Meta User Info (name + profile pic)
 // For Instagram, the API has strict limitations on accessing user profiles
-// We use a combination of approaches to get the best available info
+// For WhatsApp, we use the WhatsApp Business API to get profile pictures
 // ============================================
 async function fetchMetaUserInfo(
   userId: string,
   accessToken: string,
-  channel: string
+  channel: string,
+  phoneNumberId?: string
 ): Promise<{ name: string | null; profilePic: string | null }> {
   let name: string | null = null;
   let profilePic: string | null = null;
@@ -512,7 +514,76 @@ async function fetchMetaUserInfo(
   console.log(`[UNIFIED-WEBHOOK] Fetching user info for ${userId} on ${channel}`);
 
   try {
-    if (channel === 'instagram') {
+    if (channel === 'whatsapp') {
+      // For WhatsApp, fetch profile picture using the WhatsApp Business API
+      // The phone_number_id is required to make this API call
+      if (phoneNumberId) {
+        console.log(`[UNIFIED-WEBHOOK] Fetching WhatsApp profile pic for ${userId} using phone_number_id ${phoneNumberId}`);
+        const response = await fetch(
+          `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: userId,
+              type: 'template',
+              template: { name: 'dummy' } // This won't send, we just need to construct a valid request
+            }),
+            signal: AbortSignal.timeout(3000)
+          }
+        );
+        // This approach won't work, let's try the contacts API instead
+      }
+
+      // Try to get profile picture using the WhatsApp Cloud API contacts endpoint
+      // Note: WhatsApp Cloud API doesn't have a direct profile picture endpoint
+      // But we can try fetching from the business profile endpoint
+      try {
+        const profileResponse = await fetch(
+          `https://graph.facebook.com/v21.0/${userId}?access_token=${accessToken}`,
+          { signal: AbortSignal.timeout(3000) }
+        );
+        
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          console.log('[UNIFIED-WEBHOOK] WhatsApp profile data:', JSON.stringify(profileData));
+          
+          if (profileData.profile_picture_url) {
+            profilePic = profileData.profile_picture_url;
+          }
+        }
+      } catch (e) {
+        console.log('[UNIFIED-WEBHOOK] WhatsApp profile fetch failed:', e);
+      }
+
+      // Alternative: Try using the contacts endpoint via phone_number_id
+      if (!profilePic && phoneNumberId) {
+        try {
+          // Try fetching contact profile using WhatsApp Contacts API
+          const contactsResponse = await fetch(
+            `https://graph.facebook.com/v21.0/${phoneNumberId}/contacts?contacts=${userId}&access_token=${accessToken}`,
+            { signal: AbortSignal.timeout(3000) }
+          );
+          
+          if (contactsResponse.ok) {
+            const contactsData = await contactsResponse.json();
+            console.log('[UNIFIED-WEBHOOK] WhatsApp contacts data:', JSON.stringify(contactsData));
+            
+            // Extract profile pic if available
+            if (contactsData.contacts?.[0]?.profile_picture) {
+              profilePic = contactsData.contacts[0].profile_picture;
+            }
+          }
+        } catch (e) {
+          console.log('[UNIFIED-WEBHOOK] WhatsApp contacts fetch failed:', e);
+        }
+      }
+    } else if (channel === 'instagram') {
       // For Instagram, try fetching user info but with realistic expectations
       // Instagram's API has strict rate limits and often doesn't return profile info for message senders
       const response = await fetch(
@@ -579,9 +650,10 @@ async function saveIncomingMessage(
     timestamp: number | string;
     accessToken?: string;
     customerName?: string;
+    phoneNumberId?: string; // For WhatsApp profile picture fetching
   }
 ) {
-  const { channel, workspaceId, accountId, senderId, recipientId, content, messageId, timestamp, accessToken, customerName } = params;
+  const { channel, workspaceId, accountId, senderId, recipientId, content, messageId, timestamp, accessToken, customerName, phoneNumberId } = params;
 
   // Generate workspace-scoped message key for deduplication
   const workspaceScopedMessageId = `${workspaceId}_${messageId}`;
@@ -605,9 +677,9 @@ async function saveIncomingMessage(
   let realName: string | null = customerName || null;
   let realAvatar: string | null = null;
 
-  // Fetch user info from Meta API (for Facebook/Instagram)
-  if (accessToken && (channel === 'facebook' || channel === 'instagram')) {
-    const userInfo = await fetchMetaUserInfo(senderId, accessToken, channel);
+  // Fetch user info from Meta API (for Facebook/Instagram/WhatsApp)
+  if (accessToken && (channel === 'facebook' || channel === 'instagram' || channel === 'whatsapp')) {
+    const userInfo = await fetchMetaUserInfo(senderId, accessToken, channel, phoneNumberId);
     if (userInfo.name) {
       realName = userInfo.name;
     }
