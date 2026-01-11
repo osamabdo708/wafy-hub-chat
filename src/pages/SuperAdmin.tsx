@@ -130,6 +130,7 @@ const SuperAdmin = () => {
   useEffect(() => {
     fetchData();
     fetchSettings();
+    loadTelegramIntegration();
   }, []);
 
   const fetchData = async () => {
@@ -399,11 +400,73 @@ const SuperAdmin = () => {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
       
-      toast.success("تم حذف Webhook");
+      // Also disconnect the integration
+      if (workspaces.length > 0) {
+        await supabase
+          .from('channel_integrations')
+          .update({ is_connected: false })
+          .eq('workspace_id', workspaces[0].id)
+          .eq('channel', 'telegram');
+      }
+      
+      toast.success("تم حذف Webhook وفصل التكامل");
       setTelegramWebhookInfo(null);
+      setTelegramBotInfo(null);
     } catch (error: any) {
       console.error('Telegram delete webhook error:', error);
       toast.error(error.message || "فشل في حذف Webhook");
+    }
+  };
+
+  // Load existing Telegram integration
+  const loadTelegramIntegration = async () => {
+    try {
+      // Wait for workspaces to be loaded first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (!workspace) return;
+
+      const { data: integration } = await supabase
+        .from('channel_integrations')
+        .select('*')
+        .eq('workspace_id', workspace.id)
+        .eq('channel', 'telegram')
+        .eq('is_connected', true)
+        .maybeSingle();
+
+      if (integration && integration.config) {
+        const config = integration.config as any;
+        if (config.bot_token) {
+          setTelegramBotToken(config.bot_token);
+          setTelegramBotInfo({
+            id: integration.account_id,
+            first_name: config.bot_name,
+            username: config.bot_username
+          });
+
+          // Fetch current webhook status
+          try {
+            const { data: webhookData } = await supabase.functions.invoke('test-telegram-connection', {
+              body: { botToken: config.bot_token, action: 'getWebhookInfo' }
+            });
+            if (webhookData?.success) {
+              setTelegramWebhookInfo(webhookData.webhook);
+            }
+          } catch (e) {
+            console.log('Could not fetch webhook info:', e);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading Telegram integration:', error);
     }
   };
 
