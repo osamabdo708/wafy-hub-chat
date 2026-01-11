@@ -797,6 +797,21 @@ const ChatView = ({
           ) : (
             messages.map((message) => {
               const isFromEmployee = message.sender_type === 'employee' || message.sender_type === 'agent';
+              
+              // Check if content is a media URL (Instagram/Facebook CDN)
+              const isMediaUrl = message.content && (
+                message.content.includes('lookaside.fbsbx.com') ||
+                message.content.includes('scontent') ||
+                message.content.includes('video.') ||
+                message.content.includes('cdninstagram.com') ||
+                (message.content.startsWith('https://') && /\.(mp4|mov|avi|webm|jpg|jpeg|png|gif|webp)(\?|$)/i.test(message.content))
+              );
+              
+              const isVideoUrl = isMediaUrl && (
+                message.content.includes('video') ||
+                /\.(mp4|mov|avi|webm)(\?|$)/i.test(message.content)
+              );
+              
               return (
               <div
                 key={message.id}
@@ -809,7 +824,38 @@ const ChatView = ({
                       : 'bg-muted'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {isMediaUrl ? (
+                    <div className="space-y-2">
+                      {isVideoUrl ? (
+                        <video 
+                          src={message.content} 
+                          controls 
+                          className="max-w-full rounded-lg max-h-64"
+                          preload="metadata"
+                        >
+                          <source src={message.content} type="video/mp4" />
+                          المتصفح لا يدعم تشغيل الفيديو
+                        </video>
+                      ) : (
+                        <img 
+                          src={message.content} 
+                          alt="صورة مرسلة" 
+                          className="max-w-full rounded-lg max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => window.open(message.content, '_blank')}
+                          onError={(e) => {
+                            // If image fails to load, show as link
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.parentElement?.insertAdjacentHTML('beforeend', 
+                              `<a href="${message.content}" target="_blank" class="text-blue-500 underline text-sm">🔗 فتح الوسائط</a>`
+                            );
+                          }}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  )}
                   <p className={`text-xs mt-1 ${
                     isFromEmployee
                       ? 'text-primary-foreground/70' 
