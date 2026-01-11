@@ -118,7 +118,7 @@ const Settings = () => {
         <TabsContent value="channels" className="space-y-6">
           <div>
             <h3 className="text-lg font-bold mb-2">قنوات التواصل</h3>
-            <p className="text-muted-foreground text-sm mb-6">اربط حساباتك لاستقبال الرسائل في صندوق وارد موحد</p>
+            <p className="text-muted-foreground text-sm mb-6">حالة القنوات المتصلة - يتم إدارتها من قبل المشرف</p>
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -127,28 +127,24 @@ const Settings = () => {
               name="واتساب"
               iconComponent={<WhatsAppIcon className="h-8 w-8" />}
               bgColor="bg-muted"
-              buttonColor="bg-green-600 hover:bg-green-700"
             />
             <ChannelCard
               channel="facebook"
               name="فيسبوك"
               iconComponent={<MessengerIcon className="h-8 w-8" />}
               bgColor="bg-muted"
-              buttonColor="bg-blue-600 hover:bg-blue-700"
             />
             <ChannelCard
               channel="instagram"
               name="إنستغرام"
               iconComponent={<InstagramIcon className="h-8 w-8" />}
               bgColor="bg-muted"
-              buttonColor="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             />
             <ChannelCard
               channel="tiktok"
               name="تيك توك"
               iconComponent={<TikTokChannelIcon className="h-8 w-8" />}
               bgColor="bg-muted"
-              buttonColor="bg-black hover:bg-gray-900"
               comingSoon
             />
             <ChannelCard
@@ -156,7 +152,6 @@ const Settings = () => {
               name="تليجرام"
               iconComponent={<TelegramIcon className="h-8 w-8" />}
               bgColor="bg-muted"
-              buttonColor="bg-sky-500 hover:bg-sky-600"
               comingSoon
             />
             <ChannelCard
@@ -164,9 +159,14 @@ const Settings = () => {
               name="البريد"
               iconComponent={<Mail className="h-8 w-8 text-muted-foreground" />}
               bgColor="bg-muted"
-              buttonColor="bg-gray-600 hover:bg-gray-700"
               comingSoon
             />
+          </div>
+
+          <div className="p-4 rounded-lg bg-muted/50 border mt-4">
+            <p className="text-sm text-muted-foreground text-center">
+              💡 يتم إدارة ربط القنوات من قبل المشرف العام في لوحة التحكم
+            </p>
           </div>
         </TabsContent>
 

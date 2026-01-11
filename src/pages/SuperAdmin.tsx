@@ -35,6 +35,7 @@ import {
 import StoreSettings from "@/components/settings/StoreSettings";
 import ShippingSettings from "@/components/settings/ShippingSettings";
 import PaymentSettings from "@/components/settings/PaymentSettings";
+import { ChannelConfigManager } from "@/components/admin/ChannelConfigManager";
 import {
   Table,
   TableBody,
@@ -346,6 +347,10 @@ const SuperAdmin = () => {
             <User className="w-4 h-4" />
             المستخدم
           </TabsTrigger>
+          <TabsTrigger value="channels" className="gap-2">
+            <Link className="w-4 h-4" />
+            القنوات
+          </TabsTrigger>
           <TabsTrigger value="meta" className="gap-2">
             <Facebook className="w-4 h-4" />
             Meta
@@ -440,6 +445,32 @@ const SuperAdmin = () => {
                 <p className="text-sm text-muted-foreground mt-1">
                   انتقل إلى صفحة التثبيت لإنشاء مستخدم جديد
                 </p>
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+
+        {/* Channels Configuration Tab */}
+        <TabsContent value="channels" className="space-y-6">
+          <Card className="p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Link className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">إعدادات قنوات التواصل</h3>
+                <p className="text-sm text-muted-foreground">
+                  قم بإدخال بيانات الربط لكل قناة يدوياً من Meta Developer Console
+                </p>
+              </div>
+            </div>
+            <Separator className="mb-6" />
+            
+            {workspaces.length > 0 ? (
+              <ChannelConfigManager workspaceId={workspaces[0].id} />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                لا توجد مساحة عمل لإعداد القنوات
               </div>
             )}
           </Card>
