@@ -8,7 +8,7 @@ import {
   ShoppingCart, 
   Package, 
   BarChart3, 
-  Settings,
+  LayoutDashboard,
   LogOut,
   Users,
   FolderTree,
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const navItems = [
+  { title: "لوحة التحكم", url: "/settings", icon: LayoutDashboard },
   { title: "البريد الوارد", url: "/inbox", icon: MessageSquare },
   { title: "الطلبات", url: "/orders", icon: ShoppingCart },
   { title: "نقطة البيع", url: "/pos", icon: Scan },
@@ -31,7 +32,6 @@ const navItems = [
   { title: "التصنيفات", url: "/categories", icon: FolderTree },
   { title: "الوكلاء", url: "/agents", icon: Users },
   { title: "التقارير", url: "/reports", icon: BarChart3 },
-  { title: "الإعدادات", url: "/settings", icon: Settings },
 ];
 
 export const HorizontalNav = () => {
