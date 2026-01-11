@@ -51,50 +51,64 @@ serve(async (req) => {
         const conversationIds = conversations.map(c => c.id);
         await supabase.from('messages').delete().in('conversation_id', conversationIds);
         await supabase.from('internal_notes').delete().in('conversation_id', conversationIds);
+        await supabase.from('ai_processing_locks').delete().in('conversation_id', conversationIds);
         await supabase.from('orders').delete().in('conversation_id', conversationIds);
       }
 
       // 2. Delete conversations
       await supabase.from('conversations').delete().eq('workspace_id', workspace.id);
 
-      // 3. Delete other workspace data
+      // 3. Delete channel connections and their oauth tokens
+      const { data: connections } = await supabase
+        .from('channel_connections')
+        .select('id')
+        .eq('workspace_id', workspace.id);
+      
+      if (connections && connections.length > 0) {
+        const connectionIds = connections.map(c => c.id);
+        await supabase.from('oauth_tokens').delete().in('connection_id', connectionIds);
+      }
+      await supabase.from('channel_connections').delete().eq('workspace_id', workspace.id);
+
+      // 4. Delete other workspace data
       await supabase.from('agents').delete().eq('workspace_id', workspace.id);
       await supabase.from('products').delete().eq('workspace_id', workspace.id);
+      await supabase.from('categories').delete().eq('workspace_id', workspace.id);
       await supabase.from('services').delete().eq('workspace_id', workspace.id);
+      await supabase.from('clients').delete().eq('workspace_id', workspace.id);
       await supabase.from('orders').delete().eq('workspace_id', workspace.id);
+      await supabase.from('shipping_methods').delete().eq('workspace_id', workspace.id);
+      await supabase.from('payment_settings').delete().eq('workspace_id', workspace.id);
       await supabase.from('channel_integrations').delete().eq('workspace_id', workspace.id);
-      await supabase.from('channel_connections').delete().eq('workspace_id', workspace.id);
       await supabase.from('audit_logs').delete().eq('workspace_id', workspace.id);
 
-      // 4. Delete workspace
+      // 5. Delete workspace
       await supabase.from('workspaces').delete().eq('id', workspace.id);
       console.log('Workspace and related data deleted');
     }
 
-    // 5. Delete profile
+    // 6. Delete quick replies created by this user
+    await supabase.from('quick_replies').delete().eq('created_by', userId);
+
+    // 7. Delete profile
     await supabase.from('profiles').delete().eq('id', userId);
     console.log('Profile deleted');
 
-    // 6. Delete user roles
+    // 8. Delete user roles
     await supabase.from('user_roles').delete().eq('user_id', userId);
     console.log('User roles deleted');
 
-    // 7. Sign out all user sessions globally
-    const { error: signOutError } = await supabase.auth.admin.signOut(userId, 'global');
-    if (signOutError) {
-      console.error('Error signing out user sessions:', signOutError);
-      // Continue with deletion even if signout fails
-    } else {
-      console.log('All user sessions terminated');
-    }
-
-    // 8. Delete the auth user
+    // 9. Delete the auth user (this also invalidates all sessions)
     const { error: authError } = await supabase.auth.admin.deleteUser(userId);
     
     if (authError) {
       console.error('Error deleting auth user:', authError);
+      // If the error is about foreign key constraints, provide more details
       return new Response(
-        JSON.stringify({ error: authError.message }),
+        JSON.stringify({ 
+          error: authError.message,
+          details: 'There may be remaining data linked to this user. Please check the database.'
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
