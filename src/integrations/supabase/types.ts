@@ -358,7 +358,9 @@ export type Database = {
       }
       clients: {
         Row: {
+          avatar_url: string | null
           created_at: string
+          email: string | null
           id: string
           name: string
           phone: string | null
@@ -366,7 +368,9 @@ export type Database = {
           workspace_id: string | null
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           name: string
           phone?: string | null
@@ -374,7 +378,9 @@ export type Database = {
           workspace_id?: string | null
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           name?: string
           phone?: string | null
@@ -397,6 +403,7 @@ export type Database = {
           assigned_agent_id: string | null
           assigned_to: string | null
           channel: Database["public"]["Enums"]["channel_type"]
+          client_id: string | null
           created_at: string | null
           customer_avatar: string | null
           customer_contact_phone: string | null
@@ -417,6 +424,7 @@ export type Database = {
           assigned_agent_id?: string | null
           assigned_to?: string | null
           channel: Database["public"]["Enums"]["channel_type"]
+          client_id?: string | null
           created_at?: string | null
           customer_avatar?: string | null
           customer_contact_phone?: string | null
@@ -437,6 +445,7 @@ export type Database = {
           assigned_agent_id?: string | null
           assigned_to?: string | null
           channel?: Database["public"]["Enums"]["channel_type"]
+          client_id?: string | null
           created_at?: string | null
           customer_avatar?: string | null
           customer_contact_phone?: string | null
@@ -465,6 +474,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
