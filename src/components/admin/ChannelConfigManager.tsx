@@ -17,7 +17,8 @@ import {
   XCircle,
   Facebook,
   Instagram,
-  MessageSquare
+  MessageSquare,
+  TestTube2
 } from 'lucide-react';
 
 interface ChannelConfig {
@@ -47,6 +48,7 @@ interface ChannelConfigManagerProps {
 export const ChannelConfigManager = ({ workspaceId }: ChannelConfigManagerProps) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
   const [showTokens, setShowTokens] = useState<Record<string, boolean>>({});
   
   const [facebookConfig, setFacebookConfig] = useState<ChannelConfig>({
@@ -221,6 +223,64 @@ export const ChannelConfigManager = ({ workspaceId }: ChannelConfigManagerProps)
     setShowTokens(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const testConnection = async (channel: 'facebook' | 'instagram' | 'whatsapp') => {
+    setTesting(channel);
+    try {
+      let config: ChannelConfig;
+      let testUrl = '';
+
+      switch (channel) {
+        case 'facebook':
+          config = facebookConfig;
+          if (!config.config.page_access_token || !config.config.page_id) {
+            toast.error('يرجى إدخال Page ID و Access Token أولاً');
+            setTesting(null);
+            return;
+          }
+          testUrl = `https://graph.facebook.com/v19.0/${config.config.page_id}?fields=id,name&access_token=${config.config.page_access_token}`;
+          break;
+        case 'instagram':
+          config = instagramConfig;
+          if (!config.config.page_access_token || !config.config.instagram_account_id) {
+            toast.error('يرجى إدخال Instagram Account ID و Access Token أولاً');
+            setTesting(null);
+            return;
+          }
+          testUrl = `https://graph.facebook.com/v19.0/${config.config.instagram_account_id}?fields=id,username&access_token=${config.config.page_access_token}`;
+          break;
+        case 'whatsapp':
+          config = whatsappConfig;
+          if (!config.config.access_token || !config.config.phone_number_id) {
+            toast.error('يرجى إدخال Phone Number ID و Access Token أولاً');
+            setTesting(null);
+            return;
+          }
+          testUrl = `https://graph.facebook.com/v19.0/${config.config.phone_number_id}?access_token=${config.config.access_token}`;
+          break;
+      }
+
+      const response = await fetch(testUrl);
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error.message || 'فشل الاتصال');
+      }
+
+      toast.success(`✅ تم الاتصال بنجاح بـ ${getChannelName(channel)}`, {
+        description: channel === 'facebook' ? `الصفحة: ${data.name}` : 
+                     channel === 'instagram' ? `الحساب: @${data.username}` :
+                     `Phone ID: ${data.id}`
+      });
+    } catch (error: any) {
+      console.error('Connection test failed:', error);
+      toast.error(`❌ فشل اختبار ${getChannelName(channel)}`, {
+        description: error.message || 'تحقق من البيانات المدخلة'
+      });
+    } finally {
+      setTesting(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -311,7 +371,15 @@ export const ChannelConfigManager = ({ workspaceId }: ChannelConfigManagerProps)
           </div>
         </div>
 
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 flex justify-end gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => testConnection('facebook')} 
+            disabled={testing === 'facebook'}
+          >
+            {testing === 'facebook' ? <RefreshCw className="w-4 h-4 ml-2 animate-spin" /> : <TestTube2 className="w-4 h-4 ml-2" />}
+            اختبار الاتصال
+          </Button>
           <Button onClick={() => saveConfig(facebookConfig)} disabled={saving === 'facebook'}>
             {saving === 'facebook' ? <RefreshCw className="w-4 h-4 ml-2 animate-spin" /> : <Save className="w-4 h-4 ml-2" />}
             حفظ
@@ -412,7 +480,15 @@ export const ChannelConfigManager = ({ workspaceId }: ChannelConfigManagerProps)
           </div>
         </div>
 
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 flex justify-end gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => testConnection('instagram')} 
+            disabled={testing === 'instagram'}
+          >
+            {testing === 'instagram' ? <RefreshCw className="w-4 h-4 ml-2 animate-spin" /> : <TestTube2 className="w-4 h-4 ml-2" />}
+            اختبار الاتصال
+          </Button>
           <Button onClick={() => saveConfig(instagramConfig)} disabled={saving === 'instagram'}>
             {saving === 'instagram' ? <RefreshCw className="w-4 h-4 ml-2 animate-spin" /> : <Save className="w-4 h-4 ml-2" />}
             حفظ
@@ -513,7 +589,15 @@ export const ChannelConfigManager = ({ workspaceId }: ChannelConfigManagerProps)
           </div>
         </div>
 
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 flex justify-end gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => testConnection('whatsapp')} 
+            disabled={testing === 'whatsapp'}
+          >
+            {testing === 'whatsapp' ? <RefreshCw className="w-4 h-4 ml-2 animate-spin" /> : <TestTube2 className="w-4 h-4 ml-2" />}
+            اختبار الاتصال
+          </Button>
           <Button onClick={() => saveConfig(whatsappConfig)} disabled={saving === 'whatsapp'}>
             {saving === 'whatsapp' ? <RefreshCw className="w-4 h-4 ml-2 animate-spin" /> : <Save className="w-4 h-4 ml-2" />}
             حفظ
