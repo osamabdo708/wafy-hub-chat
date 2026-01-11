@@ -111,13 +111,56 @@ serve(async (req) => {
       for (const integration of integrations) {
         const workspaceId = integration.workspace_id;
         const config = integration.config as any;
+        const botToken = config?.bot_token;
         
         console.log(`[TELEGRAM-WEBHOOK] Processing for workspace: ${workspaceId}`);
+
+        // Try to get user profile photo
+        let profilePicUrl: string | null = null;
+        if (botToken) {
+          try {
+            const photosResponse = await fetch(
+              `https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${senderId}&limit=1`,
+              { signal: AbortSignal.timeout(5000) }
+            );
+
+            if (photosResponse.ok) {
+              const photosData = await photosResponse.json();
+              console.log('[TELEGRAM-WEBHOOK] Profile photos response:', JSON.stringify(photosData));
+              
+              if (photosData.ok && photosData.result?.photos?.length > 0) {
+                // Get the largest photo (last in the array)
+                const photos = photosData.result.photos[0];
+                const largestPhoto = photos[photos.length - 1];
+                const fileId = largestPhoto?.file_id;
+                
+                if (fileId) {
+                  // Get the file path
+                  const fileResponse = await fetch(
+                    `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`,
+                    { signal: AbortSignal.timeout(5000) }
+                  );
+                  
+                  if (fileResponse.ok) {
+                    const fileData = await fileResponse.json();
+                    
+                    if (fileData.ok && fileData.result?.file_path) {
+                      profilePicUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+                      console.log('[TELEGRAM-WEBHOOK] Got profile pic URL:', profilePicUrl);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.log('[TELEGRAM-WEBHOOK] Error fetching profile photo:', e);
+          }
+        }
 
         // Find or create conversation
         let { data: conversation } = await supabase
           .from('conversations')
-          .select('id, customer_name')
+          .select('id, customer_name, customer_avatar')
           .eq('customer_phone', chatId)
           .eq('channel', 'telegram')
           .eq('workspace_id', workspaceId)
@@ -128,23 +171,29 @@ serve(async (req) => {
         if (conversation) {
           conversationId = conversation.id;
           
+          // Build update object
+          const updateData: any = { 
+            last_message_at: new Date(timestamp).toISOString() 
+          };
+          
           // Update name if it was generic
           const currentName = conversation.customer_name || '';
           const isGenericName = currentName.includes('Telegram User');
           if (isGenericName && customerName && !customerName.includes('Telegram User')) {
-            await supabase
-              .from('conversations')
-              .update({ 
-                customer_name: customerName,
-                last_message_at: new Date(timestamp).toISOString()
-              })
-              .eq('id', conversationId);
-          } else {
-            await supabase
-              .from('conversations')
-              .update({ last_message_at: new Date(timestamp).toISOString() })
-              .eq('id', conversationId);
+            updateData.customer_name = customerName;
           }
+          
+          // Update avatar if we have one and current is empty
+          if (profilePicUrl && !conversation.customer_avatar) {
+            updateData.customer_avatar = profilePicUrl;
+            console.log('[TELEGRAM-WEBHOOK] Updating conversation with profile pic');
+          }
+          
+          await supabase
+            .from('conversations')
+            .update(updateData)
+            .eq('id', conversationId);
+            
           console.log('[TELEGRAM-WEBHOOK] Updated existing conversation:', conversationId);
         } else {
           // Check workspace settings for default AI
@@ -180,13 +229,14 @@ serve(async (req) => {
             console.log('[TELEGRAM-WEBHOOK] Could not fetch workspace settings:', e);
           }
 
-          // Create new conversation
+          // Create new conversation with avatar
           const { data: newConv, error: convError } = await supabase
             .from('conversations')
             .insert({
               workspace_id: workspaceId,
               customer_name: customerName,
               customer_phone: chatId,
+              customer_avatar: profilePicUrl,
               channel: 'telegram',
               platform: 'telegram',
               thread_id: `telegram_${chatId}`,
@@ -204,7 +254,7 @@ serve(async (req) => {
           }
 
           conversationId = newConv.id;
-          console.log('[TELEGRAM-WEBHOOK] Created new conversation:', conversationId);
+          console.log('[TELEGRAM-WEBHOOK] Created new conversation:', conversationId, 'with avatar:', !!profilePicUrl);
         }
 
         // Check for duplicate message

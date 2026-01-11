@@ -493,137 +493,126 @@ async function findAllMatchingIntegrations(
 }
 
 // ============================================
-// HELPER: Fetch Meta User Info (name + profile pic)
-// For Instagram, the API has strict limitations on accessing user profiles
-// For WhatsApp, we use the WhatsApp Business API to get profile pictures
+// HELPER: Fetch User Info (name + profile pic)
+// Handles Facebook, Instagram, WhatsApp, and Telegram
 // ============================================
-async function fetchMetaUserInfo(
+async function fetchUserInfo(
   userId: string,
-  accessToken: string,
+  accessToken: string | null,
   channel: string,
-  phoneNumberId?: string
+  phoneNumberId?: string,
+  botToken?: string
 ): Promise<{ name: string | null; profilePic: string | null }> {
   let name: string | null = null;
   let profilePic: string | null = null;
-
-  if (!accessToken) {
-    console.log('[UNIFIED-WEBHOOK] No access token, skipping user info fetch');
-    return { name, profilePic };
-  }
 
   console.log(`[UNIFIED-WEBHOOK] Fetching user info for ${userId} on ${channel}`);
 
   try {
     if (channel === 'whatsapp') {
-      // For WhatsApp, fetch profile picture using the WhatsApp Business API
-      // The phone_number_id is required to make this API call
-      if (phoneNumberId) {
-        console.log(`[UNIFIED-WEBHOOK] Fetching WhatsApp profile pic for ${userId} using phone_number_id ${phoneNumberId}`);
-        const response = await fetch(
-          `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              messaging_product: 'whatsapp',
-              recipient_type: 'individual',
-              to: userId,
-              type: 'template',
-              template: { name: 'dummy' } // This won't send, we just need to construct a valid request
-            }),
-            signal: AbortSignal.timeout(3000)
-          }
-        );
-        // This approach won't work, let's try the contacts API instead
-      }
-
-      // Try to get profile picture using the WhatsApp Cloud API contacts endpoint
-      // Note: WhatsApp Cloud API doesn't have a direct profile picture endpoint
-      // But we can try fetching from the business profile endpoint
-      try {
-        const profileResponse = await fetch(
-          `https://graph.facebook.com/v21.0/${userId}?access_token=${accessToken}`,
-          { signal: AbortSignal.timeout(3000) }
-        );
-        
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json();
-          console.log('[UNIFIED-WEBHOOK] WhatsApp profile data:', JSON.stringify(profileData));
-          
-          if (profileData.profile_picture_url) {
-            profilePic = profileData.profile_picture_url;
-          }
-        }
-      } catch (e) {
-        console.log('[UNIFIED-WEBHOOK] WhatsApp profile fetch failed:', e);
-      }
-
-      // Alternative: Try using the contacts endpoint via phone_number_id
-      if (!profilePic && phoneNumberId) {
-        try {
-          // Try fetching contact profile using WhatsApp Contacts API
-          const contactsResponse = await fetch(
-            `https://graph.facebook.com/v21.0/${phoneNumberId}/contacts?contacts=${userId}&access_token=${accessToken}`,
-            { signal: AbortSignal.timeout(3000) }
-          );
-          
-          if (contactsResponse.ok) {
-            const contactsData = await contactsResponse.json();
-            console.log('[UNIFIED-WEBHOOK] WhatsApp contacts data:', JSON.stringify(contactsData));
-            
-            // Extract profile pic if available
-            if (contactsData.contacts?.[0]?.profile_picture) {
-              profilePic = contactsData.contacts[0].profile_picture;
-            }
-          }
-        } catch (e) {
-          console.log('[UNIFIED-WEBHOOK] WhatsApp contacts fetch failed:', e);
-        }
-      }
+      // WhatsApp Cloud API doesn't provide profile pictures for privacy reasons
+      // The contact name comes from the webhook payload itself
+      // We can only use default avatar with initials
+      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures not available via API (privacy restriction)');
     } else if (channel === 'instagram') {
-      // For Instagram, try fetching user info but with realistic expectations
-      // Instagram's API has strict rate limits and often doesn't return profile info for message senders
-      const response = await fetch(
-        `https://graph.facebook.com/v21.0/${userId}?fields=name,username&access_token=${accessToken}`,
-        { signal: AbortSignal.timeout(3000) }
-      );
+      // Instagram has very limited profile access for messaging users
+      // Try to get username at least
+      if (accessToken) {
+        try {
+          const response = await fetch(
+            `https://graph.facebook.com/v21.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[UNIFIED-WEBHOOK] Instagram user data:', JSON.stringify(data));
-        
-        if (data.username) {
-          name = `@${data.username}`;
-        } else if (data.name) {
-          name = data.name;
+          if (response.ok) {
+            const data = await response.json();
+            console.log('[UNIFIED-WEBHOOK] Instagram user data:', JSON.stringify(data));
+            
+            if (data.username) {
+              name = `@${data.username}`;
+            } else if (data.name) {
+              name = data.name;
+            }
+            if (data.profile_pic) {
+              profilePic = data.profile_pic;
+            }
+          } else {
+            const errorText = await response.text();
+            console.log(`[UNIFIED-WEBHOOK] Instagram user API ${response.status}: ${errorText.substring(0, 200)}`);
+          }
+        } catch (e: any) {
+          console.log('[UNIFIED-WEBHOOK] Instagram user fetch error:', e?.message || e);
         }
-        // Instagram API doesn't return profile_pic for messaging users
-      } else {
-        const errorText = await response.text();
-        console.log(`[UNIFIED-WEBHOOK] Instagram user API ${response.status}: ${errorText.substring(0, 200)}`);
       }
     } else if (channel === 'facebook') {
       // Facebook Messenger has better profile access
-      const response = await fetch(
-        `https://graph.facebook.com/v21.0/${userId}?fields=first_name,last_name,profile_pic&access_token=${accessToken}`,
-        { signal: AbortSignal.timeout(3000) }
-      );
+      if (accessToken) {
+        try {
+          const response = await fetch(
+            `https://graph.facebook.com/v21.0/${userId}?fields=first_name,last_name,profile_pic&access_token=${accessToken}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[UNIFIED-WEBHOOK] Facebook user data:', JSON.stringify(data));
-        
-        const firstName = data.first_name || '';
-        const lastName = data.last_name || '';
-        const fullName = `${firstName} ${lastName}`.trim();
-        name = fullName || null;
-        profilePic = data.profile_pic || null;
-      } else {
-        const errorText = await response.text();
-        console.log(`[UNIFIED-WEBHOOK] Facebook user API ${response.status}: ${errorText.substring(0, 200)}`);
+          if (response.ok) {
+            const data = await response.json();
+            console.log('[UNIFIED-WEBHOOK] Facebook user data:', JSON.stringify(data));
+            
+            const firstName = data.first_name || '';
+            const lastName = data.last_name || '';
+            const fullName = `${firstName} ${lastName}`.trim();
+            name = fullName || null;
+            profilePic = data.profile_pic || null;
+          } else {
+            const errorText = await response.text();
+            console.log(`[UNIFIED-WEBHOOK] Facebook user API ${response.status}: ${errorText.substring(0, 200)}`);
+          }
+        } catch (e: any) {
+          console.log('[UNIFIED-WEBHOOK] Facebook user fetch error:', e?.message || e);
+        }
+      }
+    } else if (channel === 'telegram') {
+      // Telegram: Use the Bot API to get user profile photos
+      if (botToken) {
+        try {
+          // First get user profile photos
+          const photosResponse = await fetch(
+            `https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${userId}&limit=1`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (photosResponse.ok) {
+            const photosData = await photosResponse.json();
+            console.log('[UNIFIED-WEBHOOK] Telegram profile photos:', JSON.stringify(photosData));
+            
+            if (photosData.ok && photosData.result?.photos?.length > 0) {
+              // Get the largest photo (last in the array)
+              const photos = photosData.result.photos[0];
+              const largestPhoto = photos[photos.length - 1];
+              const fileId = largestPhoto?.file_id;
+              
+              if (fileId) {
+                // Get the file path
+                const fileResponse = await fetch(
+                  `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`,
+                  { signal: AbortSignal.timeout(5000) }
+                );
+                
+                if (fileResponse.ok) {
+                  const fileData = await fileResponse.json();
+                  console.log('[UNIFIED-WEBHOOK] Telegram file data:', JSON.stringify(fileData));
+                  
+                  if (fileData.ok && fileData.result?.file_path) {
+                    // Construct the file URL
+                    profilePic = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+                    console.log('[UNIFIED-WEBHOOK] Telegram profile pic URL:', profilePic);
+                  }
+                }
+              }
+            }
+          }
+        } catch (e: any) {
+          console.log('[UNIFIED-WEBHOOK] Telegram profile fetch error:', e?.message || e);
+        }
       }
     }
   } catch (e: any) {
@@ -677,9 +666,9 @@ async function saveIncomingMessage(
   let realName: string | null = customerName || null;
   let realAvatar: string | null = null;
 
-  // Fetch user info from Meta API (for Facebook/Instagram/WhatsApp)
-  if (accessToken && (channel === 'facebook' || channel === 'instagram' || channel === 'whatsapp')) {
-    const userInfo = await fetchMetaUserInfo(senderId, accessToken, channel, phoneNumberId);
+  // Fetch user info (for Facebook/Instagram)
+  if (channel === 'facebook' || channel === 'instagram') {
+    const userInfo = await fetchUserInfo(senderId, accessToken || null, channel);
     if (userInfo.name) {
       realName = userInfo.name;
     }
