@@ -19,7 +19,9 @@ import {
   MapPin,
   CreditCard,
   Banknote,
-  Loader2
+  Loader2,
+  Maximize,
+  Minimize
 } from "lucide-react";
 import {
   Select,
@@ -71,6 +73,7 @@ const POS = () => {
   const [loading, setLoading] = useState(true);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
   // Customer info
   const [isWalkingCustomer, setIsWalkingCustomer] = useState(false);
@@ -79,6 +82,22 @@ const POS = () => {
   const [customerAddress, setCustomerAddress] = useState("");
   const [selectedShipping, setSelectedShipping] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "electronic">("cash");
+
+  // Handle fullscreen toggle
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  // Handle escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
 
   useEffect(() => {
     fetchData();
@@ -256,7 +275,7 @@ const POS = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex gap-4 p-4">
+    <div className={`flex gap-4 p-4 ${isFullscreen ? 'fixed inset-0 z-50 bg-background h-screen' : 'h-[calc(100vh-8rem)]'}`}>
       {/* Products Section */}
       <div className="flex-1 flex flex-col gap-4">
         {/* Search and Filter */}
@@ -281,6 +300,17 @@ const POS = () => {
               ))}
             </SelectContent>
           </Select>
+          
+          {/* Fullscreen Toggle Button */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleFullscreen}
+            className="shrink-0"
+            title={isFullscreen ? "الخروج من وضع ملء الشاشة" : "وضع ملء الشاشة"}
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+          </Button>
         </div>
 
         {/* Products Grid */}
