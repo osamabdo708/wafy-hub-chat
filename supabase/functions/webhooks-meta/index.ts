@@ -147,11 +147,14 @@ async function processMessageForWorkspace({
     { onConflict: "event_id" }
   );
 
-  // Fetch sender info
+  // Fetch sender info with improved logging
   let senderName = source.senderId;
   let senderAvatar: string | undefined;
+  console.log(`[WEBHOOK-META] Fetching user info for ${source.provider} user: ${source.senderId}`);
+  
   try {
     const userInfo = await getMetaUserInfo(source.senderId, accessToken, source.provider);
+    console.log(`[WEBHOOK-META] User info result:`, JSON.stringify(userInfo));
     if (userInfo) {
       senderName = userInfo.name || source.senderId;
       senderAvatar = userInfo.profilePic;
@@ -159,6 +162,8 @@ async function processMessageForWorkspace({
   } catch (e) {
     console.error(`[WEBHOOK-META] Failed to fetch sender info:`, e);
   }
+  
+  console.log(`[WEBHOOK-META] Using sender name: "${senderName}", hasAvatar: ${!!senderAvatar}`);
 
   // Find or create conversation for THIS workspace
   const channelType = source.provider === "messenger" ? "facebook" : source.provider;

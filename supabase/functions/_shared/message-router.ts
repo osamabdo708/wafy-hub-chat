@@ -80,27 +80,57 @@ export async function getMetaUserInfo(
   provider: string
 ): Promise<{ name: string; profilePic?: string } | null> {
   try {
-    // Instagram supports: name, username, profile_pic
-    const fields = provider === "instagram" 
-      ? "name,username,profile_pic"
-      : "first_name,last_name,profile_pic";
+    console.log(`[ROUTER] Fetching user info for ${provider} user: ${userId}`);
     
+    // For Instagram, we need to use the Instagram Graph API properly
+    // The user profile endpoint requires different permissions
+    if (provider === "instagram") {
+      // Try to get Instagram user info - Instagram API has limited user info access
+      // For Instagram scoped user IDs, we can try fetching from conversations
+      try {
+        // First try the standard user endpoint
+        const response = await fetch(
+          `https://graph.facebook.com/v21.0/${userId}?fields=name,username&access_token=${accessToken}`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log("[ROUTER] Instagram user data:", JSON.stringify(data));
+          
+          if (data.username || data.name) {
+            return {
+              name: data.username ? `@${data.username}` : data.name,
+              profilePic: undefined // Instagram API doesn't expose profile_pic for messaging users
+            };
+          }
+        } else {
+          const errorText = await response.text();
+          console.log(`[ROUTER] Instagram user API returned ${response.status}: ${errorText}`);
+        }
+      } catch (e) {
+        console.log("[ROUTER] Instagram user fetch failed:", e);
+      }
+      
+      // Instagram API has strict limitations on accessing user profiles
+      // Return null to use fallback naming
+      return null;
+    }
+    
+    // For Facebook Messenger
     const response = await fetch(
-      `https://graph.facebook.com/v19.0/${userId}?fields=${fields}&access_token=${accessToken}`
+      `https://graph.facebook.com/v21.0/${userId}?fields=first_name,last_name,profile_pic&access_token=${accessToken}`,
+      { signal: AbortSignal.timeout(5000) }
     );
     
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`[ROUTER] Facebook user API returned ${response.status}: ${errorText}`);
+      return null;
+    }
     
     const data = await response.json();
-    
-    if (provider === "instagram") {
-      // Prefer username for Instagram, format as @username
-      const name = data.username ? `@${data.username}` : data.name || "Instagram User";
-      return {
-        name,
-        profilePic: data.profile_pic
-      };
-    }
+    console.log("[ROUTER] Facebook user data:", JSON.stringify(data));
     
     return {
       name: `${data.first_name || ""} ${data.last_name || ""}`.trim() || "User",
