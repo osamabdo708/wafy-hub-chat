@@ -151,7 +151,6 @@ const Settings = () => {
           name="تليجرام"
           iconComponent={<TelegramIcon className="h-8 w-8" />}
           bgColor="bg-muted"
-          comingSoon
         />
       </div>
 

@@ -116,6 +116,8 @@ const SuperAdmin = () => {
   const [telegramBotInfo, setTelegramBotInfo] = useState<any>(null);
   const [telegramWebhookInfo, setTelegramWebhookInfo] = useState<any>(null);
   const [settingWebhook, setSettingWebhook] = useState(false);
+  const [savingTelegram, setSavingTelegram] = useState(false);
+  const [telegramConnected, setTelegramConnected] = useState(false);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
@@ -444,6 +446,7 @@ const SuperAdmin = () => {
 
       if (integration && integration.config) {
         const config = integration.config as any;
+        setTelegramConnected(true);
         if (config.bot_token) {
           setTelegramBotToken(config.bot_token);
           setTelegramBotInfo({
@@ -464,9 +467,63 @@ const SuperAdmin = () => {
             console.log('Could not fetch webhook info:', e);
           }
         }
+      } else {
+        setTelegramConnected(false);
       }
     } catch (error) {
       console.error('Error loading Telegram integration:', error);
+    }
+  };
+
+  // Save Telegram token and bot info to database
+  const handleSaveTelegram = async () => {
+    if (!telegramBotToken) {
+      toast.error("أدخل Bot Token أولاً");
+      return;
+    }
+    
+    if (!telegramBotInfo) {
+      toast.error("اختبر الاتصال أولاً");
+      return;
+    }
+
+    setSavingTelegram(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not found");
+
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (!workspace) throw new Error("Workspace not found");
+
+      const { error: saveError } = await supabase
+        .from('channel_integrations')
+        .upsert({
+          workspace_id: workspace.id,
+          channel: 'telegram',
+          account_id: String(telegramBotInfo.id),
+          is_connected: true,
+          config: {
+            bot_token: telegramBotToken,
+            bot_username: telegramBotInfo.username,
+            bot_name: telegramBotInfo.first_name
+          }
+        }, { onConflict: 'workspace_id,channel' });
+      
+      if (saveError) throw saveError;
+      
+      setTelegramConnected(true);
+      toast.success("✅ تم حفظ إعدادات Telegram بنجاح");
+    } catch (error: any) {
+      console.error('Error saving Telegram:', error);
+      toast.error(error.message || "فشل في حفظ الإعدادات");
+    } finally {
+      setSavingTelegram(false);
     }
   };
 
@@ -914,16 +971,21 @@ const SuperAdmin = () => {
         {/* Telegram Settings Tab */}
         <TabsContent value="telegram" className="space-y-6">
           <Card className="p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <Send className="w-5 h-5 text-blue-500" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <Send className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">إعدادات Telegram Bot</h3>
+                  <p className="text-sm text-muted-foreground">
+                    قم بإنشاء Bot من @BotFather واحصل على Token
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold">إعدادات Telegram Bot</h3>
-                <p className="text-sm text-muted-foreground">
-                  قم بإنشاء Bot من @BotFather واحصل على Token
-                </p>
-              </div>
+              <Badge variant={telegramConnected ? "default" : "secondary"} className={telegramConnected ? "bg-green-600" : ""}>
+                {telegramConnected ? "متصل" : "غير متصل"}
+              </Badge>
             </div>
             <Separator className="mb-6" />
 
@@ -1036,8 +1098,21 @@ const SuperAdmin = () => {
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button 
+                  onClick={handleSaveTelegram}
+                  disabled={savingTelegram || !telegramBotToken || !telegramBotInfo}
+                  className="gap-2"
+                >
+                  {savingTelegram ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  حفظ الإعدادات
+                </Button>
+                <Button 
+                  variant="outline"
                   onClick={handleSetTelegramWebhook}
                   disabled={settingWebhook || !telegramBotToken || !telegramBotInfo}
                   className="gap-2"
@@ -1053,7 +1128,7 @@ const SuperAdmin = () => {
                   <Button 
                     variant="outline"
                     onClick={handleDeleteTelegramWebhook}
-                    className="gap-2"
+                    className="gap-2 text-destructive hover:text-destructive"
                   >
                     <Trash2 className="w-4 h-4" />
                     حذف Webhook
