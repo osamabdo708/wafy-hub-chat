@@ -29,8 +29,12 @@ import {
   Key,
   User,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Store
 } from "lucide-react";
+import StoreSettings from "@/components/settings/StoreSettings";
+import ShippingSettings from "@/components/settings/ShippingSettings";
+import PaymentSettings from "@/components/settings/PaymentSettings";
 import {
   Table,
   TableBody,
@@ -337,7 +341,7 @@ const SuperAdmin = () => {
 
       {/* Tabs */}
       <Tabs defaultValue="system-user" className="space-y-6">
-        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+        <TabsList className="flex flex-wrap h-auto gap-1 w-full max-w-4xl">
           <TabsTrigger value="system-user" className="gap-2">
             <User className="w-4 h-4" />
             المستخدم
@@ -345,6 +349,18 @@ const SuperAdmin = () => {
           <TabsTrigger value="meta" className="gap-2">
             <Facebook className="w-4 h-4" />
             Meta
+          </TabsTrigger>
+          <TabsTrigger value="store" className="gap-2">
+            <Store className="w-4 h-4" />
+            المتجر
+          </TabsTrigger>
+          <TabsTrigger value="shipping" className="gap-2">
+            <Truck className="w-4 h-4" />
+            الشحن
+          </TabsTrigger>
+          <TabsTrigger value="payments" className="gap-2">
+            <CreditCard className="w-4 h-4" />
+            الدفع
           </TabsTrigger>
           <TabsTrigger value="integrations" className="gap-2">
             <Globe className="w-4 h-4" />
@@ -678,6 +694,21 @@ const SuperAdmin = () => {
               </ol>
             </div>
           </Card>
+        </TabsContent>
+
+        {/* Store Settings Tab */}
+        <TabsContent value="store" className="space-y-6">
+          <StoreSettings />
+        </TabsContent>
+
+        {/* Shipping Settings Tab */}
+        <TabsContent value="shipping" className="space-y-6">
+          <ShippingSettings />
+        </TabsContent>
+
+        {/* Payment Settings Tab */}
+        <TabsContent value="payments" className="space-y-6">
+          <PaymentSettings />
         </TabsContent>
 
         {/* Users Tab */}
