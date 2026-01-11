@@ -12,10 +12,20 @@ verify_jwt = false
 [functions.facebook-webhook]
 verify_jwt = false
 
-# instagram-webhook removed - using unified-webhook only
-
 [functions.whatsapp-webhook]
 verify_jwt = false
+
+# ============================================
+# TELEGRAM
+# ============================================
+[functions.telegram-webhook]
+verify_jwt = false
+
+[functions.test-telegram-connection]
+verify_jwt = true
+
+[functions.send-telegram-message]
+verify_jwt = true
 
 # ============================================
 # UNIFIED OAUTH (Single callback for all Meta channels)

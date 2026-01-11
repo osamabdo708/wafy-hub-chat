@@ -30,7 +30,9 @@ import {
   User,
   AlertTriangle,
   RotateCcw,
-  Store
+  Store,
+  Send,
+  MessageCircle
 } from "lucide-react";
 import StoreSettings from "@/components/settings/StoreSettings";
 import ShippingSettings from "@/components/settings/ShippingSettings";
@@ -109,6 +111,11 @@ const SuperAdmin = () => {
   const [showSensitive, setShowSensitive] = useState<Record<string, boolean>>({});
   const [editedSettings, setEditedSettings] = useState<Record<string, string>>({});
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [telegramBotToken, setTelegramBotToken] = useState('');
+  const [telegramTestLoading, setTelegramTestLoading] = useState(false);
+  const [telegramBotInfo, setTelegramBotInfo] = useState<any>(null);
+  const [telegramWebhookInfo, setTelegramWebhookInfo] = useState<any>(null);
+  const [settingWebhook, setSettingWebhook] = useState(false);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
@@ -289,6 +296,116 @@ const SuperAdmin = () => {
 
   const webhookUrl = `${supabaseUrl}/functions/v1/unified-webhook`;
   const oauthCallbackUrl = `${supabaseUrl}/functions/v1/oauth-callback`;
+  const telegramWebhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook`;
+
+  const handleTestTelegram = async () => {
+    if (!telegramBotToken) {
+      toast.error("أدخل Bot Token أولاً");
+      return;
+    }
+    setTelegramTestLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-telegram-connection', {
+        body: { botToken: telegramBotToken, action: 'test' }
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      
+      setTelegramBotInfo(data.bot);
+      toast.success(`✅ تم الاتصال بنجاح: @${data.bot.username}`);
+      
+      // Also get webhook info
+      const { data: webhookData } = await supabase.functions.invoke('test-telegram-connection', {
+        body: { botToken: telegramBotToken, action: 'getWebhookInfo' }
+      });
+      if (webhookData?.success) {
+        setTelegramWebhookInfo(webhookData.webhook);
+      }
+    } catch (error: any) {
+      console.error('Telegram test error:', error);
+      toast.error(error.message || "فشل في الاتصال بـ Telegram");
+      setTelegramBotInfo(null);
+    } finally {
+      setTelegramTestLoading(false);
+    }
+  };
+
+  const handleSetTelegramWebhook = async () => {
+    if (!telegramBotToken) {
+      toast.error("أدخل Bot Token أولاً");
+      return;
+    }
+    setSettingWebhook(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-telegram-connection', {
+        body: { 
+          botToken: telegramBotToken, 
+          action: 'setWebhook',
+          webhookUrl: telegramWebhookUrl
+        }
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      
+      toast.success("✅ تم تعيين Webhook بنجاح");
+      
+      // Refresh webhook info
+      const { data: webhookData } = await supabase.functions.invoke('test-telegram-connection', {
+        body: { botToken: telegramBotToken, action: 'getWebhookInfo' }
+      });
+      if (webhookData?.success) {
+        setTelegramWebhookInfo(webhookData.webhook);
+      }
+
+      // Save integration to database if workspace exists
+      if (workspaces.length > 0 && telegramBotInfo) {
+        const { error: saveError } = await supabase
+          .from('channel_integrations')
+          .upsert({
+            workspace_id: workspaces[0].id,
+            channel: 'telegram',
+            account_id: String(telegramBotInfo.id),
+            is_connected: true,
+            config: {
+              bot_token: telegramBotToken,
+              bot_username: telegramBotInfo.username,
+              bot_name: telegramBotInfo.first_name
+            }
+          }, { onConflict: 'workspace_id,channel' });
+        
+        if (saveError) {
+          console.error('Error saving Telegram integration:', saveError);
+        } else {
+          toast.success("تم حفظ تكامل Telegram");
+        }
+      }
+    } catch (error: any) {
+      console.error('Telegram webhook error:', error);
+      toast.error(error.message || "فشل في تعيين Webhook");
+    } finally {
+      setSettingWebhook(false);
+    }
+  };
+
+  const handleDeleteTelegramWebhook = async () => {
+    if (!telegramBotToken) {
+      toast.error("أدخل Bot Token أولاً");
+      return;
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke('test-telegram-connection', {
+        body: { botToken: telegramBotToken, action: 'deleteWebhook' }
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      
+      toast.success("تم حذف Webhook");
+      setTelegramWebhookInfo(null);
+    } catch (error: any) {
+      console.error('Telegram delete webhook error:', error);
+      toast.error(error.message || "فشل في حذف Webhook");
+    }
+  };
 
   if (loading) {
     return (
@@ -354,6 +471,10 @@ const SuperAdmin = () => {
           <TabsTrigger value="meta" className="gap-2">
             <Facebook className="w-4 h-4" />
             Meta
+          </TabsTrigger>
+          <TabsTrigger value="telegram" className="gap-2">
+            <Send className="w-4 h-4" />
+            Telegram
           </TabsTrigger>
           <TabsTrigger value="store" className="gap-2">
             <Store className="w-4 h-4" />
@@ -722,6 +843,176 @@ const SuperAdmin = () => {
                 <li>أدخل Verify Token الذي تختاره (واحفظه هنا)</li>
                 <li>اشترك في الأحداث: messages, messaging_postbacks</li>
                 <li>في Facebook Login Settings، أضف OAuth Callback URL</li>
+              </ol>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* Telegram Settings Tab */}
+        <TabsContent value="telegram" className="space-y-6">
+          <Card className="p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <Send className="w-5 h-5 text-blue-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">إعدادات Telegram Bot</h3>
+                <p className="text-sm text-muted-foreground">
+                  قم بإنشاء Bot من @BotFather واحصل على Token
+                </p>
+              </div>
+            </div>
+            <Separator className="mb-6" />
+
+            {/* Bot Token Input */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="telegram-token">Bot Token</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="telegram-token"
+                    type="password"
+                    placeholder="أدخل Bot Token من @BotFather"
+                    value={telegramBotToken}
+                    onChange={(e) => setTelegramBotToken(e.target.value)}
+                    className="font-mono text-sm flex-1"
+                    dir="ltr"
+                  />
+                  <Button 
+                    onClick={handleTestTelegram}
+                    disabled={telegramTestLoading || !telegramBotToken}
+                    className="gap-2"
+                  >
+                    {telegramTestLoading ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <MessageCircle className="w-4 h-4" />
+                    )}
+                    اختبار
+                  </Button>
+                </div>
+              </div>
+
+              {/* Bot Info */}
+              {telegramBotInfo && (
+                <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
+                  <h4 className="font-semibold text-green-600 mb-3 flex items-center gap-2">
+                    <Check className="w-4 h-4" />
+                    معلومات البوت
+                  </h4>
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">الاسم:</span>
+                      <span className="font-medium">{telegramBotInfo.first_name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">المعرف:</span>
+                      <span className="font-mono" dir="ltr">@{telegramBotInfo.username}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ID:</span>
+                      <span className="font-mono" dir="ltr">{telegramBotInfo.id}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Webhook URL */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Webhook URL</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 h-7"
+                    onClick={() => copyToClipboard(telegramWebhookUrl, 'telegram-webhook')}
+                  >
+                    {copiedUrl === 'telegram-webhook' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    نسخ
+                  </Button>
+                </div>
+                <p className="text-sm font-mono bg-background p-3 rounded border" dir="ltr">
+                  {telegramWebhookUrl}
+                </p>
+              </div>
+
+              {/* Webhook Status */}
+              {telegramWebhookInfo && (
+                <div className={`p-4 rounded-lg border ${telegramWebhookInfo.url ? 'bg-green-500/5 border-green-500/20' : 'bg-yellow-500/5 border-yellow-500/20'}`}>
+                  <h4 className={`font-semibold mb-3 flex items-center gap-2 ${telegramWebhookInfo.url ? 'text-green-600' : 'text-yellow-600'}`}>
+                    <Webhook className="w-4 h-4" />
+                    حالة Webhook
+                  </h4>
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">الحالة:</span>
+                      <Badge variant={telegramWebhookInfo.url ? 'default' : 'secondary'}>
+                        {telegramWebhookInfo.url ? 'مفعل' : 'غير مفعل'}
+                      </Badge>
+                    </div>
+                    {telegramWebhookInfo.url && (
+                      <div className="flex justify-between items-start">
+                        <span className="text-muted-foreground">URL:</span>
+                        <span className="font-mono text-xs break-all text-left" dir="ltr">{telegramWebhookInfo.url}</span>
+                      </div>
+                    )}
+                    {telegramWebhookInfo.pending_update_count > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">رسائل معلقة:</span>
+                        <span>{telegramWebhookInfo.pending_update_count}</span>
+                      </div>
+                    )}
+                    {telegramWebhookInfo.last_error_message && (
+                      <div className="flex justify-between items-start">
+                        <span className="text-muted-foreground">آخر خطأ:</span>
+                        <span className="text-destructive text-xs">{telegramWebhookInfo.last_error_message}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <Button 
+                  onClick={handleSetTelegramWebhook}
+                  disabled={settingWebhook || !telegramBotToken || !telegramBotInfo}
+                  className="gap-2"
+                >
+                  {settingWebhook ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Webhook className="w-4 h-4" />
+                  )}
+                  تعيين Webhook
+                </Button>
+                {telegramWebhookInfo?.url && (
+                  <Button 
+                    variant="outline"
+                    onClick={handleDeleteTelegramWebhook}
+                    className="gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    حذف Webhook
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Setup Instructions */}
+            <div className="mt-6 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                خطوات إنشاء Telegram Bot
+              </h4>
+              <ol className="text-sm space-y-2 text-muted-foreground list-decimal list-inside">
+                <li>افتح Telegram وابحث عن <span className="font-mono text-foreground">@BotFather</span></li>
+                <li>أرسل الأمر <span className="font-mono text-foreground">/newbot</span></li>
+                <li>اختر اسماً للبوت (مثال: My Store Bot)</li>
+                <li>اختر معرفاً للبوت ينتهي بـ bot (مثال: my_store_bot)</li>
+                <li>انسخ الـ Token الذي سيرسله لك BotFather</li>
+                <li>الصقه في الحقل أعلاه واضغط "اختبار"</li>
+                <li>بعد نجاح الاختبار، اضغط "تعيين Webhook"</li>
               </ol>
             </div>
           </Card>
