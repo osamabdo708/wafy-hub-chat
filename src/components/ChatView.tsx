@@ -36,11 +36,22 @@ const getMediaType = (content: string): 'image' | 'video' | 'audio' | 'text' => 
   
   const lowerContent = content.toLowerCase();
   
-  // Audio detection (voice messages)
+  // Audio detection (voice messages) - Check FIRST before other media types
+  // Instagram voice messages often contain these patterns
   if (
     lowerContent.includes('audio') ||
     lowerContent.includes('voice') ||
-    /\.(mp3|ogg|wav|m4a|aac|opus)(\?|$)/i.test(content)
+    lowerContent.includes('/audioclip') ||
+    lowerContent.includes('_audioclip') ||
+    lowerContent.includes('audio_') ||
+    lowerContent.includes('/a/') || // Instagram audio path pattern
+    /\.(mp3|ogg|wav|m4a|aac|opus|mp4a|oga)(\?|$)/i.test(content) ||
+    // Instagram/Facebook CDN audio patterns
+    (lowerContent.includes('cdn') && (
+      lowerContent.includes('audio') ||
+      lowerContent.includes('voice') ||
+      /\/[a-z0-9_]*audio[a-z0-9_]*/i.test(content)
+    ))
   ) {
     return 'audio';
   }
@@ -48,6 +59,7 @@ const getMediaType = (content: string): 'image' | 'video' | 'audio' | 'text' => 
   // Video detection
   if (
     lowerContent.includes('video') ||
+    lowerContent.includes('/v/') || // Instagram video path pattern
     /\.(mp4|mov|avi|webm|mkv)(\?|$)/i.test(content)
   ) {
     return 'video';
@@ -55,21 +67,30 @@ const getMediaType = (content: string): 'image' | 'video' | 'audio' | 'text' => 
   
   // Image detection (Instagram/Facebook CDN or common image formats)
   if (
-    lowerContent.includes('lookaside.fbsbx.com') ||
+    /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(content) ||
     lowerContent.includes('scontent') ||
     lowerContent.includes('cdninstagram.com') ||
-    lowerContent.includes('fbcdn.net') ||
-    /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(content)
+    lowerContent.includes('fbcdn.net')
   ) {
     return 'image';
   }
   
-  // Check if it's a CDN URL that might be media
-  if (
-    lowerContent.includes('lookaside.fbsbx.com') ||
-    lowerContent.includes('ig_messaging_cdn')
-  ) {
-    // Default to image for Instagram/Facebook CDN if not explicitly audio/video
+  // Check lookaside.fbsbx.com URLs - try to detect type from URL structure
+  if (lowerContent.includes('lookaside.fbsbx.com') || lowerContent.includes('ig_messaging_cdn')) {
+    // Check for audio indicators in the URL
+    if (
+      lowerContent.includes('audioclip') ||
+      lowerContent.includes('audio') ||
+      lowerContent.includes('voice') ||
+      /\/a\//i.test(content)
+    ) {
+      return 'audio';
+    }
+    // Check for video indicators
+    if (lowerContent.includes('video') || /\/v\//i.test(content)) {
+      return 'video';
+    }
+    // Default to image for other CDN URLs
     return 'image';
   }
   
