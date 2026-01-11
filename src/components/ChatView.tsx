@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Send, User, Phone, Mail, Bot, Package, ShoppingCart, X, LinkIcon, Loader2 } from "lucide-react";
+import { Send, User, Phone, Mail, Bot, Package, ShoppingCart, X, LinkIcon, Loader2, Play, Pause, Volume2, Image, Video, Mic } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { generateInvoicePDF } from "@/utils/invoiceGenerator";
@@ -29,6 +29,52 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+// Helper to detect media type from URL
+const getMediaType = (content: string): 'image' | 'video' | 'audio' | 'text' => {
+  if (!content || !content.startsWith('http')) return 'text';
+  
+  const lowerContent = content.toLowerCase();
+  
+  // Audio detection (voice messages)
+  if (
+    lowerContent.includes('audio') ||
+    lowerContent.includes('voice') ||
+    /\.(mp3|ogg|wav|m4a|aac|opus)(\?|$)/i.test(content)
+  ) {
+    return 'audio';
+  }
+  
+  // Video detection
+  if (
+    lowerContent.includes('video') ||
+    /\.(mp4|mov|avi|webm|mkv)(\?|$)/i.test(content)
+  ) {
+    return 'video';
+  }
+  
+  // Image detection (Instagram/Facebook CDN or common image formats)
+  if (
+    lowerContent.includes('lookaside.fbsbx.com') ||
+    lowerContent.includes('scontent') ||
+    lowerContent.includes('cdninstagram.com') ||
+    lowerContent.includes('fbcdn.net') ||
+    /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(content)
+  ) {
+    return 'image';
+  }
+  
+  // Check if it's a CDN URL that might be media
+  if (
+    lowerContent.includes('lookaside.fbsbx.com') ||
+    lowerContent.includes('ig_messaging_cdn')
+  ) {
+    // Default to image for Instagram/Facebook CDN if not explicitly audio/video
+    return 'image';
+  }
+  
+  return 'text';
+};
 
 interface Message {
   id: string;
@@ -80,6 +126,10 @@ const ChatView = ({
   });
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Media lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; type: 'image' | 'video' | 'audio' } | null>(null);
 
   useEffect(() => {
     fetchMessages();
@@ -787,6 +837,50 @@ const ChatView = ({
         </div>
       )}
 
+      {/* Media Lightbox */}
+      <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-2">
+          <DialogHeader className="sr-only">
+            <DialogTitle>عرض الوسائط</DialogTitle>
+          </DialogHeader>
+          {lightboxMedia && (
+            <div className="flex items-center justify-center min-h-[300px]">
+              {lightboxMedia.type === 'image' && (
+                <img 
+                  src={lightboxMedia.url} 
+                  alt="صورة مكبرة" 
+                  className="max-w-full max-h-[80vh] object-contain rounded-lg"
+                />
+              )}
+              {lightboxMedia.type === 'video' && (
+                <video 
+                  src={lightboxMedia.url} 
+                  controls 
+                  autoPlay
+                  className="max-w-full max-h-[80vh] rounded-lg"
+                >
+                  <source src={lightboxMedia.url} type="video/mp4" />
+                  المتصفح لا يدعم تشغيل الفيديو
+                </video>
+              )}
+              {lightboxMedia.type === 'audio' && (
+                <div className="flex flex-col items-center gap-4 p-8">
+                  <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Mic className="w-12 h-12 text-primary" />
+                  </div>
+                  <audio 
+                    src={lightboxMedia.url} 
+                    controls 
+                    autoPlay
+                    className="w-full max-w-md"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Messages */}
       <ScrollArea className="flex-1 p-4 max-h-[400px]" ref={scrollRef}>
         <div className="space-y-4">
@@ -797,20 +891,12 @@ const ChatView = ({
           ) : (
             messages.map((message) => {
               const isFromEmployee = message.sender_type === 'employee' || message.sender_type === 'agent';
+              const mediaType = getMediaType(message.content);
               
-              // Check if content is a media URL (Instagram/Facebook CDN)
-              const isMediaUrl = message.content && (
-                message.content.includes('lookaside.fbsbx.com') ||
-                message.content.includes('scontent') ||
-                message.content.includes('video.') ||
-                message.content.includes('cdninstagram.com') ||
-                (message.content.startsWith('https://') && /\.(mp4|mov|avi|webm|jpg|jpeg|png|gif|webp)(\?|$)/i.test(message.content))
-              );
-              
-              const isVideoUrl = isMediaUrl && (
-                message.content.includes('video') ||
-                /\.(mp4|mov|avi|webm)(\?|$)/i.test(message.content)
-              );
+              const openLightbox = (url: string, type: 'image' | 'video' | 'audio') => {
+                setLightboxMedia({ url, type });
+                setLightboxOpen(true);
+              };
               
               return (
               <div
@@ -824,38 +910,88 @@ const ChatView = ({
                       : 'bg-muted'
                   }`}
                 >
-                  {isMediaUrl ? (
+                  {mediaType === 'image' && (
                     <div className="space-y-2">
-                      {isVideoUrl ? (
-                        <video 
-                          src={message.content} 
-                          controls 
-                          className="max-w-full rounded-lg max-h-64"
-                          preload="metadata"
-                        >
-                          <source src={message.content} type="video/mp4" />
-                          المتصفح لا يدعم تشغيل الفيديو
-                        </video>
-                      ) : (
+                      <div 
+                        className="relative group cursor-pointer"
+                        onClick={() => openLightbox(message.content, 'image')}
+                      >
                         <img 
                           src={message.content} 
                           alt="صورة مرسلة" 
-                          className="max-w-full rounded-lg max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => window.open(message.content, '_blank')}
+                          className="max-w-full rounded-lg max-h-48 object-cover hover:opacity-90 transition-opacity"
                           onError={(e) => {
-                            // If image fails to load, show as link
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
-                            target.parentElement?.insertAdjacentHTML('beforeend', 
-                              `<a href="${message.content}" target="_blank" class="text-blue-500 underline text-sm">🔗 فتح الوسائط</a>`
-                            );
+                            const fallback = target.nextElementSibling;
+                            if (fallback) fallback.classList.remove('hidden');
                           }}
                         />
-                      )}
+                        <a 
+                          href={message.content} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="hidden text-blue-500 underline text-sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          🔗 فتح الصورة
+                        </a>
+                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                          <Image className="w-8 h-8 text-white" />
+                        </div>
+                      </div>
                     </div>
-                  ) : (
+                  )}
+                  
+                  {mediaType === 'video' && (
+                    <div className="space-y-2">
+                      <div 
+                        className="relative group cursor-pointer"
+                        onClick={() => openLightbox(message.content, 'video')}
+                      >
+                        <video 
+                          src={message.content}
+                          className="max-w-full rounded-lg max-h-48 object-cover"
+                          preload="metadata"
+                          muted
+                        />
+                        <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                            <Play className="w-6 h-6 text-primary ml-1" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {mediaType === 'audio' && (
+                    <div className="space-y-2">
+                      <div 
+                        className="flex items-center gap-3 p-2 rounded-lg bg-background/50 cursor-pointer hover:bg-background/70 transition-colors min-w-[200px]"
+                        onClick={() => openLightbox(message.content, 'audio')}
+                      >
+                        <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <Mic className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">رسالة صوتية</p>
+                          <p className="text-xs text-muted-foreground">اضغط للاستماع</p>
+                        </div>
+                        <Play className="w-5 h-5 text-primary" />
+                      </div>
+                      <audio 
+                        src={message.content}
+                        controls
+                        className="w-full max-w-[250px]"
+                        preload="metadata"
+                      />
+                    </div>
+                  )}
+                  
+                  {mediaType === 'text' && (
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   )}
+                  
                   <p className={`text-xs mt-1 ${
                     isFromEmployee
                       ? 'text-primary-foreground/70' 
