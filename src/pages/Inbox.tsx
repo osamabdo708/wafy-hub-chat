@@ -304,6 +304,18 @@ const Inbox = () => {
       );
 
       setConversations(conversationsWithUnread);
+      
+      // If selected conversation no longer exists or has been updated, sync it
+      setSelectedConversation(prev => {
+        if (!prev) return null;
+        const updatedConv = conversationsWithUnread.find(c => c.id === prev.id);
+        if (!updatedConv) {
+          // Selected conversation was deleted or no longer available
+          return null;
+        }
+        // Return updated version of the conversation
+        return updatedConv;
+      });
     } catch (error) {
       console.error('Error fetching conversations:', error);
     } finally {
