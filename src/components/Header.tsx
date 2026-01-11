@@ -16,7 +16,7 @@ export const Header = () => {
             <img src={genieLogo} alt="Genie Logo" className="w-12 h-12" />
             <div>
               <h1 className="text-2xl font-bold text-primary">المارد</h1>
-              <p className="text-xs text-muted-foreground">منصة المحادثات الموحدة</p>
+              <p className="text-xs text-muted-foreground">المنصة التجارية الذكية</p>
             </div>
           </div>
           
