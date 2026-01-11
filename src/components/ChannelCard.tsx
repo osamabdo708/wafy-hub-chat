@@ -72,7 +72,7 @@ export const ChannelCard = ({
 
   const loadSettings = async () => {
     // Only load for supported channels
-    if (!['whatsapp', 'facebook', 'instagram'].includes(channel)) return;
+    if (!['whatsapp', 'facebook', 'instagram', 'telegram'].includes(channel)) return;
     if (!workspaceId) return;
     
     // Get the integration for this channel in THIS workspace
@@ -101,6 +101,9 @@ export const ChannelCard = ({
       } else if (channel === 'instagram') {
         const username = config?.account_name;
         setAccountInfo(username ? (username.startsWith('@') ? username : `@${username}`) : 'Instagram Account');
+      } else if (channel === 'telegram') {
+        const botName = config?.bot_username || config?.bot_name;
+        setAccountInfo(botName ? (botName.startsWith('@') ? botName : `@${botName}`) : 'Telegram Bot');
       }
     } else {
       setIsConnected(false);
