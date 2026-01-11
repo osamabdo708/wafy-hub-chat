@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { LayoutDashboard, Mail } from "lucide-react";
+import { LayoutDashboard } from "lucide-react";
 import { ChannelCard } from "@/components/ChannelCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,7 +11,6 @@ import {
   WhatsAppIcon, 
   MessengerIcon, 
   InstagramIcon, 
-  TikTokChannelIcon, 
   TelegramIcon 
 } from "@/components/ChannelIcons";
 
@@ -128,7 +127,7 @@ const Settings = () => {
         <p className="text-muted-foreground text-sm mb-4">حالة القنوات المتصلة - يتم إدارتها من قبل المشرف</p>
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <ChannelCard
           channel="whatsapp"
           name="واتساب"
@@ -148,23 +147,9 @@ const Settings = () => {
           bgColor="bg-muted"
         />
         <ChannelCard
-          channel="tiktok"
-          name="تيك توك"
-          iconComponent={<TikTokChannelIcon className="h-8 w-8" />}
-          bgColor="bg-muted"
-          comingSoon
-        />
-        <ChannelCard
           channel="telegram"
           name="تليجرام"
           iconComponent={<TelegramIcon className="h-8 w-8" />}
-          bgColor="bg-muted"
-          comingSoon
-        />
-        <ChannelCard
-          channel="email"
-          name="البريد"
-          iconComponent={<Mail className="h-8 w-8 text-muted-foreground" />}
           bgColor="bg-muted"
           comingSoon
         />
