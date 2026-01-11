@@ -426,6 +426,78 @@ async function findAllMatchingIntegrations(
 }
 
 // ============================================
+// HELPER: Fetch Meta User Info (name + profile pic)
+// ============================================
+async function fetchMetaUserInfo(
+  userId: string,
+  accessToken: string,
+  channel: string
+): Promise<{ name: string | null; profilePic: string | null }> {
+  let name: string | null = null;
+  let profilePic: string | null = null;
+
+  if (!accessToken) {
+    console.log('[UNIFIED-WEBHOOK] No access token, skipping user info fetch');
+    return { name, profilePic };
+  }
+
+  try {
+    // Different fields for different platforms
+    let fields = 'name,profile_pic';
+    if (channel === 'instagram') {
+      fields = 'name,username,profile_pic';
+    } else if (channel === 'facebook') {
+      fields = 'first_name,last_name,profile_pic';
+    }
+
+    console.log(`[UNIFIED-WEBHOOK] Fetching user info for ${userId} on ${channel}`);
+    
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${userId}?fields=${fields}&access_token=${accessToken}`,
+      { 
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`[UNIFIED-WEBHOOK] User info API error: ${response.status} - ${errorText}`);
+      return { name, profilePic };
+    }
+
+    const data = await response.json();
+    console.log('[UNIFIED-WEBHOOK] User info response:', JSON.stringify(data));
+
+    // Extract profile pic
+    profilePic = data.profile_pic || null;
+
+    // Extract name based on channel
+    if (channel === 'instagram') {
+      // Prefer name, fallback to username with @ prefix
+      if (data.name) {
+        name = data.name;
+      } else if (data.username) {
+        name = `@${data.username}`;
+      }
+    } else if (channel === 'facebook') {
+      const firstName = data.first_name || '';
+      const lastName = data.last_name || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      name = fullName || data.name || null;
+    } else {
+      name = data.name || null;
+    }
+
+    console.log(`[UNIFIED-WEBHOOK] Fetched user info: name="${name}", hasProfilePic=${!!profilePic}`);
+  } catch (e) {
+    console.log('[UNIFIED-WEBHOOK] Could not fetch user info:', e);
+  }
+
+  return { name, profilePic };
+}
+
+// ============================================
 // HELPER: Save Incoming Message (WORKSPACE-SCOPED)
 // ============================================
 async function saveIncomingMessage(
@@ -455,7 +527,7 @@ async function saveIncomingMessage(
   // Look for existing conversation in THIS workspace ONLY
   let { data: conversation } = await supabase
     .from('conversations')
-    .select('id')
+    .select('id, customer_name, customer_avatar')
     .eq('customer_phone', senderId)
     .eq('channel', channel)
     .eq('workspace_id', workspaceId)
@@ -463,38 +535,55 @@ async function saveIncomingMessage(
 
   let conversationId: string;
 
+  // Always try to fetch real user info if we have an access token
+  let realName: string | null = customerName || null;
+  let realAvatar: string | null = null;
+
+  // Fetch user info from Meta API (for Facebook/Instagram)
+  if (accessToken && (channel === 'facebook' || channel === 'instagram')) {
+    const userInfo = await fetchMetaUserInfo(senderId, accessToken, channel);
+    if (userInfo.name) {
+      realName = userInfo.name;
+    }
+    if (userInfo.profilePic) {
+      realAvatar = userInfo.profilePic;
+    }
+  }
+
+  // Fallback name if we couldn't get real name
+  const displayName = realName || `${channel.charAt(0).toUpperCase() + channel.slice(1)} User ${senderId.slice(-8)}`;
+
   if (conversation) {
     conversationId = conversation.id;
-    // Update last message time
+    
+    // Build update object - update name/avatar if we got better info
+    const updateData: any = { 
+      last_message_at: messageTime,
+      thread_id: threadId 
+    };
+
+    // Update name if we have a real name and current name is generic
+    const currentName = conversation.customer_name || '';
+    const isGenericName = currentName.includes(' User ') || currentName.startsWith('Instagram User') || currentName.startsWith('Facebook User') || currentName.startsWith('WhatsApp User');
+    
+    if (realName && (isGenericName || !currentName)) {
+      updateData.customer_name = realName;
+      console.log(`[UNIFIED-WEBHOOK] Updating conversation name from "${currentName}" to "${realName}"`);
+    }
+
+    // Update avatar if we have one and current is empty
+    if (realAvatar && !conversation.customer_avatar) {
+      updateData.customer_avatar = realAvatar;
+      console.log(`[UNIFIED-WEBHOOK] Updating conversation avatar`);
+    }
+
     await supabase
       .from('conversations')
-      .update({ 
-        last_message_at: messageTime,
-        thread_id: threadId 
-      })
+      .update(updateData)
       .eq('id', conversationId);
+    
     console.log('[UNIFIED-WEBHOOK] Updated existing conversation:', conversationId);
   } else {
-    // Get customer name if not provided
-    let name = customerName;
-    if (!name && accessToken) {
-      try {
-        const nameResponse = await fetch(
-          `https://graph.facebook.com/v21.0/${senderId}?fields=name,username&access_token=${accessToken}`
-        );
-        const nameData = await nameResponse.json();
-        if (channel === 'instagram' && nameData.username) {
-          name = `@${nameData.username}`;
-        } else if (nameData.name) {
-          name = nameData.name;
-        }
-      } catch (e) {
-        console.log('[UNIFIED-WEBHOOK] Could not fetch customer name');
-      }
-    }
-    
-    name = name || `${channel.charAt(0).toUpperCase() + channel.slice(1)} User ${senderId.slice(-8)}`;
-
     // Check workspace settings for default AI enabled
     let defaultAiEnabled = false;
     let aiAgentId: string | null = null;
@@ -534,8 +623,9 @@ async function saveIncomingMessage(
       .from('conversations')
       .insert({
         workspace_id: workspaceId,
-        customer_name: name,
+        customer_name: displayName,
         customer_phone: senderId,
+        customer_avatar: realAvatar,
         channel: channel,
         platform: `${channel}_${accountId}`,
         thread_id: threadId,
@@ -571,7 +661,7 @@ async function saveIncomingMessage(
       }
     } else {
       conversationId = newConv.id;
-      console.log('[UNIFIED-WEBHOOK] Created new conversation:', conversationId, 'in workspace:', workspaceId);
+      console.log('[UNIFIED-WEBHOOK] Created new conversation:', conversationId, 'with name:', displayName, 'in workspace:', workspaceId);
     }
   }
 
