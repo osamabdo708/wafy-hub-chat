@@ -168,10 +168,20 @@ async function handleFacebookMessage(body: any, supabase: any) {
 // ============================================
 async function handleInstagramMessage(body: any, supabase: any) {
   console.log('[UNIFIED-WEBHOOK] Processing Instagram message');
+  console.log('[UNIFIED-WEBHOOK] Instagram payload:', JSON.stringify(body, null, 2));
 
   for (const entry of body.entry || []) {
-    // Handle entry.messaging format
+    const pageId = entry.id; // This is the Instagram account ID
+    console.log('[UNIFIED-WEBHOOK] Instagram entry id:', pageId);
+    
+    // Handle entry.messaging format (standard Instagram messaging)
     for (const messaging of entry.messaging || []) {
+      // Skip echo messages (messages we sent)
+      if (messaging.message?.is_echo) {
+        console.log('[UNIFIED-WEBHOOK] Skipping Instagram echo message');
+        continue;
+      }
+
       const senderId = messaging.sender?.id;
       const recipientId = messaging.recipient?.id;
       const messageText = messaging.message?.text;
@@ -180,17 +190,51 @@ async function handleInstagramMessage(body: any, supabase: any) {
       const messageId = messaging.message?.mid;
       const timestamp = messaging.timestamp;
 
+      console.log('[UNIFIED-WEBHOOK] Instagram message from:', senderId, 'to:', recipientId, 'text:', messageText?.substring(0, 50));
+
       if (!senderId || !messageId) continue;
 
-      // Find ALL integrations matching this Instagram account
-      const integrations = await findAllMatchingIntegrations(supabase, 'instagram', recipientId);
+      // Find integrations matching this Instagram account - try both recipientId and pageId
+      let integrations = await findAllMatchingIntegrations(supabase, 'instagram', recipientId, pageId);
+      
+      // If no match, try finding any connected Instagram integration
+      if (integrations.length === 0) {
+        console.log('[UNIFIED-WEBHOOK] No exact match, trying any Instagram integration...');
+        const { data: allIgIntegrations } = await supabase
+          .from('channel_integrations')
+          .select('id, channel, account_id, workspace_id, config')
+          .eq('channel', 'instagram')
+          .eq('is_connected', true);
+        
+        if (allIgIntegrations && allIgIntegrations.length > 0) {
+          console.log('[UNIFIED-WEBHOOK] Found', allIgIntegrations.length, 'Instagram integrations');
+          integrations = allIgIntegrations as ChannelIntegration[];
+          
+          // Update integration with correct Instagram ID for future matching
+          const firstIntegration = allIgIntegrations[0];
+          if (recipientId && recipientId !== firstIntegration.account_id) {
+            await supabase
+              .from('channel_integrations')
+              .update({ 
+                account_id: recipientId,
+                config: {
+                  ...firstIntegration.config,
+                  instagram_account_id: recipientId
+                }
+              })
+              .eq('id', firstIntegration.id);
+            console.log('[UNIFIED-WEBHOOK] Updated Instagram integration with account_id:', recipientId);
+          }
+        }
+      }
       
       if (integrations.length === 0) {
-        console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integrations found for:', recipientId);
+        console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integrations found at all');
         continue;
       }
 
       for (const integration of integrations) {
+        // Skip self-messages
         if (senderId === integration.config.instagram_account_id || senderId === integration.account_id) {
           console.log('[UNIFIED-WEBHOOK] Skipping self-message for workspace:', integration.workspace_id);
           continue;
@@ -207,52 +251,61 @@ async function handleInstagramMessage(body: any, supabase: any) {
           content,
           messageId,
           timestamp,
-          accessToken: integration.config.page_access_token
+          accessToken: integration.config.page_access_token || integration.config.access_token
         });
       }
     }
 
-    // Handle entry.changes format (Instagram Messaging API)
+    // Handle entry.changes format (Instagram Messaging API - newer format)
     for (const change of entry.changes || []) {
       const value = change.value;
-      if (!value || value.messaging_product !== "instagram") continue;
-      if (!value.message) continue;
-
-      const senderId = value.sender?.id;
-      const recipientId = value.recipient?.id;
-      const messageText = value.message?.text;
-      const attachmentUrl = value.message?.attachments?.[0]?.payload?.url;
-      const content = messageText || attachmentUrl || '[Media]';
-      const messageId = value.message?.mid;
-      const timestamp = value.timestamp;
-
-      if (!senderId || !messageId) continue;
-
-      const integrations = await findAllMatchingIntegrations(supabase, 'instagram', recipientId);
+      if (!value) continue;
       
-      if (integrations.length === 0) {
-        console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integrations found for:', recipientId);
-        continue;
-      }
+      // Skip if not a message
+      if (!value.message && !value.messages) continue;
 
-      for (const integration of integrations) {
-        if (senderId === integration.config.instagram_account_id || senderId === integration.account_id) {
+      // Handle different message formats
+      const messages = value.messages || (value.message ? [{ ...value.message, from: value.sender?.id }] : []);
+      
+      for (const message of messages) {
+        const senderId = message.from || value.sender?.id;
+        const recipientId = value.recipient?.id || pageId;
+        const messageText = message.text || message.body;
+        const attachmentUrl = message.attachments?.[0]?.payload?.url;
+        const content = messageText || attachmentUrl || '[Media]';
+        const messageId = message.mid || message.id;
+        const timestamp = value.timestamp || message.timestamp;
+
+        console.log('[UNIFIED-WEBHOOK] Instagram (changes) from:', senderId, 'text:', messageText?.substring(0, 50));
+
+        if (!senderId || !messageId) continue;
+
+        const integrations = await findAllMatchingIntegrations(supabase, 'instagram', recipientId, pageId);
+        
+        if (integrations.length === 0) {
+          console.log('[UNIFIED-WEBHOOK] ❌ No Instagram integrations found for:', recipientId);
           continue;
         }
 
-        console.log('[UNIFIED-WEBHOOK] ✅ Processing Instagram (changes) for workspace:', integration.workspace_id);
+        for (const integration of integrations) {
+          if (senderId === integration.config.instagram_account_id || senderId === integration.account_id) {
+            continue;
+          }
 
-        await saveIncomingMessage(supabase, {
-          channel: 'instagram',
-          workspaceId: integration.workspace_id,
-          accountId: integration.account_id,
-          senderId,
-          recipientId,
-          content,
-          messageId,
-          timestamp,
-          accessToken: integration.config.page_access_token
-        });
+          console.log('[UNIFIED-WEBHOOK] ✅ Processing Instagram (changes) for workspace:', integration.workspace_id);
+
+          await saveIncomingMessage(supabase, {
+            channel: 'instagram',
+            workspaceId: integration.workspace_id,
+            accountId: integration.account_id,
+            senderId,
+            recipientId,
+            content,
+            messageId,
+            timestamp,
+            accessToken: integration.config.page_access_token || integration.config.access_token
+          });
+        }
       }
     }
   }
@@ -427,6 +480,8 @@ async function findAllMatchingIntegrations(
 
 // ============================================
 // HELPER: Fetch Meta User Info (name + profile pic)
+// For Instagram, the API has strict limitations on accessing user profiles
+// We use a combination of approaches to get the best available info
 // ============================================
 async function fetchMetaUserInfo(
   userId: string,
@@ -441,59 +496,57 @@ async function fetchMetaUserInfo(
     return { name, profilePic };
   }
 
+  console.log(`[UNIFIED-WEBHOOK] Fetching user info for ${userId} on ${channel}`);
+
   try {
-    // Different fields for different platforms
-    let fields = 'name,profile_pic';
     if (channel === 'instagram') {
-      fields = 'name,username,profile_pic';
-    } else if (channel === 'facebook') {
-      fields = 'first_name,last_name,profile_pic';
-    }
+      // For Instagram, try fetching user info but with realistic expectations
+      // Instagram's API has strict rate limits and often doesn't return profile info for message senders
+      const response = await fetch(
+        `https://graph.facebook.com/v21.0/${userId}?fields=name,username&access_token=${accessToken}`,
+        { signal: AbortSignal.timeout(3000) }
+      );
 
-    console.log(`[UNIFIED-WEBHOOK] Fetching user info for ${userId} on ${channel}`);
-    
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/${userId}?fields=${fields}&access_token=${accessToken}`,
-      { 
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(5000) // 5 second timeout
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log(`[UNIFIED-WEBHOOK] User info API error: ${response.status} - ${errorText}`);
-      return { name, profilePic };
-    }
-
-    const data = await response.json();
-    console.log('[UNIFIED-WEBHOOK] User info response:', JSON.stringify(data));
-
-    // Extract profile pic
-    profilePic = data.profile_pic || null;
-
-    // Extract name based on channel
-    if (channel === 'instagram') {
-      // Prefer name, fallback to username with @ prefix
-      if (data.name) {
-        name = data.name;
-      } else if (data.username) {
-        name = `@${data.username}`;
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[UNIFIED-WEBHOOK] Instagram user data:', JSON.stringify(data));
+        
+        if (data.username) {
+          name = `@${data.username}`;
+        } else if (data.name) {
+          name = data.name;
+        }
+        // Instagram API doesn't return profile_pic for messaging users
+      } else {
+        const errorText = await response.text();
+        console.log(`[UNIFIED-WEBHOOK] Instagram user API ${response.status}: ${errorText.substring(0, 200)}`);
       }
     } else if (channel === 'facebook') {
-      const firstName = data.first_name || '';
-      const lastName = data.last_name || '';
-      const fullName = `${firstName} ${lastName}`.trim();
-      name = fullName || data.name || null;
-    } else {
-      name = data.name || null;
-    }
+      // Facebook Messenger has better profile access
+      const response = await fetch(
+        `https://graph.facebook.com/v21.0/${userId}?fields=first_name,last_name,profile_pic&access_token=${accessToken}`,
+        { signal: AbortSignal.timeout(3000) }
+      );
 
-    console.log(`[UNIFIED-WEBHOOK] Fetched user info: name="${name}", hasProfilePic=${!!profilePic}`);
-  } catch (e) {
-    console.log('[UNIFIED-WEBHOOK] Could not fetch user info:', e);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[UNIFIED-WEBHOOK] Facebook user data:', JSON.stringify(data));
+        
+        const firstName = data.first_name || '';
+        const lastName = data.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        name = fullName || null;
+        profilePic = data.profile_pic || null;
+      } else {
+        const errorText = await response.text();
+        console.log(`[UNIFIED-WEBHOOK] Facebook user API ${response.status}: ${errorText.substring(0, 200)}`);
+      }
+    }
+  } catch (e: any) {
+    console.log('[UNIFIED-WEBHOOK] User info fetch error:', e?.message || e);
   }
 
+  console.log(`[UNIFIED-WEBHOOK] User info result: name="${name}", hasProfilePic=${!!profilePic}`);
   return { name, profilePic };
 }
 
