@@ -2,15 +2,32 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Phone, ShoppingCart, Crown, UserPlus, UserCheck, Star } from "lucide-react";
+import { Users, Phone, ShoppingCart, Crown, UserPlus, UserCheck, Star, MessageCircle, Package } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
+
+interface LatestOrder {
+  id: string;
+  order_number: string;
+  price: number;
+  status: string;
+  created_at: string;
+}
 
 interface Client {
   id: string;
   name: string;
   phone: string | null;
+  email: string | null;
+  avatar_url: string | null;
   created_at: string;
   order_count: number;
+  total_spent: number;
+  latest_order: LatestOrder | null;
+  conversation_count: number;
+  channel: string | null;
 }
 
 type ClientClassification = "جديد" | "عادي" | "متكرر" | "VIP";
@@ -54,13 +71,45 @@ const getClientClassification = (orderCount: number): ClassificationStyle => {
   };
 };
 
+const getInitials = (name: string) => {
+  return name
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+};
+
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('ar-SA', {
+    style: 'currency',
+    currency: 'SAR',
+    minimumFractionDigits: 0,
+  }).format(amount);
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'مكتمل':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+    case 'مؤكد':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+    case 'قيد الانتظار':
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+    case 'ملغي':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
+  }
+};
+
 const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchWorkspaceAndClients = async () => {
+    const fetchClients = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -72,9 +121,8 @@ const Clients = () => {
         .single();
 
       if (!workspace) return;
-      setWorkspaceId(workspace.id);
 
-      // Fetch clients with order count
+      // Fetch clients with their data
       const { data: clientsData } = await supabase
         .from("clients")
         .select("*")
@@ -82,33 +130,55 @@ const Clients = () => {
         .order("created_at", { ascending: false });
 
       if (clientsData) {
-        // Get order counts for each client
-        const clientsWithCounts = await Promise.all(
+        // Get enriched data for each client
+        const enrichedClients = await Promise.all(
           clientsData.map(async (client) => {
-            const { count } = await supabase
+            // Get order count and total spent
+            const { data: ordersData } = await supabase
               .from("orders")
-              .select("*", { count: "exact", head: true })
+              .select("id, order_number, price, status, created_at")
+              .eq("client_id", client.id)
+              .order("created_at", { ascending: false });
+
+            const orders = ordersData || [];
+            const orderCount = orders.length;
+            const totalSpent = orders.reduce((sum, order) => sum + (order.price || 0), 0);
+            const latestOrder = orders[0] || null;
+
+            // Get conversation count and channel
+            const { data: conversationsData } = await supabase
+              .from("conversations")
+              .select("id, channel")
               .eq("client_id", client.id);
+
+            const conversations = conversationsData || [];
+            const conversationCount = conversations.length;
+            const channel = conversations[0]?.channel || null;
 
             return {
               ...client,
-              order_count: count || 0,
+              order_count: orderCount,
+              total_spent: totalSpent,
+              latest_order: latestOrder,
+              conversation_count: conversationCount,
+              channel,
             };
           })
         );
 
-        setClients(clientsWithCounts);
+        setClients(enrichedClients);
       }
 
       setLoading(false);
     };
 
-    fetchWorkspaceAndClients();
+    fetchClients();
   }, []);
 
   const totalClients = clients.length;
   const vipClients = clients.filter(c => c.order_count >= 10).length;
   const repeatingClients = clients.filter(c => c.order_count >= 5 && c.order_count < 10).length;
+  const totalRevenue = clients.reduce((sum, c) => sum + c.total_spent, 0);
 
   return (
     <div className="p-6 space-y-6" dir="rtl">
@@ -117,7 +187,7 @@ const Clients = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">إجمالي العملاء</CardTitle>
@@ -151,6 +221,15 @@ const Clients = () => {
             <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{loading ? <Skeleton className="h-8 w-16" /> : repeatingClients}</div>
           </CardContent>
         </Card>
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">إجمالي الإيرادات</CardTitle>
+            <ShoppingCart className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary">{loading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalRevenue)}</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Clients Table */}
@@ -162,24 +241,25 @@ const Clients = () => {
           {loading ? (
             <div className="space-y-2">
               {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
           ) : clients.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>لا يوجد عملاء بعد</p>
-              <p className="text-sm">سيتم إنشاء العملاء تلقائياً عند استلام الطلبات</p>
+              <p className="text-sm">سيتم إنشاء العملاء تلقائياً عند استلام المحادثات</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="text-right font-semibold">الاسم</TableHead>
-                  <TableHead className="text-right font-semibold">الهاتف</TableHead>
-                  <TableHead className="text-right font-semibold">عدد الطلبات</TableHead>
+                  <TableHead className="text-right font-semibold">العميل</TableHead>
+                  <TableHead className="text-right font-semibold">التواصل</TableHead>
+                  <TableHead className="text-right font-semibold">الطلبات</TableHead>
+                  <TableHead className="text-right font-semibold">إجمالي المشتريات</TableHead>
+                  <TableHead className="text-right font-semibold">آخر طلب</TableHead>
                   <TableHead className="text-right font-semibold">التصنيف</TableHead>
-                  <TableHead className="text-right font-semibold">تاريخ الإنضمام</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -187,34 +267,74 @@ const Clients = () => {
                   const classification = getClientClassification(client.order_count);
                   const IconComponent = classification.icon;
                   return (
-                    <TableRow key={client.id} className="hover:bg-muted/30">
-                      <TableCell className="font-medium">{client.name}</TableCell>
+                    <TableRow key={client.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => client.latest_order && navigate(`/orders/${client.latest_order.id}`)}>
                       <TableCell>
-                        {client.phone ? (
-                          <div className="flex items-center gap-2 text-sm">
-                            <Phone className="h-4 w-4 text-muted-foreground" />
-                            <span dir="ltr">{client.phone}</span>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={client.avatar_url || undefined} alt={client.name} />
+                            <AvatarFallback className="bg-primary/10 text-primary font-medium">
+                              {getInitials(client.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{client.name}</p>
+                            {client.channel && (
+                              <Badge variant="outline" className="text-xs mt-1">
+                                {client.channel}
+                              </Badge>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {client.phone && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span dir="ltr" className="text-muted-foreground">{client.phone}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 text-sm">
+                            <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-muted-foreground">{client.conversation_count} محادثة</span>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
-                            <ShoppingCart className="h-4 w-4 text-primary" />
+                            <Package className="h-4 w-4 text-primary" />
                           </div>
                           <span className="font-semibold">{client.order_count}</span>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-semibold text-primary">
+                          {formatCurrency(client.total_spent)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {client.latest_order ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">{client.latest_order.order_number}</span>
+                              <Badge className={`text-xs ${getStatusColor(client.latest_order.status || '')}`}>
+                                {client.latest_order.status}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(client.latest_order.created_at).toLocaleDateString("ar-SA")}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">لا يوجد طلبات</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${classification.bgColor} ${classification.textColor} ${classification.borderColor}`}>
                           <IconComponent className="h-4 w-4" />
                           <span className="font-medium text-sm">{classification.label}</span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {new Date(client.created_at).toLocaleDateString("ar-SA")}
                       </TableCell>
                     </TableRow>
                   );
