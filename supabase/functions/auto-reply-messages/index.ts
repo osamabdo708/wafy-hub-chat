@@ -706,6 +706,36 @@ async function sendToChannel(supabase: any, conversation: any, message: string) 
           }
         }
       }
+    } else if (conversation.channel === 'telegram' && conversation.customer_phone) {
+      // Telegram - customer_phone contains the chat_id
+      const { data: telegramConfig } = await supabase
+        .from('channel_integrations')
+        .select('config')
+        .eq('channel', 'telegram')
+        .eq('workspace_id', conversation.workspace_id)
+        .eq('is_connected', true)
+        .maybeSingle();
+
+      if (telegramConfig?.config) {
+        const config = telegramConfig.config as any;
+        if (config.bot_token) {
+          const sendResponse = await fetch(`https://api.telegram.org/bot${config.bot_token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: conversation.customer_phone,
+              text: message,
+              parse_mode: 'HTML'
+            })
+          });
+
+          if (!sendResponse.ok) {
+            console.error(`[AI-REPLY] Telegram send error:`, await sendResponse.text());
+          } else {
+            console.log(`[AI-REPLY] ✅ Sent to telegram`);
+          }
+        }
+      }
     }
   } catch (error) {
     console.error('[AI-REPLY] Channel send error:', error);

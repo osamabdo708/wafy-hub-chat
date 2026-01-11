@@ -101,6 +101,9 @@ serve(async (req) => {
       case "whatsapp":
         result = await sendWhatsAppMessage(recipientId, message, config);
         break;
+      case "telegram":
+        result = await sendTelegramMessage(recipientId, message, config);
+        break;
       default:
         return new Response(
           JSON.stringify({ error: `Unsupported channel: ${channel}` }),
@@ -269,4 +272,43 @@ async function sendWhatsAppMessage(
   }
 
   return { success: true, messageId: data.messages?.[0]?.id };
+}
+
+// ============================================
+// TELEGRAM
+// ============================================
+async function sendTelegramMessage(
+  chatId: string,
+  message: string,
+  config: any
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const botToken = config.bot_token;
+  
+  if (!botToken) {
+    return { success: false, error: "Telegram bot token not configured" };
+  }
+
+  console.log("[SEND-MESSAGE] Sending Telegram message to chat:", chatId);
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: "HTML"
+      })
+    }
+  );
+
+  const data = await response.json();
+
+  if (!data.ok) {
+    console.error("[SEND-MESSAGE] Telegram API error:", data);
+    return { success: false, error: data.description || "Failed to send Telegram message" };
+  }
+
+  return { success: true, messageId: String(data.result.message_id) };
 }
