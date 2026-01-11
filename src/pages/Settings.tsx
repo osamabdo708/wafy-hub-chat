@@ -1,11 +1,8 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Link, Building, Mail } from "lucide-react";
+import { LayoutDashboard, Mail } from "lucide-react";
 import { ChannelCard } from "@/components/ChannelCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -95,170 +92,88 @@ const Settings = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">الإعدادات</h1>
-        <p className="text-muted-foreground mt-1">إدارة إعدادات المنصة والتكاملات</p>
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <LayoutDashboard className="w-8 h-8" />
+          لوحة التحكم
+        </h1>
+        <p className="text-muted-foreground mt-1">إدارة القنوات وإعدادات المارد الذكي</p>
       </div>
 
-      <Tabs defaultValue="channels" className="w-full">
-        <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="channels">
-            <Link className="w-4 h-4 ml-2" />
-            القنوات
-          </TabsTrigger>
-          <TabsTrigger value="business">
-            <Building className="w-4 h-4 ml-2" />
-            العمل
-          </TabsTrigger>
-          <TabsTrigger value="general">
-            <SettingsIcon className="w-4 h-4 ml-2" />
-            عام
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="channels" className="space-y-6">
-          <div>
-            <h3 className="text-lg font-bold mb-2">قنوات التواصل</h3>
-            <p className="text-muted-foreground text-sm mb-6">حالة القنوات المتصلة - يتم إدارتها من قبل المشرف</p>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <ChannelCard
-              channel="whatsapp"
-              name="واتساب"
-              iconComponent={<WhatsAppIcon className="h-8 w-8" />}
-              bgColor="bg-muted"
-            />
-            <ChannelCard
-              channel="facebook"
-              name="فيسبوك"
-              iconComponent={<MessengerIcon className="h-8 w-8" />}
-              bgColor="bg-muted"
-            />
-            <ChannelCard
-              channel="instagram"
-              name="إنستغرام"
-              iconComponent={<InstagramIcon className="h-8 w-8" />}
-              bgColor="bg-muted"
-            />
-            <ChannelCard
-              channel="tiktok"
-              name="تيك توك"
-              iconComponent={<TikTokChannelIcon className="h-8 w-8" />}
-              bgColor="bg-muted"
-              comingSoon
-            />
-            <ChannelCard
-              channel="telegram"
-              name="تليجرام"
-              iconComponent={<TelegramIcon className="h-8 w-8" />}
-              bgColor="bg-muted"
-              comingSoon
-            />
-            <ChannelCard
-              channel="email"
-              name="البريد"
-              iconComponent={<Mail className="h-8 w-8 text-muted-foreground" />}
-              bgColor="bg-muted"
-              comingSoon
-            />
-          </div>
-
-          <div className="p-4 rounded-lg bg-muted/50 border mt-4">
-            <p className="text-sm text-muted-foreground text-center">
-              💡 يتم إدارة ربط القنوات من قبل المشرف العام في لوحة التحكم
-            </p>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="business" className="space-y-4">
-          <Card className="p-6">
-            <h3 className="text-lg font-bold mb-4">معلومات العمل</h3>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="business-name">اسم العمل</Label>
-                <Input id="business-name" placeholder="اسم شركتك" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="business-email">البريد الإلكتروني</Label>
-                <Input id="business-email" type="email" placeholder="email@example.com" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="business-phone">رقم الهاتف</Label>
-                <Input id="business-phone" placeholder="+966 XXX XXX XXX" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="working-hours">ساعات العمل</Label>
-                <Input id="working-hours" placeholder="9:00 صباحاً - 5:00 مساءً" />
-              </div>
+      {/* AI Auto-Enable Card */}
+      <Card className="p-6 border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+              <img src={agentIcon} alt="المارد" className="w-9 h-9" />
             </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="general" className="space-y-4">
-          <Card className="p-6">
-            <h3 className="text-lg font-bold mb-4">الإعدادات العامة</h3>
-            <div className="space-y-4">
-              {/* Default AI Toggle - Featured */}
-              <div className="flex items-center justify-between p-4 rounded-lg border-2 border-primary/20 bg-primary/5">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                    <img src={agentIcon} alt="المارد" className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <Label className="text-base font-semibold">تفعيل المارد تلقائياً</Label>
-                    <p className="text-sm text-muted-foreground">
-                      تفعيل المارد لجميع المحادثات الجديدة بشكل افتراضي
-                    </p>
-                  </div>
-                </div>
-                <Switch 
-                  checked={defaultAiEnabled} 
-                  onCheckedChange={handleToggleDefaultAi}
-                  disabled={loadingAiSetting}
-                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-blue-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>الإشعارات</Label>
-                  <p className="text-sm text-muted-foreground">
-                    تلقي إشعارات عند وصول رسائل جديدة
-                  </p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>الإشعارات الصوتية</Label>
-                  <p className="text-sm text-muted-foreground">
-                    تشغيل صوت عند وصول رسالة جديدة
-                  </p>
-                </div>
-                <Switch />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>الوضع الداكن</Label>
-                  <p className="text-sm text-muted-foreground">
-                    تفعيل الوضع الداكن للواجهة
-                  </p>
-                </div>
-                <Switch />
-              </div>
+            <div>
+              <Label className="text-lg font-bold">تفعيل المارد تلقائياً</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                تفعيل المارد لجميع المحادثات الجديدة بشكل افتراضي
+              </p>
             </div>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          </div>
+          <Switch 
+            checked={defaultAiEnabled} 
+            onCheckedChange={handleToggleDefaultAi}
+            disabled={loadingAiSetting}
+            className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-blue-500 scale-125"
+          />
+        </div>
+      </Card>
 
-      <div className="flex justify-start gap-4">
-        <Button>حفظ التغييرات</Button>
-        <Button variant="outline">إلغاء</Button>
+      {/* Channels Section */}
+      <div>
+        <h3 className="text-lg font-bold mb-2">قنوات التواصل</h3>
+        <p className="text-muted-foreground text-sm mb-4">حالة القنوات المتصلة - يتم إدارتها من قبل المشرف</p>
+      </div>
+      
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <ChannelCard
+          channel="whatsapp"
+          name="واتساب"
+          iconComponent={<WhatsAppIcon className="h-8 w-8" />}
+          bgColor="bg-muted"
+        />
+        <ChannelCard
+          channel="facebook"
+          name="فيسبوك"
+          iconComponent={<MessengerIcon className="h-8 w-8" />}
+          bgColor="bg-muted"
+        />
+        <ChannelCard
+          channel="instagram"
+          name="إنستغرام"
+          iconComponent={<InstagramIcon className="h-8 w-8" />}
+          bgColor="bg-muted"
+        />
+        <ChannelCard
+          channel="tiktok"
+          name="تيك توك"
+          iconComponent={<TikTokChannelIcon className="h-8 w-8" />}
+          bgColor="bg-muted"
+          comingSoon
+        />
+        <ChannelCard
+          channel="telegram"
+          name="تليجرام"
+          iconComponent={<TelegramIcon className="h-8 w-8" />}
+          bgColor="bg-muted"
+          comingSoon
+        />
+        <ChannelCard
+          channel="email"
+          name="البريد"
+          iconComponent={<Mail className="h-8 w-8 text-muted-foreground" />}
+          bgColor="bg-muted"
+          comingSoon
+        />
+      </div>
+
+      <div className="p-4 rounded-lg bg-muted/50 border">
+        <p className="text-sm text-muted-foreground text-center">
+          💡 يتم إدارة ربط القنوات من قبل المشرف العام في لوحة التحكم
+        </p>
       </div>
     </div>
   );
