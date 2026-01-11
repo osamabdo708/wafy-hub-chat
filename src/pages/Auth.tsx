@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { MessageSquare, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import genieLogo from "@/assets/genie-logo.png";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -110,12 +111,12 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-accent/5 p-4">
       <Card className="w-full max-w-md p-8">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-4">
-            <MessageSquare className="w-8 h-8 text-primary-foreground" />
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4 overflow-hidden">
+            <img src={genieLogo} alt="المارد" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-center">OmniChat</h1>
+          <h1 className="text-3xl font-bold text-center">المارد</h1>
           <p className="text-muted-foreground text-center mt-2">
-            منصة المحادثات الموحدة
+            المنصة التجارية الذكية
           </p>
         </div>
 
