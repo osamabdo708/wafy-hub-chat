@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import ClientSelector from "@/components/pos/ClientSelector";
 
 // Import sound files
 import scannerBeepSound from "@/assets/scanner-beep.mp3";
@@ -72,6 +73,7 @@ interface Client {
   id: string;
   name: string;
   phone: string | null;
+  avatar_url?: string | null;
 }
 
 const POS = () => {
@@ -181,7 +183,7 @@ const POS = () => {
           .eq('is_active', true),
         supabase
           .from('clients')
-          .select('id, name, phone')
+          .select('id, name, phone, avatar_url')
           .eq('workspace_id', workspace.id)
           .neq('name', 'عميل عابر')
           .order('name')
@@ -582,33 +584,22 @@ const POS = () => {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      اختيار عميل موجود
+                      اختيار عميل
                     </Label>
-                    <Select 
-                      value={selectedClientId} 
-                      onValueChange={(value) => {
-                        setSelectedClientId(value);
-                        if (value) {
-                          const client = clients.find(c => c.id === value);
-                          if (client) {
-                            setCustomerName(client.name);
-                            setCustomerPhone(client.phone || "");
-                          }
+                    <ClientSelector
+                      clients={clients}
+                      selectedClientId={selectedClientId}
+                      onSelectClient={(clientId, client) => {
+                        setSelectedClientId(clientId);
+                        if (client) {
+                          setCustomerName(client.name);
+                          setCustomerPhone(client.phone || "");
+                        } else {
+                          setCustomerName("");
+                          setCustomerPhone("");
                         }
                       }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="اختر من العملاء الحاليين" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="new">عميل جديد</SelectItem>
-                        {clients.map(client => (
-                          <SelectItem key={client.id} value={client.id}>
-                            {client.name} {client.phone ? `(${client.phone})` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   </div>
                 )}
 
