@@ -131,6 +131,8 @@ serve(async (req) => {
             if (!messageText) continue;
 
             console.log('[WHATSAPP-WEBHOOK] Processing message:', { senderId, messageText, messageId });
+            console.log('[WHATSAPP-WEBHOOK] Full message object:', JSON.stringify(message, null, 2));
+            console.log('[WHATSAPP-WEBHOOK] Full value object:', JSON.stringify(value, null, 2));
 
             let conversationId: string;
             const threadId = `wa_${senderId}`;
@@ -140,17 +142,61 @@ serve(async (req) => {
             let customerName = `WhatsApp User ${senderId.slice(-8)}`;
             let profilePicUrl: string | null = null;
             
+            console.log('[WHATSAPP-WEBHOOK] Contacts array:', JSON.stringify(contacts, null, 2));
+            
             if (contacts.length > 0) {
-              const contact = contacts[0];
+              // Try to find the contact that matches the sender
+              let contact = contacts.find((c: any) => c.wa_id === senderId) || contacts[0];
+              
+              console.log('[WHATSAPP-WEBHOOK] Using contact:', JSON.stringify(contact, null, 2));
+              
               if (contact.profile?.name) {
                 customerName = contact.profile.name;
               }
-              // Check if profile picture is available in the contact data
-              // Note: WhatsApp webhook includes profile picture URL if user has set their profile picture
-              // and privacy settings allow it. The API doesn't provide a separate endpoint to fetch user profile pictures.
-              if (contact.profile?.picture_url) {
-                profilePicUrl = contact.profile.picture_url;
-                console.log('[WHATSAPP-WEBHOOK] Found profile picture in webhook payload');
+              
+              // Check multiple possible field names for profile picture
+              // WhatsApp Cloud API may use different field names
+              profilePicUrl = contact.profile?.picture_url || 
+                              contact.profile?.picture || 
+                              contact.profile?.profile_picture_url ||
+                              contact.profile?.profile_picture ||
+                              contact.picture_url ||
+                              contact.picture ||
+                              null;
+              
+              if (profilePicUrl) {
+                console.log('[WHATSAPP-WEBHOOK] ✅ Found profile picture:', profilePicUrl);
+              } else {
+                console.log('[WHATSAPP-WEBHOOK] ⚠️ No profile picture found in contact data');
+                console.log('[WHATSAPP-WEBHOOK] Contact profile keys:', Object.keys(contact.profile || {}));
+              }
+            } else {
+              console.log('[WHATSAPP-WEBHOOK] ⚠️ No contacts array in webhook payload');
+            }
+            
+            // Try to fetch profile picture from WhatsApp Business API if not in webhook
+            // Note: This endpoint may not work for user profile pictures, only business profile
+            if (!profilePicUrl && config.access_token && config.phone_number_id) {
+              try {
+                // Try to get user profile picture using the sender's phone number
+                // This is a workaround - WhatsApp doesn't officially support this
+                const profileResponse = await fetch(
+                  `https://graph.facebook.com/v21.0/${senderId}?fields=profile_picture_url&access_token=${config.access_token}`,
+                  { signal: AbortSignal.timeout(5000) }
+                );
+                
+                if (profileResponse.ok) {
+                  const profileData = await profileResponse.json();
+                  if (profileData.profile_picture_url) {
+                    profilePicUrl = profileData.profile_picture_url;
+                    console.log('[WHATSAPP-WEBHOOK] ✅ Fetched profile picture from API fallback');
+                  }
+                } else {
+                  const errorText = await profileResponse.text();
+                  console.log('[WHATSAPP-WEBHOOK] API fallback failed:', errorText.substring(0, 200));
+                }
+              } catch (e) {
+                console.log('[WHATSAPP-WEBHOOK] API fallback error:', e);
               }
             }
 
@@ -178,10 +224,10 @@ serve(async (req) => {
                 updateData.customer_name = customerName;
               }
               
-              // Update avatar if we have one and current is empty
-              if (profilePicUrl && !existingConv.customer_avatar) {
+              // Update avatar if we have one (always update for WhatsApp to get fresh URLs)
+              if (profilePicUrl) {
                 updateData.customer_avatar = profilePicUrl;
-                console.log('[WHATSAPP-WEBHOOK] Updating conversation with profile picture');
+                console.log('[WHATSAPP-WEBHOOK] ✅ Updating conversation with profile picture:', profilePicUrl);
               }
               
               await supabase
