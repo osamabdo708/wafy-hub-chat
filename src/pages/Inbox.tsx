@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ interface ConnectedChannel {
 }
 
 const Inbox = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -59,6 +61,7 @@ const Inbox = () => {
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const conversationIdFromUrl = searchParams.get('conversation');
 
   // Fetch connected channels first
   useEffect(() => {
@@ -305,17 +308,31 @@ const Inbox = () => {
 
       setConversations(conversationsWithUnread);
       
-      // If selected conversation no longer exists or has been updated, sync it
-      setSelectedConversation(prev => {
-        if (!prev) return null;
-        const updatedConv = conversationsWithUnread.find(c => c.id === prev.id);
-        if (!updatedConv) {
-          // Selected conversation was deleted or no longer available
-          return null;
+      // If there's a conversation ID in URL, auto-select it
+      if (conversationIdFromUrl) {
+        const targetConv = conversationsWithUnread.find(c => c.id === conversationIdFromUrl);
+        if (targetConv) {
+          setSelectedConversation(targetConv);
+          // Mark messages as read
+          if (targetConv.unread_count && targetConv.unread_count > 0) {
+            markMessagesAsRead(targetConv.id);
+          }
+          // Clear the URL parameter after selecting
+          setSearchParams({});
         }
-        // Return updated version of the conversation
-        return updatedConv;
-      });
+      } else {
+        // If selected conversation no longer exists or has been updated, sync it
+        setSelectedConversation(prev => {
+          if (!prev) return null;
+          const updatedConv = conversationsWithUnread.find(c => c.id === prev.id);
+          if (!updatedConv) {
+            // Selected conversation was deleted or no longer available
+            return null;
+          }
+          // Return updated version of the conversation
+          return updatedConv;
+        });
+      }
     } catch (error) {
       console.error('Error fetching conversations:', error);
     } finally {
