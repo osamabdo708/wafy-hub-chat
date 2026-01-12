@@ -510,22 +510,10 @@ async function fetchUserInfo(
 
   try {
     if (channel === 'whatsapp') {
-      try {
-        // Use checkleaked.cc to get the profile picture
-        // The URL pattern is https://whatsapp-db.checkleaked.com/{phoneNumber}.jpg
-        const checkLeakedUrl = `https://whatsapp-db.checkleaked.com/${userId}.jpg`;
-        
-        // Verify if the image exists
-        const response = await fetch(checkLeakedUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-        if (response.ok) {
-          profilePic = checkLeakedUrl;
-          console.log(`[UNIFIED-WEBHOOK] WhatsApp profile pic found: ${profilePic}`);
-        } else {
-          console.log(`[UNIFIED-WEBHOOK] WhatsApp profile pic not found at ${checkLeakedUrl}`);
-        }
-      } catch (e: any) {
-        console.log('[UNIFIED-WEBHOOK] WhatsApp profile fetch error:', e?.message || e);
-      }
+      // WhatsApp Cloud API doesn't provide profile pictures for privacy reasons
+      // The contact name comes from the webhook payload itself
+      // We can only use default avatar with initials
+      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures not available via API (privacy restriction)');
     } else if (channel === 'instagram') {
       // Instagram has very limited profile access for messaging users
       // Try to get username at least
@@ -678,8 +666,8 @@ async function saveIncomingMessage(
   let realName: string | null = customerName || null;
   let realAvatar: string | null = null;
 
-  // Fetch user info (for Facebook/Instagram/WhatsApp)
-  if (channel === 'facebook' || channel === 'instagram' || channel === 'whatsapp') {
+  // Fetch user info (for Facebook/Instagram)
+  if (channel === 'facebook' || channel === 'instagram') {
     const userInfo = await fetchUserInfo(senderId, accessToken || null, channel);
     if (userInfo.name) {
       realName = userInfo.name;
