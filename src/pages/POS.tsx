@@ -304,12 +304,13 @@ const POS = () => {
         if (existingClient) {
           walkInClientId = existingClient.id;
         } else {
-          // Create the walk-in client
+          // Create the walk-in client with avatar
           const { data: newClient, error: clientError } = await supabase
             .from('clients')
             .insert({
               workspace_id: workspace.id,
-              name: 'عميل عابر'
+              name: 'عميل عابر',
+              avatar_url: '/images/walk-in-customer.png'
             })
             .select('id')
             .single();
