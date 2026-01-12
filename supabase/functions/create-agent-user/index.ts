@@ -93,15 +93,15 @@ Deno.serve(async (req) => {
 
     const newUserId = authData.user.id;
 
-    // Create profile for the agent
+    // Create or update profile for the agent (use upsert in case trigger already created it)
     const { error: profileError } = await supabase
       .from("profiles")
-      .insert({
+      .upsert({
         id: newUserId,
         email: email,
         full_name: name,
         avatar_url: avatar_url || null,
-      });
+      }, { onConflict: 'id' });
 
     if (profileError) {
       console.error("Error creating profile:", profileError);
