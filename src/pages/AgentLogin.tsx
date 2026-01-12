@@ -31,7 +31,7 @@ const AgentLogin = () => {
 
     if (result.success) {
       toast.success("تم تسجيل الدخول بنجاح");
-      navigate("/inbox");
+      navigate("/agent/inbox");
     } else {
       toast.error(result.error || "فشل في تسجيل الدخول");
     }
