@@ -24,6 +24,9 @@ export type Database = {
           is_system: boolean | null
           is_user_agent: boolean | null
           name: string
+          password_hash: string | null
+          session_expires_at: string | null
+          session_token: string | null
           updated_at: string
           user_id: string | null
           workspace_id: string | null
@@ -37,6 +40,9 @@ export type Database = {
           is_system?: boolean | null
           is_user_agent?: boolean | null
           name: string
+          password_hash?: string | null
+          session_expires_at?: string | null
+          session_token?: string | null
           updated_at?: string
           user_id?: string | null
           workspace_id?: string | null
@@ -50,6 +56,9 @@ export type Database = {
           is_system?: boolean | null
           is_user_agent?: boolean | null
           name?: string
+          password_hash?: string | null
+          session_expires_at?: string | null
+          session_token?: string | null
           updated_at?: string
           user_id?: string | null
           workspace_id?: string | null

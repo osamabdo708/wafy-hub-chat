@@ -1,9 +1,19 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { encode } from "https://deno.land/std@0.208.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Simple password hashing using Web Crypto API
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = new Uint8Array(hashBuffer);
+  return encode(hashArray);
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -70,58 +80,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create the auth user
-    const { data: authData, error: createUserError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true, // Auto-confirm email
-      user_metadata: {
-        full_name: name,
-        avatar_url: avatar_url || null,
-        is_agent: true,
-        workspace_id: workspace_id,
-      },
-    });
+    // Check if email is already used by another agent
+    const { data: existingAgent } = await supabase
+      .from("agents")
+      .select("id")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
 
-    if (createUserError) {
-      console.error("Error creating auth user:", createUserError);
+    if (existingAgent) {
       return new Response(
-        JSON.stringify({ error: createUserError.message }),
+        JSON.stringify({ error: "هذا البريد الإلكتروني مستخدم بالفعل" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const newUserId = authData.user.id;
+    // Hash the password
+    const passwordHash = await hashPassword(password);
 
-    // Create or update profile for the agent (use upsert in case trigger already created it)
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: newUserId,
-        email: email,
-        full_name: name,
-        avatar_url: avatar_url || null,
-      }, { onConflict: 'id' });
-
-    if (profileError) {
-      console.error("Error creating profile:", profileError);
-      // Rollback - delete the auth user
-      await supabase.auth.admin.deleteUser(newUserId);
-      return new Response(
-        JSON.stringify({ error: "Failed to create profile" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Create the agent record linked to the auth user
+    // Create the agent record with hashed password (no auth user needed)
     const { data: agent, error: agentError } = await supabase
       .from("agents")
       .insert({
         name,
-        email,
+        email: email.toLowerCase(),
         avatar_url: avatar_url || null,
         workspace_id,
-        user_id: newUserId,
+        password_hash: passwordHash,
         is_ai: false,
         is_system: false,
         is_user_agent: true,
@@ -131,9 +115,6 @@ Deno.serve(async (req) => {
 
     if (agentError) {
       console.error("Error creating agent:", agentError);
-      // Rollback - delete the auth user and profile
-      await supabase.from("profiles").delete().eq("id", newUserId);
-      await supabase.auth.admin.deleteUser(newUserId);
       return new Response(
         JSON.stringify({ error: "Failed to create agent" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -143,8 +124,14 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        agent,
-        message: "Agent user created successfully" 
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          email: agent.email,
+          avatar_url: agent.avatar_url,
+          is_user_agent: agent.is_user_agent,
+        },
+        message: "Agent created successfully" 
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
