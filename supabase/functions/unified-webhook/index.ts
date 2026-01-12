@@ -395,10 +395,22 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
           continue;
         }
 
-        // Get contact name
+        // Get contact name and profile picture from contacts array
         let customerName = `WhatsApp User ${senderId.slice(-8)}`;
-        if (contacts.length > 0 && contacts[0].profile?.name) {
-          customerName = contacts[0].profile.name;
+        let profilePicUrl: string | null = null;
+        
+        if (contacts.length > 0) {
+          const contact = contacts[0];
+          if (contact.profile?.name) {
+            customerName = contact.profile.name;
+          }
+          // Check if profile picture is available in the contact data
+          // Note: WhatsApp webhook includes profile picture URL if user has set their profile picture
+          // and privacy settings allow it. The API doesn't provide a separate endpoint to fetch user profile pictures.
+          if (contact.profile?.picture_url) {
+            profilePicUrl = contact.profile.picture_url;
+            console.log('[UNIFIED-WEBHOOK] Found WhatsApp profile picture in webhook payload');
+          }
         }
 
         for (const integration of integrations) {
@@ -415,7 +427,8 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
             timestamp: parseInt(timestamp) * 1000,
             accessToken: integration.config.access_token || integration.config.page_access_token,
             customerName,
-            phoneNumberId // Pass phone_number_id for profile picture fetching
+            phoneNumberId, // Pass phone_number_id for profile picture fetching
+            profilePicUrl: profilePicUrl // Pass the profile picture URL from webhook
           });
         }
       }
@@ -510,10 +523,11 @@ async function fetchUserInfo(
 
   try {
     if (channel === 'whatsapp') {
-      // WhatsApp Cloud API doesn't provide profile pictures for privacy reasons
-      // The contact name comes from the webhook payload itself
-      // We can only use default avatar with initials
-      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures not available via API (privacy restriction)');
+      // WhatsApp Cloud API doesn't provide a separate endpoint to fetch user profile pictures
+      // Profile pictures are only available in the webhook payload's contacts array if the user
+      // has set their profile picture and privacy settings allow it.
+      // The profile picture URL should be extracted from the webhook payload before calling this function.
+      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures must be extracted from webhook payload');
     } else if (channel === 'instagram') {
       // Instagram has very limited profile access for messaging users
       // Try to get username at least
@@ -640,9 +654,10 @@ async function saveIncomingMessage(
     accessToken?: string;
     customerName?: string;
     phoneNumberId?: string; // For WhatsApp profile picture fetching
+    profilePicUrl?: string | null; // Profile picture URL (for WhatsApp)
   }
 ) {
-  const { channel, workspaceId, accountId, senderId, recipientId, content, messageId, timestamp, accessToken, customerName, phoneNumberId } = params;
+  const { channel, workspaceId, accountId, senderId, recipientId, content, messageId, timestamp, accessToken, customerName, phoneNumberId, profilePicUrl } = params;
 
   // Generate workspace-scoped message key for deduplication
   const workspaceScopedMessageId = `${workspaceId}_${messageId}`;
@@ -664,7 +679,7 @@ async function saveIncomingMessage(
 
   // Always try to fetch real user info if we have an access token
   let realName: string | null = customerName || null;
-  let realAvatar: string | null = null;
+  let realAvatar: string | null = profilePicUrl || null;
 
   // Fetch user info (for Facebook/Instagram)
   if (channel === 'facebook' || channel === 'instagram') {
@@ -675,6 +690,11 @@ async function saveIncomingMessage(
     if (userInfo.profilePic) {
       realAvatar = userInfo.profilePic;
     }
+  }
+  
+  // For WhatsApp, use the profilePicUrl passed from webhook if available
+  if (channel === 'whatsapp' && profilePicUrl) {
+    realAvatar = profilePicUrl;
   }
 
   // Fallback name if we couldn't get real name
@@ -698,8 +718,8 @@ async function saveIncomingMessage(
       console.log(`[UNIFIED-WEBHOOK] Updating conversation name from "${currentName}" to "${realName}"`);
     }
 
-    // Update avatar if we have one and current is empty
-    if (realAvatar && !conversation.customer_avatar) {
+    // Update avatar if we have one and current is empty (or for WhatsApp, always update if we have a fresh one)
+    if (realAvatar && (!conversation.customer_avatar || channel === 'whatsapp')) {
       updateData.customer_avatar = realAvatar;
       console.log(`[UNIFIED-WEBHOOK] Updating conversation avatar`);
     }
