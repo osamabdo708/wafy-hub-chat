@@ -6,128 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper function to fetch WhatsApp profile picture from toolzin.com
-async function fetchWhatsAppProfilePicture(phoneNumber: string): Promise<string | null> {
-  try {
-    // Format phone number: remove + and any spaces, ensure it's just digits
-    const cleanPhone = phoneNumber.replace(/[+\s-()]/g, '');
-    
-    console.log('[UNIFIED-WEBHOOK] Fetching profile picture from toolzin.com for:', cleanPhone);
-    
-    // Try multiple endpoints and methods
-    const endpoints = [
-      `https://toolzin.com/tools/whatsapp-dp-downloader/?phone=${cleanPhone}`,
-      `https://toolzin.com/api/whatsapp-dp?phone=${cleanPhone}`,
-      `https://toolzin.com/api/v1/whatsapp-dp?phone=${cleanPhone}`,
-    ];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Referer': 'https://toolzin.com/',
-          },
-          signal: AbortSignal.timeout(10000)
-        });
-        
-        if (!response.ok) {
-          console.log(`[UNIFIED-WEBHOOK] toolzin.com request failed for ${endpoint}:`, response.status);
-          continue;
-        }
-        
-        const contentType = response.headers.get('content-type') || '';
-        
-        // If it's JSON, parse it directly
-        if (contentType.includes('application/json')) {
-          const jsonData = await response.json();
-          const imageUrl = jsonData.imageUrl || jsonData.profile_picture || jsonData.url || jsonData.image || jsonData.data?.url;
-          if (imageUrl) {
-            console.log('[UNIFIED-WEBHOOK] ✅ Found profile picture URL from JSON:', imageUrl);
-            return imageUrl;
-          }
-        }
-        
-        // Otherwise, parse HTML
-        const html = await response.text();
-        
-        // Try to extract image URL from the HTML response using multiple patterns
-        const imageUrlPatterns = [
-          // Direct img tags with profile picture
-          /<img[^>]+src=["']([^"']*(?:profile|whatsapp|dp)[^"']*\.(?:jpg|jpeg|png|webp))["']/i,
-          // Any img tag with image URL
-          /<img[^>]+src=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp))["']/i,
-          // JSON in script tags
-          /"imageUrl"\s*:\s*"([^"]+)"/i,
-          /"profile_picture"\s*:\s*"([^"]+)"/i,
-          /"url"\s*:\s*"([^"]+\.(?:jpg|jpeg|png|webp))"/i,
-          // Data attributes
-          /data-image=["']([^"']+)["']/i,
-          /data-src=["']([^"']+\.(?:jpg|jpeg|png|webp))["']/i,
-          // Any HTTPS image URL in the response
-          /(https?:\/\/[^\s"']+\.(?:jpg|jpeg|png|webp))/i
-        ];
-        
-        for (const pattern of imageUrlPatterns) {
-          const matches = html.matchAll(new RegExp(pattern.source, 'gi'));
-          for (const match of matches) {
-            if (match[1] && match[1].includes('http')) {
-              let imageUrl = match[1];
-              // Clean up the URL
-              imageUrl = imageUrl.replace(/['"]/g, '').trim();
-              // Ensure it's a full URL
-              if (imageUrl.startsWith('//')) {
-                imageUrl = 'https:' + imageUrl;
-              } else if (imageUrl.startsWith('/')) {
-                imageUrl = 'https://toolzin.com' + imageUrl;
-              }
-              
-              // Validate it's actually an image URL
-              if (imageUrl.match(/https?:\/\/.+\.(jpg|jpeg|png|webp)/i)) {
-                console.log('[UNIFIED-WEBHOOK] ✅ Found profile picture URL:', imageUrl);
-                return imageUrl;
-              }
-            }
-          }
-        }
-        
-        // Try to find JSON in script tags
-        const scriptMatches = html.match(/<script[^>]*>(.*?)<\/script>/gis);
-        if (scriptMatches) {
-          for (const script of scriptMatches) {
-            try {
-              const jsonMatch = script.match(/\{.*"imageUrl".*\}/i) || script.match(/\{.*"profile_picture".*\}/i);
-              if (jsonMatch) {
-                const jsonData = JSON.parse(jsonMatch[0]);
-                const imageUrl = jsonData.imageUrl || jsonData.profile_picture || jsonData.url;
-                if (imageUrl) {
-                  console.log('[UNIFIED-WEBHOOK] ✅ Found profile picture URL from script JSON:', imageUrl);
-                  return imageUrl;
-                }
-              }
-            } catch (e) {
-              // Not valid JSON, continue
-            }
-          }
-        }
-        
-      } catch (e) {
-        console.log(`[UNIFIED-WEBHOOK] Error trying endpoint ${endpoint}:`, e);
-        continue;
-      }
-    }
-    
-    console.log('[UNIFIED-WEBHOOK] ⚠️ Could not extract profile picture URL from toolzin.com');
-    return null;
-  } catch (error) {
-    console.error('[UNIFIED-WEBHOOK] Error fetching profile picture from toolzin.com:', error);
-    return null;
-  }
-}
-
 // Helper to get app setting from database with fallback to env
 async function getAppSetting(supabase: any, key: string): Promise<string | null> {
   try {
@@ -517,56 +395,14 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
           continue;
         }
 
-        // Get contact name and profile picture from contacts array
+        // Get contact name
         let customerName = `WhatsApp User ${senderId.slice(-8)}`;
-        let profilePicUrl: string | null = null;
-        
-        console.log('[UNIFIED-WEBHOOK] WhatsApp contacts array:', JSON.stringify(contacts, null, 2));
-        
-        if (contacts.length > 0) {
-          // Try to find the contact that matches the sender
-          let contact = contacts.find((c: any) => c.wa_id === senderId) || contacts[0];
-          
-          console.log('[UNIFIED-WEBHOOK] Using contact:', JSON.stringify(contact, null, 2));
-          
-          if (contact.profile?.name) {
-            customerName = contact.profile.name;
-          }
-          
-          // Check multiple possible field names for profile picture
-          // WhatsApp Cloud API may use different field names
-          profilePicUrl = contact.profile?.picture_url || 
-                          contact.profile?.picture || 
-                          contact.profile?.profile_picture_url ||
-                          contact.profile?.profile_picture ||
-                          contact.picture_url ||
-                          contact.picture ||
-                          null;
-          
-          if (profilePicUrl) {
-            console.log('[UNIFIED-WEBHOOK] ✅ Found WhatsApp profile picture:', profilePicUrl);
-          } else {
-            console.log('[UNIFIED-WEBHOOK] ⚠️ No profile picture found in contact data');
-            console.log('[UNIFIED-WEBHOOK] Contact profile keys:', Object.keys(contact.profile || {}));
-          }
-        } else {
-          console.log('[UNIFIED-WEBHOOK] ⚠️ No contacts array in WhatsApp webhook payload');
+        if (contacts.length > 0 && contacts[0].profile?.name) {
+          customerName = contacts[0].profile.name;
         }
 
         for (const integration of integrations) {
           console.log('[UNIFIED-WEBHOOK] ✅ Processing WhatsApp for workspace:', integration.workspace_id);
-
-          // Try to fetch profile picture from toolzin.com if not in webhook
-          let finalProfilePic = profilePicUrl;
-          if (!finalProfilePic) {
-            console.log('[UNIFIED-WEBHOOK] Attempting to fetch profile picture from toolzin.com...');
-            finalProfilePic = await fetchWhatsAppProfilePicture(senderId);
-            if (finalProfilePic) {
-              console.log('[UNIFIED-WEBHOOK] ✅ Successfully fetched profile picture from toolzin.com');
-            } else {
-              console.log('[UNIFIED-WEBHOOK] ⚠️ Could not fetch profile picture from toolzin.com');
-            }
-          }
 
           await saveIncomingMessage(supabase, {
             channel: 'whatsapp',
@@ -579,8 +415,7 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
             timestamp: parseInt(timestamp) * 1000,
             accessToken: integration.config.access_token || integration.config.page_access_token,
             customerName,
-            phoneNumberId, // Pass phone_number_id for profile picture fetching
-            profilePicUrl: finalProfilePic // Pass the profile picture URL from webhook or toolzin.com
+            phoneNumberId // Pass phone_number_id for profile picture fetching
           });
         }
       }
@@ -675,11 +510,10 @@ async function fetchUserInfo(
 
   try {
     if (channel === 'whatsapp') {
-      // WhatsApp Cloud API doesn't provide a separate endpoint to fetch user profile pictures
-      // Profile pictures are only available in the webhook payload's contacts array if the user
-      // has set their profile picture and privacy settings allow it.
-      // The profile picture URL should be extracted from the webhook payload before calling this function.
-      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures must be extracted from webhook payload');
+      // WhatsApp Cloud API doesn't provide profile pictures for privacy reasons
+      // The contact name comes from the webhook payload itself
+      // We can only use default avatar with initials
+      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures not available via API (privacy restriction)');
     } else if (channel === 'instagram') {
       // Instagram has very limited profile access for messaging users
       // Try to get username at least
@@ -806,10 +640,9 @@ async function saveIncomingMessage(
     accessToken?: string;
     customerName?: string;
     phoneNumberId?: string; // For WhatsApp profile picture fetching
-    profilePicUrl?: string | null; // Profile picture URL (for WhatsApp)
   }
 ) {
-  const { channel, workspaceId, accountId, senderId, recipientId, content, messageId, timestamp, accessToken, customerName, phoneNumberId, profilePicUrl } = params;
+  const { channel, workspaceId, accountId, senderId, recipientId, content, messageId, timestamp, accessToken, customerName, phoneNumberId } = params;
 
   // Generate workspace-scoped message key for deduplication
   const workspaceScopedMessageId = `${workspaceId}_${messageId}`;
@@ -831,7 +664,7 @@ async function saveIncomingMessage(
 
   // Always try to fetch real user info if we have an access token
   let realName: string | null = customerName || null;
-  let realAvatar: string | null = profilePicUrl || null;
+  let realAvatar: string | null = null;
 
   // Fetch user info (for Facebook/Instagram)
   if (channel === 'facebook' || channel === 'instagram') {
@@ -842,11 +675,6 @@ async function saveIncomingMessage(
     if (userInfo.profilePic) {
       realAvatar = userInfo.profilePic;
     }
-  }
-  
-  // For WhatsApp, use the profilePicUrl passed from webhook if available
-  if (channel === 'whatsapp' && profilePicUrl) {
-    realAvatar = profilePicUrl;
   }
 
   // Fallback name if we couldn't get real name
@@ -870,8 +698,8 @@ async function saveIncomingMessage(
       console.log(`[UNIFIED-WEBHOOK] Updating conversation name from "${currentName}" to "${realName}"`);
     }
 
-    // Update avatar if we have one and current is empty (or for WhatsApp, always update if we have a fresh one)
-    if (realAvatar && (!conversation.customer_avatar || channel === 'whatsapp')) {
+    // Update avatar if we have one and current is empty
+    if (realAvatar && !conversation.customer_avatar) {
       updateData.customer_avatar = realAvatar;
       console.log(`[UNIFIED-WEBHOOK] Updating conversation avatar`);
     }
