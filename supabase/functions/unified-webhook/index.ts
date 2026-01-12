@@ -399,22 +399,66 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
         let customerName = `WhatsApp User ${senderId.slice(-8)}`;
         let profilePicUrl: string | null = null;
         
+        console.log('[UNIFIED-WEBHOOK] WhatsApp contacts array:', JSON.stringify(contacts, null, 2));
+        
         if (contacts.length > 0) {
-          const contact = contacts[0];
+          // Try to find the contact that matches the sender
+          let contact = contacts.find((c: any) => c.wa_id === senderId) || contacts[0];
+          
+          console.log('[UNIFIED-WEBHOOK] Using contact:', JSON.stringify(contact, null, 2));
+          
           if (contact.profile?.name) {
             customerName = contact.profile.name;
           }
-          // Check if profile picture is available in the contact data
-          // Note: WhatsApp webhook includes profile picture URL if user has set their profile picture
-          // and privacy settings allow it. The API doesn't provide a separate endpoint to fetch user profile pictures.
-          if (contact.profile?.picture_url) {
-            profilePicUrl = contact.profile.picture_url;
-            console.log('[UNIFIED-WEBHOOK] Found WhatsApp profile picture in webhook payload');
+          
+          // Check multiple possible field names for profile picture
+          // WhatsApp Cloud API may use different field names
+          profilePicUrl = contact.profile?.picture_url || 
+                          contact.profile?.picture || 
+                          contact.profile?.profile_picture_url ||
+                          contact.profile?.profile_picture ||
+                          contact.picture_url ||
+                          contact.picture ||
+                          null;
+          
+          if (profilePicUrl) {
+            console.log('[UNIFIED-WEBHOOK] ✅ Found WhatsApp profile picture:', profilePicUrl);
+          } else {
+            console.log('[UNIFIED-WEBHOOK] ⚠️ No profile picture found in contact data');
+            console.log('[UNIFIED-WEBHOOK] Contact profile keys:', Object.keys(contact.profile || {}));
           }
+        } else {
+          console.log('[UNIFIED-WEBHOOK] ⚠️ No contacts array in WhatsApp webhook payload');
         }
 
         for (const integration of integrations) {
           console.log('[UNIFIED-WEBHOOK] ✅ Processing WhatsApp for workspace:', integration.workspace_id);
+
+          // Try to fetch profile picture from WhatsApp Business API if not in webhook
+          let finalProfilePic = profilePicUrl;
+          if (!finalProfilePic && integration.config.access_token && phoneNumberId) {
+            try {
+              // Try alternative: Use the phone number ID endpoint (this might not work for user profiles)
+              // WhatsApp doesn't officially support fetching user profile pictures via API
+              const profileResponse = await fetch(
+                `https://graph.facebook.com/v21.0/${senderId}?fields=profile_picture_url&access_token=${integration.config.access_token}`,
+                { signal: AbortSignal.timeout(5000) }
+              );
+              
+              if (profileResponse.ok) {
+                const profileData = await profileResponse.json();
+                if (profileData.profile_picture_url) {
+                  finalProfilePic = profileData.profile_picture_url;
+                  console.log('[UNIFIED-WEBHOOK] ✅ Fetched profile picture from API fallback');
+                }
+              } else {
+                const errorText = await profileResponse.text();
+                console.log('[UNIFIED-WEBHOOK] API fallback failed:', errorText.substring(0, 200));
+              }
+            } catch (e) {
+              console.log('[UNIFIED-WEBHOOK] API fallback error:', e);
+            }
+          }
 
           await saveIncomingMessage(supabase, {
             channel: 'whatsapp',
@@ -428,7 +472,7 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
             accessToken: integration.config.access_token || integration.config.page_access_token,
             customerName,
             phoneNumberId, // Pass phone_number_id for profile picture fetching
-            profilePicUrl: profilePicUrl // Pass the profile picture URL from webhook
+            profilePicUrl: finalProfilePic // Pass the profile picture URL from webhook or API
           });
         }
       }
