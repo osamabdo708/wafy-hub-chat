@@ -183,10 +183,10 @@ serve(async (req) => {
             updateData.customer_name = customerName;
           }
           
-          // Update avatar if we have one and current is empty
-          if (profilePicUrl && !conversation.customer_avatar) {
+          // Always update avatar if we have a fresh one (Telegram file URLs expire)
+          if (profilePicUrl) {
             updateData.customer_avatar = profilePicUrl;
-            console.log('[TELEGRAM-WEBHOOK] Updating conversation with profile pic');
+            console.log('[TELEGRAM-WEBHOOK] Updating conversation with fresh profile pic');
           }
           
           await supabase
