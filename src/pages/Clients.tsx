@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Phone, ShoppingCart, Crown, UserPlus, UserCheck, Star, MessageCircle, Package } from "lucide-react";
+import { Users, Phone, ShoppingCart, Crown, UserPlus, UserCheck, Star, Package } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
-
+import { getChannelIconComponent } from "@/components/ChannelIcons";
+import chatIcon from "@/assets/chat-icon.png";
 interface LatestOrder {
   id: string;
   order_number: string;
@@ -28,6 +29,7 @@ interface Client {
   latest_order: LatestOrder | null;
   conversation_count: number;
   channel: string | null;
+  conversation_id: string | null;
 }
 
 type ClientClassification = "جديد" | "عادي" | "متكرر" | "VIP";
@@ -149,11 +151,13 @@ const Clients = () => {
             const { data: conversationsData } = await supabase
               .from("conversations")
               .select("id, channel")
-              .eq("client_id", client.id);
+              .eq("client_id", client.id)
+              .order("last_message_at", { ascending: false });
 
             const conversations = conversationsData || [];
             const conversationCount = conversations.length;
             const channel = conversations[0]?.channel || null;
+            const conversationId = conversations[0]?.id || null;
 
             return {
               ...client,
@@ -162,6 +166,7 @@ const Clients = () => {
               latest_order: latestOrder,
               conversation_count: conversationCount,
               channel,
+              conversation_id: conversationId,
             };
           })
         );
@@ -256,6 +261,7 @@ const Clients = () => {
                 <TableRow className="bg-muted/50">
                   <TableHead className="text-right font-semibold">العميل</TableHead>
                   <TableHead className="text-right font-semibold">التواصل</TableHead>
+                  <TableHead className="text-right font-semibold">المحادثة</TableHead>
                   <TableHead className="text-right font-semibold">الطلبات</TableHead>
                   <TableHead className="text-right font-semibold">إجمالي المشتريات</TableHead>
                   <TableHead className="text-right font-semibold">آخر طلب</TableHead>
@@ -267,7 +273,7 @@ const Clients = () => {
                   const classification = getClientClassification(client.order_count);
                   const IconComponent = classification.icon;
                   return (
-                    <TableRow key={client.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => client.latest_order && navigate(`/orders/${client.latest_order.id}`)}>
+                    <TableRow key={client.id} className="hover:bg-muted/30">
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
@@ -279,9 +285,10 @@ const Clients = () => {
                           <div>
                             <p className="font-medium">{client.name}</p>
                             {client.channel && (
-                              <Badge variant="outline" className="text-xs mt-1">
-                                {client.channel}
-                              </Badge>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                {getChannelIconComponent(client.channel, "w-4 h-4")}
+                                <span className="text-xs text-muted-foreground capitalize">{client.channel}</span>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -294,19 +301,40 @@ const Clients = () => {
                               <span dir="ltr" className="text-muted-foreground">{client.phone}</span>
                             </div>
                           )}
-                          <div className="flex items-center gap-2 text-sm">
-                            <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-muted-foreground">{client.conversation_count} محادثة</span>
+                          <div className="text-sm text-muted-foreground">
+                            {client.conversation_count} محادثة
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
+                        {client.conversation_id ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/inbox?conversation=${client.conversation_id}`);
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors"
+                          >
+                            <img src={chatIcon} alt="Chat" className="w-5 h-5" />
+                            <span className="text-sm font-medium text-primary">فتح المحادثة</span>
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">لا يوجد محادثة</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/orders?client=${client.id}`);
+                          }}
+                          className="flex items-center gap-2 hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors"
+                        >
                           <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
                             <Package className="h-4 w-4 text-primary" />
                           </div>
-                          <span className="font-semibold">{client.order_count}</span>
-                        </div>
+                          <span className="font-semibold text-primary underline-offset-2 hover:underline">{client.order_count}</span>
+                        </button>
                       </TableCell>
                       <TableCell>
                         <span className="font-semibold text-primary">
