@@ -6,6 +6,128 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to fetch WhatsApp profile picture from toolzin.com
+async function fetchWhatsAppProfilePicture(phoneNumber: string): Promise<string | null> {
+  try {
+    // Format phone number: remove + and any spaces, ensure it's just digits
+    const cleanPhone = phoneNumber.replace(/[+\s-()]/g, '');
+    
+    console.log('[UNIFIED-WEBHOOK] Fetching profile picture from toolzin.com for:', cleanPhone);
+    
+    // Try multiple endpoints and methods
+    const endpoints = [
+      `https://toolzin.com/tools/whatsapp-dp-downloader/?phone=${cleanPhone}`,
+      `https://toolzin.com/api/whatsapp-dp?phone=${cleanPhone}`,
+      `https://toolzin.com/api/v1/whatsapp-dp?phone=${cleanPhone}`,
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://toolzin.com/',
+          },
+          signal: AbortSignal.timeout(10000)
+        });
+        
+        if (!response.ok) {
+          console.log(`[UNIFIED-WEBHOOK] toolzin.com request failed for ${endpoint}:`, response.status);
+          continue;
+        }
+        
+        const contentType = response.headers.get('content-type') || '';
+        
+        // If it's JSON, parse it directly
+        if (contentType.includes('application/json')) {
+          const jsonData = await response.json();
+          const imageUrl = jsonData.imageUrl || jsonData.profile_picture || jsonData.url || jsonData.image || jsonData.data?.url;
+          if (imageUrl) {
+            console.log('[UNIFIED-WEBHOOK] ✅ Found profile picture URL from JSON:', imageUrl);
+            return imageUrl;
+          }
+        }
+        
+        // Otherwise, parse HTML
+        const html = await response.text();
+        
+        // Try to extract image URL from the HTML response using multiple patterns
+        const imageUrlPatterns = [
+          // Direct img tags with profile picture
+          /<img[^>]+src=["']([^"']*(?:profile|whatsapp|dp)[^"']*\.(?:jpg|jpeg|png|webp))["']/i,
+          // Any img tag with image URL
+          /<img[^>]+src=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp))["']/i,
+          // JSON in script tags
+          /"imageUrl"\s*:\s*"([^"]+)"/i,
+          /"profile_picture"\s*:\s*"([^"]+)"/i,
+          /"url"\s*:\s*"([^"]+\.(?:jpg|jpeg|png|webp))"/i,
+          // Data attributes
+          /data-image=["']([^"']+)["']/i,
+          /data-src=["']([^"']+\.(?:jpg|jpeg|png|webp))["']/i,
+          // Any HTTPS image URL in the response
+          /(https?:\/\/[^\s"']+\.(?:jpg|jpeg|png|webp))/i
+        ];
+        
+        for (const pattern of imageUrlPatterns) {
+          const matches = html.matchAll(new RegExp(pattern.source, 'gi'));
+          for (const match of matches) {
+            if (match[1] && match[1].includes('http')) {
+              let imageUrl = match[1];
+              // Clean up the URL
+              imageUrl = imageUrl.replace(/['"]/g, '').trim();
+              // Ensure it's a full URL
+              if (imageUrl.startsWith('//')) {
+                imageUrl = 'https:' + imageUrl;
+              } else if (imageUrl.startsWith('/')) {
+                imageUrl = 'https://toolzin.com' + imageUrl;
+              }
+              
+              // Validate it's actually an image URL
+              if (imageUrl.match(/https?:\/\/.+\.(jpg|jpeg|png|webp)/i)) {
+                console.log('[UNIFIED-WEBHOOK] ✅ Found profile picture URL:', imageUrl);
+                return imageUrl;
+              }
+            }
+          }
+        }
+        
+        // Try to find JSON in script tags
+        const scriptMatches = html.match(/<script[^>]*>(.*?)<\/script>/gis);
+        if (scriptMatches) {
+          for (const script of scriptMatches) {
+            try {
+              const jsonMatch = script.match(/\{.*"imageUrl".*\}/i) || script.match(/\{.*"profile_picture".*\}/i);
+              if (jsonMatch) {
+                const jsonData = JSON.parse(jsonMatch[0]);
+                const imageUrl = jsonData.imageUrl || jsonData.profile_picture || jsonData.url;
+                if (imageUrl) {
+                  console.log('[UNIFIED-WEBHOOK] ✅ Found profile picture URL from script JSON:', imageUrl);
+                  return imageUrl;
+                }
+              }
+            } catch (e) {
+              // Not valid JSON, continue
+            }
+          }
+        }
+        
+      } catch (e) {
+        console.log(`[UNIFIED-WEBHOOK] Error trying endpoint ${endpoint}:`, e);
+        continue;
+      }
+    }
+    
+    console.log('[UNIFIED-WEBHOOK] ⚠️ Could not extract profile picture URL from toolzin.com');
+    return null;
+  } catch (error) {
+    console.error('[UNIFIED-WEBHOOK] Error fetching profile picture from toolzin.com:', error);
+    return null;
+  }
+}
+
 // Helper to get app setting from database with fallback to env
 async function getAppSetting(supabase: any, key: string): Promise<string | null> {
   try {
@@ -434,29 +556,15 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
         for (const integration of integrations) {
           console.log('[UNIFIED-WEBHOOK] ✅ Processing WhatsApp for workspace:', integration.workspace_id);
 
-          // Try to fetch profile picture from WhatsApp Business API if not in webhook
+          // Try to fetch profile picture from toolzin.com if not in webhook
           let finalProfilePic = profilePicUrl;
-          if (!finalProfilePic && integration.config.access_token && phoneNumberId) {
-            try {
-              // Try alternative: Use the phone number ID endpoint (this might not work for user profiles)
-              // WhatsApp doesn't officially support fetching user profile pictures via API
-              const profileResponse = await fetch(
-                `https://graph.facebook.com/v21.0/${senderId}?fields=profile_picture_url&access_token=${integration.config.access_token}`,
-                { signal: AbortSignal.timeout(5000) }
-              );
-              
-              if (profileResponse.ok) {
-                const profileData = await profileResponse.json();
-                if (profileData.profile_picture_url) {
-                  finalProfilePic = profileData.profile_picture_url;
-                  console.log('[UNIFIED-WEBHOOK] ✅ Fetched profile picture from API fallback');
-                }
-              } else {
-                const errorText = await profileResponse.text();
-                console.log('[UNIFIED-WEBHOOK] API fallback failed:', errorText.substring(0, 200));
-              }
-            } catch (e) {
-              console.log('[UNIFIED-WEBHOOK] API fallback error:', e);
+          if (!finalProfilePic) {
+            console.log('[UNIFIED-WEBHOOK] Attempting to fetch profile picture from toolzin.com...');
+            finalProfilePic = await fetchWhatsAppProfilePicture(senderId);
+            if (finalProfilePic) {
+              console.log('[UNIFIED-WEBHOOK] ✅ Successfully fetched profile picture from toolzin.com');
+            } else {
+              console.log('[UNIFIED-WEBHOOK] ⚠️ Could not fetch profile picture from toolzin.com');
             }
           }
 
@@ -472,7 +580,7 @@ async function handleWhatsAppMessage(body: any, supabase: any) {
             accessToken: integration.config.access_token || integration.config.page_access_token,
             customerName,
             phoneNumberId, // Pass phone_number_id for profile picture fetching
-            profilePicUrl: finalProfilePic // Pass the profile picture URL from webhook or API
+            profilePicUrl: finalProfilePic // Pass the profile picture URL from webhook or toolzin.com
           });
         }
       }
