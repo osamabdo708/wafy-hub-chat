@@ -25,11 +25,16 @@ import agentIcon from "@/assets/agent-icon.png";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { generateInvoicePDF } from "@/utils/invoiceGenerator";
+import { useSearchParams, useNavigate } from "react-router-dom";
 
 const Orders = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const clientFilter = searchParams.get("client");
+  
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     customer_name: "",
@@ -45,10 +50,26 @@ const Orders = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ["orders"],
+  // Fetch client name if filtering by client
+  const { data: filterClient } = useQuery({
+    queryKey: ["filter-client", clientFilter],
     queryFn: async () => {
+      if (!clientFilter) return null;
       const { data, error } = await supabase
+        .from("clients")
+        .select("id, name")
+        .eq("id", clientFilter)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!clientFilter,
+  });
+
+  const { data: orders = [], isLoading } = useQuery({
+    queryKey: ["orders", clientFilter],
+    queryFn: async () => {
+      let query = supabase
         .from("orders")
         .select(`
           *,
@@ -58,6 +79,11 @@ const Orders = () => {
         `)
         .order("created_at", { ascending: false });
       
+      if (clientFilter) {
+        query = query.eq("client_id", clientFilter);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -254,7 +280,22 @@ const Orders = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">الطلبات</h1>
-          <p className="text-muted-foreground mt-1">إدارة جميع طلبات العملاء</p>
+          {clientFilter && filterClient ? (
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-muted-foreground">طلبات العميل: <span className="font-medium text-foreground">{filterClient.name}</span></p>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSearchParams({})}
+                className="h-6 px-2 text-xs"
+              >
+                <X className="w-3 h-3 ml-1" />
+                إلغاء الفلتر
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground mt-1">إدارة جميع طلبات العملاء</p>
+          )}
         </div>
         <div className="flex gap-2">
           {orders.length > 0 && (
