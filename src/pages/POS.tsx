@@ -21,7 +21,8 @@ import {
   Banknote,
   Loader2,
   Maximize,
-  Minimize
+  Minimize,
+  Users
 } from "lucide-react";
 import {
   Select,
@@ -67,10 +68,17 @@ interface ShippingMethod {
   price: number;
 }
 
+interface Client {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
 const POS = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -81,6 +89,7 @@ const POS = () => {
   
   // Customer info
   const [isWalkingCustomer, setIsWalkingCustomer] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -152,7 +161,7 @@ const POS = () => {
 
       if (!workspace) return;
 
-      const [productsRes, categoriesRes, shippingRes] = await Promise.all([
+      const [productsRes, categoriesRes, shippingRes, clientsRes] = await Promise.all([
         supabase
           .from('products')
           .select('id, name, price, stock, image_url, category_id')
@@ -169,12 +178,19 @@ const POS = () => {
           .from('shipping_methods')
           .select('id, name, price')
           .eq('workspace_id', workspace.id)
-          .eq('is_active', true)
+          .eq('is_active', true),
+        supabase
+          .from('clients')
+          .select('id, name, phone')
+          .eq('workspace_id', workspace.id)
+          .neq('name', 'عميل عابر')
+          .order('name')
       ]);
 
       if (productsRes.data) setProducts(productsRes.data);
       if (categoriesRes.data) setCategories(categoriesRes.data);
       if (shippingRes.data) setShippingMethods(shippingRes.data);
+      if (clientsRes.data) setClients(clientsRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -237,12 +253,29 @@ const POS = () => {
   const total = subtotal + shippingCost;
 
   const handleCheckout = async () => {
-    if (!isWalkingCustomer && !customerName.trim()) {
-      toast.error("يرجى إدخال اسم العميل");
+    const isNewClient = !selectedClientId || selectedClientId === "new";
+    
+    if (!isWalkingCustomer && isNewClient && !customerName.trim()) {
+      toast.error("يرجى اختيار عميل أو إدخال اسم العميل");
       return;
     }
 
-    const finalCustomerName = isWalkingCustomer ? "عميل عابر" : customerName;
+    // Determine final customer info
+    let finalCustomerName = customerName;
+    let finalCustomerPhone = customerPhone;
+    let finalClientId: string | null = null;
+
+    if (isWalkingCustomer) {
+      finalCustomerName = "عميل عابر";
+      finalCustomerPhone = "";
+    } else if (!isNewClient) {
+      const selectedClient = clients.find(c => c.id === selectedClientId);
+      if (selectedClient) {
+        finalCustomerName = selectedClient.name;
+        finalCustomerPhone = selectedClient.phone || "";
+        finalClientId = selectedClient.id;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -293,7 +326,7 @@ const POS = () => {
           .insert({
             workspace_id: workspace.id,
             customer_name: finalCustomerName,
-            customer_phone: isWalkingCustomer ? null : (customerPhone || null),
+            customer_phone: isWalkingCustomer ? null : (finalCustomerPhone || null),
             shipping_address: isWalkingCustomer ? null : (customerAddress || null),
             shipping_method_id: isWalkingCustomer ? null : (selectedShipping || null),
             product_id: item.id,
@@ -304,7 +337,7 @@ const POS = () => {
             source_platform: "POS",
             notes: `الكمية: ${item.quantity}`,
             order_number: '',
-            client_id: walkInClientId
+            client_id: isWalkingCustomer ? walkInClientId : finalClientId
           });
 
         if (error) throw error;
@@ -314,6 +347,7 @@ const POS = () => {
       toast.success("تم إنشاء الطلب بنجاح");
       setCart([]);
       setIsWalkingCustomer(false);
+      setSelectedClientId("");
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
@@ -523,6 +557,41 @@ const POS = () => {
 
             {!isWalkingCustomer && (
               <>
+                {/* Client Selector */}
+                {clients.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      اختيار عميل موجود
+                    </Label>
+                    <Select 
+                      value={selectedClientId} 
+                      onValueChange={(value) => {
+                        setSelectedClientId(value);
+                        if (value) {
+                          const client = clients.find(c => c.id === value);
+                          if (client) {
+                            setCustomerName(client.name);
+                            setCustomerPhone(client.phone || "");
+                          }
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر من العملاء الحاليين" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="new">عميل جديد</SelectItem>
+                        {clients.map(client => (
+                          <SelectItem key={client.id} value={client.id}>
+                            {client.name} {client.phone ? `(${client.phone})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <User className="w-4 h-4" />
@@ -532,6 +601,7 @@ const POS = () => {
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="أدخل اسم العميل"
+                    disabled={!!selectedClientId && selectedClientId !== "new"}
                   />
                 </div>
 
@@ -544,6 +614,7 @@ const POS = () => {
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     placeholder="أدخل رقم الهاتف"
+                    disabled={!!selectedClientId && selectedClientId !== "new"}
                   />
                 </div>
 
