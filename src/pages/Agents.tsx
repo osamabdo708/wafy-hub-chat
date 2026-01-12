@@ -48,8 +48,10 @@ const Agents = () => {
   const [newAgentName, setNewAgentName] = useState("");
   const [newAgentEmail, setNewAgentEmail] = useState("");
   const [newAgentPassword, setNewAgentPassword] = useState("");
-  const [newAgentAvatarUrl, setNewAgentAvatarUrl] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [deleteAgentId, setDeleteAgentId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -99,9 +101,64 @@ const Agents = () => {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error("الرجاء اختيار صورة صالحة");
+        return;
+      }
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("حجم الصورة يجب أن يكون أقل من 2 ميجابايت");
+        return;
+      }
+      setAvatarFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadAvatar = async (file: File): Promise<string | null> => {
+    try {
+      setIsUploading(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('agent-avatars')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('agent-avatars')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      toast.error("فشل في رفع الصورة");
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleAddAgent = async () => {
     if (!newAgentName.trim() || !newAgentEmail.trim() || !newAgentPassword.trim() || !workspaceId) {
       toast.error("الرجاء ملء جميع الحقول المطلوبة");
+      return;
+    }
+
+    if (!avatarFile) {
+      toast.error("الرجاء رفع صورة الوكيل");
       return;
     }
 
@@ -120,12 +177,19 @@ const Agents = () => {
     setIsCreating(true);
 
     try {
+      // Upload avatar first
+      const avatarUrl = await uploadAvatar(avatarFile);
+      if (!avatarUrl) {
+        setIsCreating(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('create-agent-user', {
         body: {
           name: newAgentName.trim(),
           email: newAgentEmail.trim().toLowerCase(),
           password: newAgentPassword,
-          avatar_url: newAgentAvatarUrl.trim() || null,
+          avatar_url: avatarUrl,
           workspace_id: workspaceId,
         },
       });
@@ -194,7 +258,8 @@ const Agents = () => {
     setNewAgentName("");
     setNewAgentEmail("");
     setNewAgentPassword("");
-    setNewAgentAvatarUrl("");
+    setAvatarFile(null);
+    setAvatarPreview(null);
     setShowPassword(false);
   };
 
@@ -235,27 +300,53 @@ const Agents = () => {
               <div className="space-y-2">
                 <Label htmlFor="agent-avatar" className="flex items-center gap-2">
                   <Upload className="w-4 h-4" />
-                  صورة الوكيل (رابط)
+                  صورة الوكيل *
                 </Label>
-                <Input
-                  id="agent-avatar"
-                  value={newAgentAvatarUrl}
-                  onChange={(e) => setNewAgentAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/avatar.jpg"
-                  dir="ltr"
-                />
-                {newAgentAvatarUrl && (
-                  <div className="flex justify-center">
-                    <img 
-                      src={newAgentAvatarUrl} 
-                      alt="معاينة" 
-                      className="w-16 h-16 rounded-full object-cover border-2 border-primary/20"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  </div>
-                )}
+                <div className="flex flex-col items-center gap-3">
+                  {avatarPreview ? (
+                    <div className="relative">
+                      <img 
+                        src={avatarPreview} 
+                        alt="معاينة" 
+                        className="w-20 h-20 rounded-full object-cover border-2 border-primary/20"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full"
+                        onClick={() => {
+                          setAvatarFile(null);
+                          setAvatarPreview(null);
+                        }}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ) : (
+                    <label 
+                      htmlFor="avatar-upload" 
+                      className="w-20 h-20 rounded-full border-2 border-dashed border-muted-foreground/50 flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                    >
+                      <Upload className="w-6 h-6 text-muted-foreground" />
+                    </label>
+                  )}
+                  <input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                  {!avatarPreview && (
+                    <label 
+                      htmlFor="avatar-upload"
+                      className="text-sm text-primary cursor-pointer hover:underline"
+                    >
+                      اختر صورة
+                    </label>
+                  )}
+                </div>
               </div>
               
               <div className="space-y-2">
@@ -336,9 +427,9 @@ const Agents = () => {
               </Button>
               <Button 
                 onClick={handleAddAgent} 
-                disabled={!newAgentName.trim() || !newAgentEmail.trim() || !newAgentPassword.trim() || isCreating}
+                disabled={!newAgentName.trim() || !newAgentEmail.trim() || !newAgentPassword.trim() || !avatarFile || isCreating || isUploading}
               >
-                {isCreating ? "جاري الإنشاء..." : "إضافة"}
+                {isUploading ? "جاري الرفع..." : isCreating ? "جاري الإنشاء..." : "إضافة"}
               </Button>
             </DialogFooter>
           </DialogContent>
