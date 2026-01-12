@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+
+// Import sound files
+import scannerBeepSound from "@/assets/scanner-beep.mp3";
+import cashRegisterSound from "@/assets/cash-register.mp3";
 
 interface Product {
   id: string;
@@ -82,6 +86,32 @@ const POS = () => {
   const [customerAddress, setCustomerAddress] = useState("");
   const [selectedShipping, setSelectedShipping] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "electronic">("cash");
+
+  // Audio refs for sound effects
+  const scannerBeepRef = useRef<HTMLAudioElement | null>(null);
+  const cashRegisterRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize audio elements
+  useEffect(() => {
+    scannerBeepRef.current = new Audio(scannerBeepSound);
+    cashRegisterRef.current = new Audio(cashRegisterSound);
+    scannerBeepRef.current.volume = 0.5;
+    cashRegisterRef.current.volume = 0.7;
+  }, []);
+
+  const playScannerBeep = () => {
+    if (scannerBeepRef.current) {
+      scannerBeepRef.current.currentTime = 0;
+      scannerBeepRef.current.play().catch(() => {});
+    }
+  };
+
+  const playCashRegister = () => {
+    if (cashRegisterRef.current) {
+      cashRegisterRef.current.currentTime = 0;
+      cashRegisterRef.current.play().catch(() => {});
+    }
+  };
 
   // Handle fullscreen toggle
   const toggleFullscreen = () => {
@@ -159,6 +189,7 @@ const POS = () => {
   });
 
   const addToCart = (product: Product) => {
+    playScannerBeep();
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
@@ -249,6 +280,7 @@ const POS = () => {
         if (error) throw error;
       }
 
+      playCashRegister();
       toast.success("تم إنشاء الطلب بنجاح");
       setCart([]);
       setIsWalkingCustomer(false);
