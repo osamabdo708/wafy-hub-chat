@@ -257,6 +257,35 @@ const POS = () => {
 
       if (!workspace) throw new Error("Workspace not found");
 
+      // For walk-in customers, find or create a single "عميل عابر" client
+      let walkInClientId: string | null = null;
+      if (isWalkingCustomer) {
+        // Check if "عميل عابر" client already exists
+        const { data: existingClient } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('workspace_id', workspace.id)
+          .eq('name', 'عميل عابر')
+          .maybeSingle();
+
+        if (existingClient) {
+          walkInClientId = existingClient.id;
+        } else {
+          // Create the walk-in client
+          const { data: newClient, error: clientError } = await supabase
+            .from('clients')
+            .insert({
+              workspace_id: workspace.id,
+              name: 'عميل عابر'
+            })
+            .select('id')
+            .single();
+
+          if (clientError) throw clientError;
+          walkInClientId = newClient.id;
+        }
+      }
+
       // Create order for each cart item
       for (const item of cart) {
         const { error } = await supabase
@@ -274,7 +303,8 @@ const POS = () => {
             status: "قيد الانتظار",
             source_platform: "POS",
             notes: `الكمية: ${item.quantity}`,
-            order_number: ''
+            order_number: '',
+            client_id: walkInClientId
           });
 
         if (error) throw error;
