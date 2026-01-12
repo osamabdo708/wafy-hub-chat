@@ -18,9 +18,11 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
+          email: string | null
           id: string
           is_ai: boolean | null
           is_system: boolean | null
+          is_user_agent: boolean | null
           name: string
           updated_at: string
           user_id: string | null
@@ -29,9 +31,11 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           is_ai?: boolean | null
           is_system?: boolean | null
+          is_user_agent?: boolean | null
           name: string
           updated_at?: string
           user_id?: string | null
@@ -40,9 +44,11 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           is_ai?: boolean | null
           is_system?: boolean | null
+          is_user_agent?: boolean | null
           name?: string
           updated_at?: string
           user_id?: string | null
@@ -634,6 +640,8 @@ export type Database = {
       }
       orders: {
         Row: {
+          agent_avatar_url: string | null
+          agent_name: string | null
           ai_generated: boolean | null
           assigned_to: string | null
           client_id: string | null
@@ -660,6 +668,8 @@ export type Database = {
           workspace_id: string | null
         }
         Insert: {
+          agent_avatar_url?: string | null
+          agent_name?: string | null
           ai_generated?: boolean | null
           assigned_to?: string | null
           client_id?: string | null
@@ -686,6 +696,8 @@ export type Database = {
           workspace_id?: string | null
         }
         Update: {
+          agent_avatar_url?: string | null
+          agent_name?: string | null
           ai_generated?: boolean | null
           assigned_to?: string | null
           client_id?: string | null

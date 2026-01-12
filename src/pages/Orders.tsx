@@ -89,7 +89,7 @@ const Orders = () => {
     },
   });
 
-  // Fetch profiles for orders created by users
+  // Fetch profiles for orders created by users (including agents)
   const userCreatedOrders = orders.filter(o => 
     o.created_by && 
     o.created_by !== 'employee' && 
@@ -112,6 +112,20 @@ const Orders = () => {
       return data || [];
     },
     enabled: userCreatedOrders.length > 0,
+  });
+
+  // Fetch agents for orders that have agent_name but no profile match
+  const { data: agentProfiles = [] } = useQuery({
+    queryKey: ["order-agent-profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agents")
+        .select("user_id, name, avatar_url")
+        .eq("is_user_agent", true);
+      
+      if (error) throw error;
+      return data || [];
+    },
   });
 
   const { data: products = [] } = useQuery({
@@ -143,6 +157,24 @@ const Orders = () => {
       const { data: orderNumberData } = await supabase.rpc("generate_order_number");
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Check if the current user is an agent
+      let agentName = null;
+      let agentAvatarUrl = null;
+      
+      if (user) {
+        const { data: agentData } = await supabase
+          .from("agents")
+          .select("name, avatar_url")
+          .eq("user_id", user.id)
+          .eq("is_user_agent", true)
+          .maybeSingle();
+        
+        if (agentData) {
+          agentName = agentData.name;
+          agentAvatarUrl = agentData.avatar_url;
+        }
+      }
+      
       const { data, error } = await supabase
         .from("orders")
         .insert({
@@ -150,6 +182,8 @@ const Orders = () => {
           order_number: orderNumberData,
           status: "قيد الانتظار",
           created_by: user?.id || 'employee',
+          agent_name: agentName,
+          agent_avatar_url: agentAvatarUrl,
         })
         .select()
         .single();
@@ -621,9 +655,35 @@ const Orders = () => {
                         <Scan className="w-4 h-4 text-blue-600" />
                         <span className="text-sm text-blue-700">POS</span>
                       </div>
+                    ) : order.agent_name ? (
+                      // Order was created by an agent - show agent info
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-orange-500/10 border-orange-500/30">
+                        {order.agent_avatar_url ? (
+                          <img src={order.agent_avatar_url} alt={order.agent_name} className="w-4 h-4 rounded-full object-cover" />
+                        ) : (
+                          <User className="w-4 h-4 text-orange-600" />
+                        )}
+                        <span className="text-sm text-orange-700">{order.agent_name}</span>
+                      </div>
                     ) : order.created_by && order.created_by !== 'employee' ? (
                       (() => {
                         const profile = profiles.find(p => p.id === order.created_by);
+                        const agentProfile = agentProfiles.find(a => a.user_id === order.created_by);
+                        
+                        // Check if this is an agent user
+                        if (agentProfile) {
+                          return (
+                            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-orange-500/10 border-orange-500/30">
+                              {agentProfile.avatar_url ? (
+                                <img src={agentProfile.avatar_url} alt={agentProfile.name} className="w-4 h-4 rounded-full object-cover" />
+                              ) : (
+                                <User className="w-4 h-4 text-orange-600" />
+                              )}
+                              <span className="text-sm text-orange-700">{agentProfile.name}</span>
+                            </div>
+                          );
+                        }
+                        
                         return (
                           <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-muted/50">
                             {profile?.avatar_url ? (

@@ -290,6 +290,22 @@ const POS = () => {
 
       if (!workspace) throw new Error("Workspace not found");
 
+      // Check if the current user is an agent
+      let agentName = null;
+      let agentAvatarUrl = null;
+      
+      const { data: agentData } = await supabase
+        .from('agents')
+        .select('name, avatar_url')
+        .eq('user_id', user.id)
+        .eq('is_user_agent', true)
+        .maybeSingle();
+      
+      if (agentData) {
+        agentName = agentData.name;
+        agentAvatarUrl = agentData.avatar_url;
+      }
+
       // For walk-in customers, find or create a single "عميل عابر" client
       let walkInClientId: string | null = null;
       if (isWalkingCustomer) {
@@ -338,7 +354,10 @@ const POS = () => {
             source_platform: "POS",
             notes: `الكمية: ${item.quantity}`,
             order_number: '',
-            client_id: isWalkingCustomer ? walkInClientId : finalClientId
+            client_id: isWalkingCustomer ? walkInClientId : finalClientId,
+            created_by: user.id,
+            agent_name: agentName,
+            agent_avatar_url: agentAvatarUrl
           });
 
         if (error) throw error;
