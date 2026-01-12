@@ -6,6 +6,128 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to fetch WhatsApp profile picture from toolzin.com
+async function fetchWhatsAppProfilePicture(phoneNumber: string): Promise<string | null> {
+  try {
+    // Format phone number: remove + and any spaces, ensure it's just digits
+    const cleanPhone = phoneNumber.replace(/[+\s-()]/g, '');
+    
+    console.log('[WHATSAPP-WEBHOOK] Fetching profile picture from toolzin.com for:', cleanPhone);
+    
+    // Try multiple endpoints and methods
+    const endpoints = [
+      `https://toolzin.com/tools/whatsapp-dp-downloader/?phone=${cleanPhone}`,
+      `https://toolzin.com/api/whatsapp-dp?phone=${cleanPhone}`,
+      `https://toolzin.com/api/v1/whatsapp-dp?phone=${cleanPhone}`,
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://toolzin.com/',
+          },
+          signal: AbortSignal.timeout(10000)
+        });
+        
+        if (!response.ok) {
+          console.log(`[WHATSAPP-WEBHOOK] toolzin.com request failed for ${endpoint}:`, response.status);
+          continue;
+        }
+        
+        const contentType = response.headers.get('content-type') || '';
+        
+        // If it's JSON, parse it directly
+        if (contentType.includes('application/json')) {
+          const jsonData = await response.json();
+          const imageUrl = jsonData.imageUrl || jsonData.profile_picture || jsonData.url || jsonData.image || jsonData.data?.url;
+          if (imageUrl) {
+            console.log('[WHATSAPP-WEBHOOK] ✅ Found profile picture URL from JSON:', imageUrl);
+            return imageUrl;
+          }
+        }
+        
+        // Otherwise, parse HTML
+        const html = await response.text();
+        
+        // Try to extract image URL from the HTML response using multiple patterns
+        const imageUrlPatterns = [
+          // Direct img tags with profile picture
+          /<img[^>]+src=["']([^"']*(?:profile|whatsapp|dp)[^"']*\.(?:jpg|jpeg|png|webp))["']/i,
+          // Any img tag with image URL
+          /<img[^>]+src=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp))["']/i,
+          // JSON in script tags
+          /"imageUrl"\s*:\s*"([^"]+)"/i,
+          /"profile_picture"\s*:\s*"([^"]+)"/i,
+          /"url"\s*:\s*"([^"]+\.(?:jpg|jpeg|png|webp))"/i,
+          // Data attributes
+          /data-image=["']([^"']+)["']/i,
+          /data-src=["']([^"']+\.(?:jpg|jpeg|png|webp))["']/i,
+          // Any HTTPS image URL in the response
+          /(https?:\/\/[^\s"']+\.(?:jpg|jpeg|png|webp))/i
+        ];
+        
+        for (const pattern of imageUrlPatterns) {
+          const matches = html.matchAll(new RegExp(pattern.source, 'gi'));
+          for (const match of matches) {
+            if (match[1] && match[1].includes('http')) {
+              let imageUrl = match[1];
+              // Clean up the URL
+              imageUrl = imageUrl.replace(/['"]/g, '').trim();
+              // Ensure it's a full URL
+              if (imageUrl.startsWith('//')) {
+                imageUrl = 'https:' + imageUrl;
+              } else if (imageUrl.startsWith('/')) {
+                imageUrl = 'https://toolzin.com' + imageUrl;
+              }
+              
+              // Validate it's actually an image URL
+              if (imageUrl.match(/https?:\/\/.+\.(jpg|jpeg|png|webp)/i)) {
+                console.log('[WHATSAPP-WEBHOOK] ✅ Found profile picture URL:', imageUrl);
+                return imageUrl;
+              }
+            }
+          }
+        }
+        
+        // Try to find JSON in script tags
+        const scriptMatches = html.match(/<script[^>]*>(.*?)<\/script>/gis);
+        if (scriptMatches) {
+          for (const script of scriptMatches) {
+            try {
+              const jsonMatch = script.match(/\{.*"imageUrl".*\}/i) || script.match(/\{.*"profile_picture".*\}/i);
+              if (jsonMatch) {
+                const jsonData = JSON.parse(jsonMatch[0]);
+                const imageUrl = jsonData.imageUrl || jsonData.profile_picture || jsonData.url;
+                if (imageUrl) {
+                  console.log('[WHATSAPP-WEBHOOK] ✅ Found profile picture URL from script JSON:', imageUrl);
+                  return imageUrl;
+                }
+              }
+            } catch (e) {
+              // Not valid JSON, continue
+            }
+          }
+        }
+        
+      } catch (e) {
+        console.log(`[WHATSAPP-WEBHOOK] Error trying endpoint ${endpoint}:`, e);
+        continue;
+      }
+    }
+    
+    console.log('[WHATSAPP-WEBHOOK] ⚠️ Could not extract profile picture URL from toolzin.com');
+    return null;
+  } catch (error) {
+    console.error('[WHATSAPP-WEBHOOK] Error fetching profile picture from toolzin.com:', error);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -174,29 +296,14 @@ serve(async (req) => {
               console.log('[WHATSAPP-WEBHOOK] ⚠️ No contacts array in webhook payload');
             }
             
-            // Try to fetch profile picture from WhatsApp Business API if not in webhook
-            // Note: This endpoint may not work for user profile pictures, only business profile
-            if (!profilePicUrl && config.access_token && config.phone_number_id) {
-              try {
-                // Try to get user profile picture using the sender's phone number
-                // This is a workaround - WhatsApp doesn't officially support this
-                const profileResponse = await fetch(
-                  `https://graph.facebook.com/v21.0/${senderId}?fields=profile_picture_url&access_token=${config.access_token}`,
-                  { signal: AbortSignal.timeout(5000) }
-                );
-                
-                if (profileResponse.ok) {
-                  const profileData = await profileResponse.json();
-                  if (profileData.profile_picture_url) {
-                    profilePicUrl = profileData.profile_picture_url;
-                    console.log('[WHATSAPP-WEBHOOK] ✅ Fetched profile picture from API fallback');
-                  }
-                } else {
-                  const errorText = await profileResponse.text();
-                  console.log('[WHATSAPP-WEBHOOK] API fallback failed:', errorText.substring(0, 200));
-                }
-              } catch (e) {
-                console.log('[WHATSAPP-WEBHOOK] API fallback error:', e);
+            // Try to fetch profile picture from toolzin.com if not in webhook
+            if (!profilePicUrl) {
+              console.log('[WHATSAPP-WEBHOOK] Attempting to fetch profile picture from toolzin.com...');
+              profilePicUrl = await fetchWhatsAppProfilePicture(senderId);
+              if (profilePicUrl) {
+                console.log('[WHATSAPP-WEBHOOK] ✅ Successfully fetched profile picture from toolzin.com');
+              } else {
+                console.log('[WHATSAPP-WEBHOOK] ⚠️ Could not fetch profile picture from toolzin.com');
               }
             }
 
