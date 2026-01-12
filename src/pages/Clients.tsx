@@ -43,21 +43,21 @@ interface ClassificationStyle {
 }
 
 const getClientClassification = (orderCount: number): ClassificationStyle => {
-  if (orderCount >= 10) return { 
+  if (orderCount >= 5) return { 
     label: "VIP", 
     bgColor: "bg-amber-100 dark:bg-amber-900/30",
     textColor: "text-amber-700 dark:text-amber-400",
     borderColor: "border-amber-300 dark:border-amber-700",
     icon: Crown
   };
-  if (orderCount >= 5) return { 
+  if (orderCount >= 2) return { 
     label: "متكرر", 
     bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
     textColor: "text-emerald-700 dark:text-emerald-400",
     borderColor: "border-emerald-300 dark:border-emerald-700",
     icon: Star
   };
-  if (orderCount >= 2) return { 
+  if (orderCount === 1) return { 
     label: "عادي", 
     bgColor: "bg-blue-100 dark:bg-blue-900/30",
     textColor: "text-blue-700 dark:text-blue-400",
@@ -181,8 +181,8 @@ const Clients = () => {
   }, []);
 
   const totalClients = clients.length;
-  const vipClients = clients.filter(c => c.order_count >= 10).length;
-  const repeatingClients = clients.filter(c => c.order_count >= 5 && c.order_count < 10).length;
+  const vipClients = clients.filter(c => c.order_count >= 5).length;
+  const repeatingClients = clients.filter(c => c.order_count >= 2 && c.order_count < 5).length;
   const totalRevenue = clients.reduce((sum, c) => sum + c.total_spent, 0);
 
   return (
