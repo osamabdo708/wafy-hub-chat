@@ -71,19 +71,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // If the agent has a linked user account, delete it
-    if (agent.user_id && agent.is_user_agent) {
-      // Delete profile first
-      await supabase.from("profiles").delete().eq("id", agent.user_id);
-      
-      // Delete the auth user
-      const { error: deleteUserError } = await supabase.auth.admin.deleteUser(agent.user_id);
-      if (deleteUserError) {
-        console.error("Error deleting auth user:", deleteUserError);
-      }
-    }
-
-    // Delete the agent record
+    // Delete the agent record (no auth user to delete since we don't use auth.users)
     const { error: deleteAgentError } = await supabase
       .from("agents")
       .delete()
