@@ -496,27 +496,6 @@ async function findAllMatchingIntegrations(
 // HELPER: Fetch User Info (name + profile pic)
 // Handles Facebook, Instagram, WhatsApp, and Telegram
 // ============================================
-
-async function getWhatsAppAvatar(phone: string): Promise<string | null> {
-  try {
-    const avatarUrl = `https://whatsapp-db.checkleaked.com/${phone}.jpg`;
-
-    const res = await fetch(avatarUrl, {
-      method: 'HEAD', // lightweight check
-    });
-
-    if (res.status !== 404) {
-      return avatarUrl;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('[WHATSAPP-AVATAR] Error checking avatar:', error);
-    return null;
-  }
-}
-// ============================================
-
 async function fetchUserInfo(
   userId: string,
   accessToken: string | null,
@@ -530,19 +509,12 @@ async function fetchUserInfo(
   console.log(`[UNIFIED-WEBHOOK] Fetching user info for ${userId} on ${channel}`);
 
   try {
-if (channel === 'whatsapp') {
-  console.log('[UNIFIED-WEBHOOK] WhatsApp: checking external avatar source');
-
-  if (phone) {
-    const avatar = await getWhatsAppAvatar(phone);
-    if (avatar) {
-      customerAvatar = avatar;
-    }
-  }
-}
-
-    
-    else if (channel === 'instagram') {
+    if (channel === 'whatsapp') {
+      // WhatsApp Cloud API doesn't provide profile pictures for privacy reasons
+      // The contact name comes from the webhook payload itself
+      // We can only use default avatar with initials
+      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures not available via API (privacy restriction)');
+    } else if (channel === 'instagram') {
       // Instagram has very limited profile access for messaging users
       // Try to get username at least
       if (accessToken) {
