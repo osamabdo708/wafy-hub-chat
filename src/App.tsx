@@ -8,6 +8,7 @@ import { Layout } from "@/components/Layout";
 import { AuthGuard } from "@/components/AuthGuard";
 import { InstallationGuard } from "@/components/InstallationGuard";
 import { AgentAuthProvider } from "@/contexts/AgentAuthContext";
+import { AgentLayout } from "@/components/AgentLayout";
 import AgentGuard from "@/components/AgentGuard";
 import Inbox from "./pages/Inbox";
 import Orders from "./pages/Orders";
@@ -21,6 +22,8 @@ import ProductDetails from "./pages/ProductDetails";
 import OrderDetails from "./pages/OrderDetails";
 import Auth from "./pages/Auth";
 import AgentLogin from "./pages/AgentLogin";
+import AgentInbox from "./pages/AgentInbox";
+import AgentOrders from "./pages/AgentOrders";
 import Installation from "./pages/Installation";
 import NotFound from "./pages/NotFound";
 import Agents from "./pages/Agents";
@@ -62,6 +65,14 @@ const App = () => (
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/agents" element={<Agents />} />
+              </Route>
+
+              {/* Protected agent routes */}
+              <Route element={<AgentGuard><AgentLayout /></AgentGuard>}>
+                <Route path="/agent/inbox" element={<AgentInbox />} />
+                <Route path="/agent/orders" element={<AgentOrders />} />
+                <Route path="/agent/orders/:orderId" element={<OrderDetails />} />
+                <Route path="/agent/pos" element={<POS />} />
               </Route>
               
               {/* Super Admin */}
