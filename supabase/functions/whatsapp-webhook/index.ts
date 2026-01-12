@@ -135,9 +135,28 @@ serve(async (req) => {
             let conversationId: string;
             const threadId = `wa_${senderId}`;
 
+            // Extract profile information from contacts array
+            const contacts = value.contacts || [];
+            let customerName = `WhatsApp User ${senderId.slice(-8)}`;
+            let profilePicUrl: string | null = null;
+            
+            if (contacts.length > 0) {
+              const contact = contacts[0];
+              if (contact.profile?.name) {
+                customerName = contact.profile.name;
+              }
+              // Check if profile picture is available in the contact data
+              // Note: WhatsApp webhook includes profile picture URL if user has set their profile picture
+              // and privacy settings allow it. The API doesn't provide a separate endpoint to fetch user profile pictures.
+              if (contact.profile?.picture_url) {
+                profilePicUrl = contact.profile.picture_url;
+                console.log('[WHATSAPP-WEBHOOK] Found profile picture in webhook payload');
+              }
+            }
+
             const { data: existingConv } = await supabase
               .from('conversations')
-              .select('id')
+              .select('id, customer_name, customer_avatar')
               .eq('customer_phone', senderId)
               .eq('channel', 'whatsapp')
               .eq('workspace_id', workspaceId) // Filter by workspace_id
@@ -145,20 +164,31 @@ serve(async (req) => {
 
             if (existingConv) {
               conversationId = existingConv.id;
+              
+              // Build update object
+              const updateData: any = { 
+                last_message_at: new Date(parseInt(timestamp) * 1000).toISOString(),
+                thread_id: threadId
+              };
+              
+              // Update name if it was generic
+              const currentName = existingConv.customer_name || '';
+              const isGenericName = currentName.includes('WhatsApp User');
+              if (isGenericName && customerName && !customerName.includes('WhatsApp User')) {
+                updateData.customer_name = customerName;
+              }
+              
+              // Update avatar if we have one and current is empty
+              if (profilePicUrl && !existingConv.customer_avatar) {
+                updateData.customer_avatar = profilePicUrl;
+                console.log('[WHATSAPP-WEBHOOK] Updating conversation with profile picture');
+              }
+              
               await supabase
                 .from('conversations')
-                .update({ 
-                  last_message_at: new Date(parseInt(timestamp) * 1000).toISOString(),
-                  thread_id: threadId
-                })
+                .update(updateData)
                 .eq('id', conversationId);
             } else {
-              // Get contact name from contacts array
-              let customerName = `WhatsApp User ${senderId.slice(-8)}`;
-              const contacts = value.contacts || [];
-              if (contacts.length > 0 && contacts[0].profile?.name) {
-                customerName = contacts[0].profile.name;
-              }
 
               // Check workspace settings for default AI enabled
               let defaultAiEnabled = false;
@@ -198,6 +228,7 @@ serve(async (req) => {
                 .insert({
                   customer_name: customerName,
                   customer_phone: senderId,
+                  customer_avatar: profilePicUrl,
                   channel: 'whatsapp',
                   platform: 'whatsapp',
                   thread_id: threadId,
