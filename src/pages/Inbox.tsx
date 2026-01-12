@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Clock, User, Wifi, WifiOff } from "lucide-react";
+import { MessageSquare, Clock, User, Wifi, WifiOff, Crown, Star, UserCheck, UserPlus } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -42,7 +42,38 @@ interface Conversation {
   unread_count?: number;
   assigned_agent_id?: string | null;
   assigned_agent?: Agent | null;
+  client_id?: string | null;
+  order_count?: number;
 }
+
+type ClientClassification = "جديد" | "عادي" | "متكرر" | "VIP";
+
+const getClientClassification = (orderCount: number): { label: ClientClassification; bgColor: string; textColor: string; icon: typeof Crown } => {
+  if (orderCount >= 5) return { 
+    label: "VIP", 
+    bgColor: "bg-amber-100 dark:bg-amber-900/30",
+    textColor: "text-amber-700 dark:text-amber-400",
+    icon: Crown
+  };
+  if (orderCount >= 2) return { 
+    label: "متكرر", 
+    bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
+    textColor: "text-emerald-700 dark:text-emerald-400",
+    icon: Star
+  };
+  if (orderCount === 1) return { 
+    label: "عادي", 
+    bgColor: "bg-blue-100 dark:bg-blue-900/30",
+    textColor: "text-blue-700 dark:text-blue-400",
+    icon: UserCheck
+  };
+  return { 
+    label: "جديد", 
+    bgColor: "bg-slate-100 dark:bg-slate-800/50",
+    textColor: "text-slate-600 dark:text-slate-400",
+    icon: UserPlus
+  };
+};
 
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'email';
 type FilterType = 'all' | 'facebook' | 'instagram' | 'whatsapp' | 'telegram';
@@ -256,10 +287,30 @@ const Inbox = () => {
       // Fetch conversations only for connected channels
       const { data: conversationsData, error: conversationsError } = await supabase
         .from('conversations')
-        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled, assigned_agent_id')
+        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled, assigned_agent_id, client_id')
         .in('channel', connectedChannels)
         .eq('workspace_id', workspaceId)
         .order('last_message_at', { ascending: false });
+
+      if (conversationsError) throw conversationsError;
+
+      // Fetch client order counts
+      const clientIds = [...new Set((conversationsData || []).map(c => c.client_id).filter(Boolean))];
+      let clientOrderCounts: Record<string, number> = {};
+      
+      if (clientIds.length > 0) {
+        const { data: ordersData } = await supabase
+          .from('orders')
+          .select('client_id')
+          .in('client_id', clientIds);
+        
+        // Count orders per client
+        (ordersData || []).forEach(order => {
+          if (order.client_id) {
+            clientOrderCounts[order.client_id] = (clientOrderCounts[order.client_id] || 0) + 1;
+          }
+        });
+      }
 
       if (conversationsError) throw conversationsError;
 
@@ -294,14 +345,16 @@ const Inbox = () => {
             return { 
               ...conv, 
               unread_count: 0,
-              assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null
+              assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null,
+              order_count: conv.client_id ? (clientOrderCounts[conv.client_id] || 0) : 0
             };
           }
 
           return { 
             ...conv, 
             unread_count: count || 0,
-            assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null
+            assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null,
+            order_count: conv.client_id ? (clientOrderCounts[conv.client_id] || 0) : 0
           };
         })
       );
@@ -547,88 +600,99 @@ const Inbox = () => {
           ) : (
             <ScrollArea className="h-[600px]">
               <div className="space-y-4 pr-4">
-                {filteredConversations.map((conversation) => (
-              <Card 
-                key={conversation.id} 
-                className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
-                  selectedConversation?.id === conversation.id ? 'border-primary shadow-md' : ''
-                } ${conversation.ai_enabled ? 'bg-gradient-to-l from-purple-200/50 to-blue-200/50 dark:from-purple-500/20 dark:to-blue-500/20' : ''}`}
-                onClick={() => handleSelectConversation(conversation)}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage
-                          src={conversation.customer_avatar}
-                          alt={conversation.customer_name}
-                        />
-                        <AvatarFallback>
-                          <User className="w-5 h-5 text-primary" />
-                        </AvatarFallback>
-                      </Avatar>
-                      {/* Unread badge on avatar */}
-                      {(conversation.unread_count ?? 0) > 0 && (
-                        <div className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                          {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                {filteredConversations.map((conversation) => {
+                  const classification = getClientClassification(conversation.order_count || 0);
+                  const ClassificationIcon = classification.icon;
+                  return (
+                    <Card 
+                      key={conversation.id} 
+                      className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
+                        selectedConversation?.id === conversation.id ? 'border-primary shadow-md' : ''
+                      } ${conversation.ai_enabled ? 'bg-gradient-to-l from-purple-200/50 to-blue-200/50 dark:from-purple-500/20 dark:to-blue-500/20' : ''}`}
+                      onClick={() => handleSelectConversation(conversation)}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage
+                                src={conversation.customer_avatar}
+                                alt={conversation.customer_name}
+                              />
+                              <AvatarFallback>
+                                <User className="w-5 h-5 text-primary" />
+                              </AvatarFallback>
+                            </Avatar>
+                            {/* Unread badge on avatar */}
+                            {(conversation.unread_count ?? 0) > 0 && (
+                              <div className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                                {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className={`font-semibold ${conversation.unread_count && conversation.unread_count > 0 ? 'text-foreground' : ''}`}>
+                                {conversation.customer_name}
+                              </h3>
+                              {/* Classification badge */}
+                              <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${classification.bgColor} ${classification.textColor}`}>
+                                <ClassificationIcon className="w-3 h-3" />
+                                {classification.label}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {getChannelIcon(conversation.channel)}
+                              <Badge variant="secondary" className="text-xs">
+                                {getChannelName(conversation.channel)}
+                              </Badge>
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div>
-                      <h3 className={`font-semibold ${conversation.unread_count && conversation.unread_count > 0 ? 'text-foreground' : ''}`}>
-                        {conversation.customer_name}
-                      </h3>
-                      <div className="flex items-center gap-1">
-                        {getChannelIcon(conversation.channel)}
-                        <Badge variant="secondary" className="text-xs">
-                          {getChannelName(conversation.channel)}
-                        </Badge>
+                        {/* Agent indicator */}
+                        {conversation.assigned_agent && (
+                          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                            conversation.assigned_agent.is_ai 
+                              ? 'bg-purple-500/10 text-purple-600' 
+                              : 'bg-primary/10 text-primary'
+                          }`}>
+                            {conversation.assigned_agent.is_ai ? (
+                              <img src={agentIcon} alt="المارد" className="w-4 h-4" />
+                            ) : (
+                              <User className="w-3 h-3" />
+                            )}
+                            {conversation.assigned_agent.name}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                  {/* Agent indicator */}
-                  {conversation.assigned_agent && (
-                    <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                      conversation.assigned_agent.is_ai 
-                        ? 'bg-purple-500/10 text-purple-600' 
-                        : 'bg-primary/10 text-primary'
-                    }`}>
-                      {conversation.assigned_agent.is_ai ? (
-                        <img src={agentIcon} alt="المارد" className="w-4 h-4" />
-                      ) : (
-                        <User className="w-3 h-3" />
-                      )}
-                      {conversation.assigned_agent.name}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {formatDistanceToNow(new Date(conversation.last_message_at), { 
-                      addSuffix: true,
-                      locale: ar 
-                    })}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <AgentSelector
-                        value={conversation.assigned_agent_id || null}
-                        onChange={(agentId) => handleAssignAgent(conversation.id, agentId)}
-                      />
-                    </div>
-                    <Badge variant={
-                      conversation.status === "جديد" ? "default" :
-                      conversation.status === "مفتوح" ? "secondary" :
-                      "outline"
-                    }>
-                      {conversation.status}
-                    </Badge>
-                  </div>
-                </div>
-              </Card>
-                ))}
+                      
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDistanceToNow(new Date(conversation.last_message_at), { 
+                            addSuffix: true,
+                            locale: ar 
+                          })}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <AgentSelector
+                              value={conversation.assigned_agent_id || null}
+                              onChange={(agentId) => handleAssignAgent(conversation.id, agentId)}
+                            />
+                          </div>
+                          <Badge variant={
+                            conversation.status === "جديد" ? "default" :
+                            conversation.status === "مفتوح" ? "secondary" :
+                            "outline"
+                          }>
+                            {conversation.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             </ScrollArea>
           )}
