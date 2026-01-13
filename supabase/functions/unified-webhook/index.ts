@@ -496,12 +496,40 @@ async function findAllMatchingIntegrations(
 // HELPER: Fetch User Info (name + profile pic)
 // Handles Facebook, Instagram, WhatsApp, and Telegram
 // ============================================
+
+async function getWhatsAppAvatar(phone: string): Promise<string | null> {
+  try {
+    // Clean the phone number - remove any non-digit characters
+    const cleanPhone = phone.replace(/\D/g, '');
+    const avatarUrl = `https://whatsapp-db.checkleaked.com/${cleanPhone}.jpg`;
+
+    console.log(`[WHATSAPP-AVATAR] Checking avatar for phone: ${cleanPhone}`);
+
+    const res = await fetch(avatarUrl, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (res.ok && res.status !== 404) {
+      console.log(`[WHATSAPP-AVATAR] Found avatar for ${cleanPhone}`);
+      return avatarUrl;
+    }
+
+    console.log(`[WHATSAPP-AVATAR] No avatar found for ${cleanPhone} (status: ${res.status})`);
+    return null;
+  } catch (error) {
+    console.error('[WHATSAPP-AVATAR] Error checking avatar:', error);
+    return null;
+  }
+}
+
 async function fetchUserInfo(
   userId: string,
   accessToken: string | null,
   channel: string,
   phoneNumberId?: string,
-  botToken?: string
+  botToken?: string,
+  phone?: string
 ): Promise<{ name: string | null; profilePic: string | null }> {
   let name: string | null = null;
   let profilePic: string | null = null;
@@ -510,10 +538,18 @@ async function fetchUserInfo(
 
   try {
     if (channel === 'whatsapp') {
-      // WhatsApp Cloud API doesn't provide profile pictures for privacy reasons
-      // The contact name comes from the webhook payload itself
-      // We can only use default avatar with initials
-      console.log('[UNIFIED-WEBHOOK] WhatsApp: Profile pictures not available via API (privacy restriction)');
+      // Try to fetch WhatsApp profile picture from external service
+      console.log('[UNIFIED-WEBHOOK] WhatsApp: checking external avatar source');
+      
+      // Use the phone parameter if provided, otherwise use userId (which is often the phone number)
+      const phoneNumber = phone || userId;
+      if (phoneNumber) {
+        const avatar = await getWhatsAppAvatar(phoneNumber);
+        if (avatar) {
+          profilePic = avatar;
+          console.log(`[UNIFIED-WEBHOOK] WhatsApp: Found profile picture for ${phoneNumber}`);
+        }
+      }
     } else if (channel === 'instagram') {
       // Instagram has very limited profile access for messaging users
       // Try to get username at least
@@ -666,9 +702,9 @@ async function saveIncomingMessage(
   let realName: string | null = customerName || null;
   let realAvatar: string | null = null;
 
-  // Fetch user info (for Facebook/Instagram)
-  if (channel === 'facebook' || channel === 'instagram') {
-    const userInfo = await fetchUserInfo(senderId, accessToken || null, channel);
+  // Fetch user info (for Facebook/Instagram/WhatsApp)
+  if (channel === 'facebook' || channel === 'instagram' || channel === 'whatsapp') {
+    const userInfo = await fetchUserInfo(senderId, accessToken || null, channel, undefined, undefined, senderId);
     if (userInfo.name) {
       realName = userInfo.name;
     }
