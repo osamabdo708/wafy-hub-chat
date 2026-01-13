@@ -4,12 +4,17 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import messengerIcon from "@/assets/messenger-icon.png";
+import whatsappIcon from "@/assets/whatsapp-icon.png";
+import telegramIcon from "@/assets/telegram-icon.png";
+import instagramIcon from "@/assets/instagram-icon.png";
 
-interface Client {
+export interface Client {
   id: string;
   name: string;
   phone: string | null;
   avatar_url?: string | null;
+  channel?: string | null;
 }
 
 interface ClientSelectorProps {
@@ -17,6 +22,19 @@ interface ClientSelectorProps {
   selectedClientId: string;
   onSelectClient: (clientId: string, client?: Client) => void;
 }
+
+const getChannelIcon = (channel: string | null | undefined) => {
+  if (!channel) return null;
+  
+  const iconMap: Record<string, string> = {
+    whatsapp: whatsappIcon,
+    facebook: messengerIcon,
+    instagram: instagramIcon,
+    telegram: telegramIcon,
+  };
+  
+  return iconMap[channel] || null;
+};
 
 const ClientSelector = ({ clients, selectedClientId, onSelectClient }: ClientSelectorProps) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,45 +72,8 @@ const ClientSelector = ({ clients, selectedClientId, onSelectClient }: ClientSel
       </div>
 
       {/* Client List */}
-      <ScrollArea className="h-48 rounded-lg border bg-background">
+      <ScrollArea className="h-64 rounded-lg border bg-background">
         <div className="p-2 space-y-1">
-          {/* New Client Option */}
-          <button
-            type="button"
-            onClick={() => onSelectClient("new")}
-            className={cn(
-              "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-right",
-              selectedClientId === "new" 
-                ? "bg-primary text-primary-foreground" 
-                : "hover:bg-muted/50"
-            )}
-          >
-            <div className={cn(
-              "w-10 h-10 rounded-full flex items-center justify-center",
-              selectedClientId === "new" 
-                ? "bg-primary-foreground/20" 
-                : "bg-primary/10"
-            )}>
-              <UserPlus className={cn(
-                "w-5 h-5",
-                selectedClientId === "new" 
-                  ? "text-primary-foreground" 
-                  : "text-primary"
-              )} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium">عميل جديد</p>
-              <p className={cn(
-                "text-xs",
-                selectedClientId === "new" 
-                  ? "text-primary-foreground/70" 
-                  : "text-muted-foreground"
-              )}>
-                إضافة بيانات عميل جديد
-              </p>
-            </div>
-          </button>
-
           {/* Clients List */}
           {filteredClients.length === 0 && searchQuery && (
             <div className="py-8 text-center text-muted-foreground">
@@ -101,49 +82,62 @@ const ClientSelector = ({ clients, selectedClientId, onSelectClient }: ClientSel
             </div>
           )}
 
-          {filteredClients.map(client => (
-            <button
-              key={client.id}
-              type="button"
-              onClick={() => onSelectClient(client.id, client)}
-              className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-right",
-                selectedClientId === client.id 
-                  ? "bg-primary text-primary-foreground" 
-                  : "hover:bg-muted/50"
-              )}
-            >
-              <Avatar className="w-10 h-10">
-                <AvatarImage src={client.avatar_url || undefined} alt={client.name} />
-                <AvatarFallback className={cn(
+          {filteredClients.map(client => {
+            const channelIcon = getChannelIcon(client.channel);
+            
+            return (
+              <button
+                key={client.id}
+                type="button"
+                onClick={() => onSelectClient(client.id, client)}
+                className={cn(
+                  "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-right",
                   selectedClientId === client.id 
-                    ? "bg-primary-foreground/20 text-primary-foreground" 
-                    : "bg-muted"
-                )}>
-                  {getInitials(client.name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{client.name}</p>
-                {client.phone && (
-                  <p className={cn(
-                    "text-xs flex items-center gap-1",
-                    selectedClientId === client.id 
-                      ? "text-primary-foreground/70" 
-                      : "text-muted-foreground"
-                  )}>
-                    <Phone className="w-3 h-3" />
-                    {client.phone}
-                  </p>
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-muted/50"
                 )}
-              </div>
-            </button>
-          ))}
+              >
+                <Avatar className="w-10 h-10">
+                  <AvatarImage src={client.avatar_url || undefined} alt={client.name} />
+                  <AvatarFallback className={cn(
+                    selectedClientId === client.id 
+                      ? "bg-primary-foreground/20 text-primary-foreground" 
+                      : "bg-muted"
+                  )}>
+                    {getInitials(client.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium truncate">{client.name}</p>
+                    {channelIcon && (
+                      <img 
+                        src={channelIcon} 
+                        alt="" 
+                        className="w-4 h-4 shrink-0"
+                      />
+                    )}
+                  </div>
+                  {client.phone && (
+                    <p className={cn(
+                      "text-xs flex items-center gap-1",
+                      selectedClientId === client.id 
+                        ? "text-primary-foreground/70" 
+                        : "text-muted-foreground"
+                    )}>
+                      <Phone className="w-3 h-3" />
+                      {client.phone}
+                    </p>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </ScrollArea>
 
       {/* Selected Client Indicator */}
-      {selectedClientId && selectedClientId !== "new" && (
+      {selectedClientId && (
         <div className="flex items-center gap-2 p-2 rounded-lg bg-primary/10 text-primary text-sm">
           <User className="w-4 h-4" />
           <span>تم اختيار: {clients.find(c => c.id === selectedClientId)?.name}</span>
