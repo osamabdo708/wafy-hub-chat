@@ -14,15 +14,13 @@ import {
   Trash2, 
   ShoppingCart,
   Package,
-  User,
-  Phone,
-  MapPin,
   CreditCard,
   Banknote,
   Loader2,
   Maximize,
   Minimize,
-  Users
+  Users,
+  QrCode
 } from "lucide-react";
 import {
   Select,
@@ -39,7 +37,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import ClientSelector from "@/components/pos/ClientSelector";
+import ClientSelector, { Client } from "@/components/pos/ClientSelector";
+import ChannelQRDialog from "@/components/pos/ChannelQRDialog";
 
 // Import sound files
 import scannerBeepSound from "@/assets/scanner-beep.mp3";
@@ -69,13 +68,6 @@ interface ShippingMethod {
   price: number;
 }
 
-interface Client {
-  id: string;
-  name: string;
-  phone: string | null;
-  avatar_url?: string | null;
-}
-
 const POS = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -92,11 +84,13 @@ const POS = () => {
   // Customer info
   const [isWalkingCustomer, setIsWalkingCustomer] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerAddress, setCustomerAddress] = useState("");
-  const [selectedShipping, setSelectedShipping] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "electronic">("cash");
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [channelQRCodes, setChannelQRCodes] = useState<{
+    messenger?: string;
+    whatsapp?: string;
+    telegram?: string;
+  }>({});
 
   // Audio refs for sound effects
   const scannerBeepRef = useRef<HTMLAudioElement | null>(null);
@@ -163,7 +157,7 @@ const POS = () => {
 
       if (!workspace) return;
 
-      const [productsRes, categoriesRes, shippingRes, clientsRes] = await Promise.all([
+      const [productsRes, categoriesRes, shippingRes, clientsWithChannelRes] = await Promise.all([
         supabase
           .from('products')
           .select('id, name, price, stock, image_url, category_id')
@@ -183,7 +177,13 @@ const POS = () => {
           .eq('is_active', true),
         supabase
           .from('clients')
-          .select('id, name, phone, avatar_url')
+          .select(`
+            id, 
+            name, 
+            phone, 
+            avatar_url,
+            conversations!conversations_client_id_fkey(channel)
+          `)
           .eq('workspace_id', workspace.id)
           .neq('name', 'عميل عابر')
           .order('name')
@@ -192,7 +192,18 @@ const POS = () => {
       if (productsRes.data) setProducts(productsRes.data);
       if (categoriesRes.data) setCategories(categoriesRes.data);
       if (shippingRes.data) setShippingMethods(shippingRes.data);
-      if (clientsRes.data) setClients(clientsRes.data);
+      
+      // Map clients with their channel info
+      if (clientsWithChannelRes.data) {
+        const mappedClients: Client[] = clientsWithChannelRes.data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          avatar_url: c.avatar_url,
+          channel: c.conversations?.[0]?.channel || null
+        }));
+        setClients(mappedClients);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -251,26 +262,23 @@ const POS = () => {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shippingCost = shippingMethods.find(s => s.id === selectedShipping)?.price || 0;
-  const total = subtotal + shippingCost;
+  const total = subtotal;
 
   const handleCheckout = async () => {
-    const isNewClient = !selectedClientId || selectedClientId === "new";
-    
-    if (!isWalkingCustomer && isNewClient && !customerName.trim()) {
-      toast.error("يرجى اختيار عميل أو إدخال اسم العميل");
+    if (!isWalkingCustomer && !selectedClientId) {
+      toast.error("يرجى اختيار عميل");
       return;
     }
 
     // Determine final customer info
-    let finalCustomerName = customerName;
-    let finalCustomerPhone = customerPhone;
+    let finalCustomerName = "";
+    let finalCustomerPhone = "";
     let finalClientId: string | null = null;
 
     if (isWalkingCustomer) {
       finalCustomerName = "عميل عابر";
       finalCustomerPhone = "";
-    } else if (!isNewClient) {
+    } else {
       const selectedClient = clients.find(c => c.id === selectedClientId);
       if (selectedClient) {
         finalCustomerName = selectedClient.name;
@@ -346,8 +354,8 @@ const POS = () => {
             workspace_id: workspace.id,
             customer_name: finalCustomerName,
             customer_phone: isWalkingCustomer ? null : (finalCustomerPhone || null),
-            shipping_address: isWalkingCustomer ? null : (customerAddress || null),
-            shipping_method_id: isWalkingCustomer ? null : (selectedShipping || null),
+            shipping_address: null,
+            shipping_method_id: null,
             product_id: item.id,
             price: item.price * item.quantity,
             payment_method: paymentMethod === "cash" ? "نقدي" : "الكتروني",
@@ -370,11 +378,8 @@ const POS = () => {
       setCart([]);
       setIsWalkingCustomer(false);
       setSelectedClientId("");
-      setCustomerName("");
-      setCustomerPhone("");
-      setCustomerAddress("");
-      setSelectedShipping("");
       setPaymentMethod("cash");
+      setCheckoutOpen(false);
       setCheckoutOpen(false);
     } catch (error) {
       console.error('Error creating order:', error);
@@ -580,84 +585,31 @@ const POS = () => {
             {!isWalkingCustomer && (
               <>
                 {/* Client Selector */}
-                {clients.length > 0 && (
-                  <div className="space-y-2">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
                     <Label className="flex items-center gap-2">
                       <Users className="w-4 h-4" />
                       اختيار عميل
                     </Label>
-                    <ClientSelector
-                      clients={clients}
-                      selectedClientId={selectedClientId}
-                      onSelectClient={(clientId, client) => {
-                        setSelectedClientId(clientId);
-                        if (client) {
-                          setCustomerName(client.name);
-                          setCustomerPhone(client.phone || "");
-                        } else {
-                          setCustomerName("");
-                          setCustomerPhone("");
-                        }
-                      }}
-                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setQrDialogOpen(true)}
+                    >
+                      <QrCode className="w-4 h-4" />
+                      رموز QR
+                    </Button>
                   </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    اسم العميل *
-                  </Label>
-                  <Input
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="أدخل اسم العميل"
-                    disabled={!!selectedClientId && selectedClientId !== "new"}
+                  <ClientSelector
+                    clients={clients}
+                    selectedClientId={selectedClientId}
+                    onSelectClient={(clientId) => {
+                      setSelectedClientId(clientId);
+                    }}
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Phone className="w-4 h-4" />
-                    رقم الهاتف
-                  </Label>
-                  <Input
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="أدخل رقم الهاتف"
-                    disabled={!!selectedClientId && selectedClientId !== "new"}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    العنوان
-                  </Label>
-                  <Input
-                    value={customerAddress}
-                    onChange={(e) => setCustomerAddress(e.target.value)}
-                    placeholder="أدخل عنوان التوصيل"
-                  />
-                </div>
-
-                {shippingMethods.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>طريقة الشحن</Label>
-                    <Select value={selectedShipping} onValueChange={setSelectedShipping}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="اختر طريقة الشحن" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {shippingMethods.map(method => (
-                          <SelectItem key={method.id} value={method.id}>
-                            {method.name} - {method.price} ر.س
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
               </>
             )}
 
@@ -688,17 +640,7 @@ const POS = () => {
             <Separator />
 
             <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>المجموع الفرعي</span>
-                <span>{subtotal} ر.س</span>
-              </div>
-              {shippingCost > 0 && (
-                <div className="flex justify-between">
-                  <span>الشحن</span>
-                  <span>{shippingCost} ر.س</span>
-                </div>
-              )}
-              <div className="flex justify-between text-lg font-bold pt-2">
+              <div className="flex justify-between text-lg font-bold">
                 <span>الإجمالي</span>
                 <span className="text-primary">{total} ر.س</span>
               </div>
@@ -722,6 +664,13 @@ const POS = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Channel QR Dialog */}
+      <ChannelQRDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        channels={channelQRCodes}
+      />
     </div>
   );
 };
