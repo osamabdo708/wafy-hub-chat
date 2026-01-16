@@ -2,7 +2,9 @@ import { Search, Moon, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
+import { Link } from "react-router-dom";
 import genieLogo from "@/assets/genie-logo.png";
+import posIcon from "@/assets/pos-icon.png";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
 
 export const Header = () => {
@@ -30,6 +32,11 @@ export const Header = () => {
         </div>
         
         <div className="flex items-center gap-2">
+          <Link to="/pos">
+            <Button variant="ghost" size="icon" title="نقطة البيع">
+              <img src={posIcon} alt="نقطة البيع" className="h-6 w-6" />
+            </Button>
+          </Link>
           <Button
             variant="ghost"
             size="icon"
