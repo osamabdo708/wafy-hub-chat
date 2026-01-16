@@ -20,8 +20,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2, Store, User, Scan } from "lucide-react";
+import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2, User } from "lucide-react";
 import agentIcon from "@/assets/agent-icon.png";
+import posIcon from "@/assets/pos-icon.png";
+import storeIcon from "@/assets/store-icon.png";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -647,12 +649,12 @@ const Orders = () => {
                       </div>
                     ) : order.source_platform === 'المتجر' || order.source_platform === 'store' || order.created_by === 'store' ? (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-emerald-500/10 border-emerald-500/30">
-                        <Store className="w-4 h-4 text-emerald-600" />
+                        <img src={storeIcon} alt="المتجر" className="w-4 h-4" />
                         <span className="text-sm text-emerald-700">المتجر</span>
                       </div>
                     ) : order.source_platform === 'POS' ? (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-blue-500/10 border-blue-500/30">
-                        <Scan className="w-4 h-4 text-blue-600" />
+                        <img src={posIcon} alt="POS" className="w-4 h-4" />
                         <span className="text-sm text-blue-700">POS</span>
                       </div>
                     ) : order.agent_name ? (
