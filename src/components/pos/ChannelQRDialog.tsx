@@ -10,6 +10,7 @@ import messengerIcon from "@/assets/messenger-icon.png";
 import whatsappIcon from "@/assets/whatsapp-icon.png";
 import telegramIcon from "@/assets/telegram-icon.png";
 import whatsappQR from "@/assets/whatsapp-qr.png";
+import telegramQR from "@/assets/telegram-qr.png";
 
 interface ChannelQRDialogProps {
   open: boolean;
@@ -39,7 +40,7 @@ const ChannelQRDialog = ({ open, onOpenChange, channels }: ChannelQRDialogProps)
       key: 'telegram',
       name: 'Telegram',
       icon: telegramIcon,
-      qrUrl: channels.telegram,
+      qrUrl: telegramQR, // Always show the Telegram QR
     },
   ].filter(c => c.qrUrl);
 
