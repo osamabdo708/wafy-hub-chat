@@ -9,6 +9,7 @@ import { QrCode } from "lucide-react";
 import messengerIcon from "@/assets/messenger-icon.png";
 import whatsappIcon from "@/assets/whatsapp-icon.png";
 import telegramIcon from "@/assets/telegram-icon.png";
+import whatsappQR from "@/assets/whatsapp-qr.png";
 
 interface ChannelQRDialogProps {
   open: boolean;
@@ -32,7 +33,7 @@ const ChannelQRDialog = ({ open, onOpenChange, channels }: ChannelQRDialogProps)
       key: 'whatsapp',
       name: 'WhatsApp',
       icon: whatsappIcon,
-      qrUrl: channels.whatsapp,
+      qrUrl: whatsappQR, // Always show the WhatsApp QR
     },
     {
       key: 'telegram',
