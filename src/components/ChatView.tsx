@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -112,6 +113,7 @@ interface ChatViewProps {
   customerEmail?: string;
   customerAvatar?: string;
   channel: string;
+  clientId?: string | null;
   onClose?: () => void;
 }
 
@@ -121,8 +123,10 @@ const ChatView = ({
   customerPhone, 
   customerEmail,
   customerAvatar,
-  channel 
+  channel,
+  clientId
 }: ChatViewProps) => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -613,7 +617,12 @@ const ChatView = ({
               </AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="font-semibold text-lg">{customerName}</h3>
+              <h3 
+                className={`font-semibold text-lg ${clientId ? 'text-primary cursor-pointer hover:underline' : ''}`}
+                onClick={() => clientId && navigate(`/clients/${clientId}`)}
+              >
+                {customerName}
+              </h3>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {getChannelIcon()}
                 <span>{customerPhone || customerEmail}</span>

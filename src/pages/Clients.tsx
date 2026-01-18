@@ -275,7 +275,10 @@ const Clients = () => {
                   return (
                     <TableRow key={client.id} className="hover:bg-muted/30">
                       <TableCell>
-                        <div className="flex items-center gap-3">
+                        <div 
+                          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => navigate(`/clients/${client.id}`)}
+                        >
                           <Avatar className="h-10 w-10">
                             <AvatarImage src={client.avatar_url || undefined} alt={client.name} />
                             <AvatarFallback className="bg-primary/10 text-primary font-medium">
@@ -283,7 +286,7 @@ const Clients = () => {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-medium">{client.name}</p>
+                            <p className="font-medium text-primary hover:underline">{client.name}</p>
                             {client.channel && (
                               <div className="flex items-center gap-1.5 mt-1">
                                 {getChannelIconComponent(client.channel, "w-4 h-4")}
