@@ -222,7 +222,7 @@ const Orders = () => {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ orderId, status }: { orderId: string; status: "مسودة" | "قيد الانتظار" | "مؤكد" | "مكتمل" | "ملغي" }) => {
+    mutationFn: async ({ orderId, status }: { orderId: string; status: "مسودة" | "قيد الانتظار" | "ملغي" | "مؤكد" | "تم التغليف جاهز للتوصيل" | "قيد التوصيل" | "تم التوصيل" | "عائد" | "مكتمل" }) => {
       const { error } = await supabase
         .from("orders")
         .update({ status })
@@ -588,14 +588,19 @@ const Orders = () => {
                   <TableCell>
                     <Select
                       value={order.status || "قيد الانتظار"}
-                      onValueChange={(value: "مسودة" | "قيد الانتظار" | "مؤكد" | "مكتمل" | "ملغي") => updateStatusMutation.mutate({ orderId: order.id, status: value })}
+                      onValueChange={(value: "مسودة" | "قيد الانتظار" | "ملغي" | "مؤكد" | "تم التغليف جاهز للتوصيل" | "قيد التوصيل" | "تم التوصيل" | "عائد" | "مكتمل") => updateStatusMutation.mutate({ orderId: order.id, status: value })}
                     >
-                      <SelectTrigger className="w-[130px] h-8">
+                      <SelectTrigger className="w-[180px] h-8">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="قيد الانتظار">قيد الانتظار</SelectItem>
+                        <SelectItem value="ملغي">ملغي</SelectItem>
                         <SelectItem value="مؤكد">مؤكد</SelectItem>
+                        <SelectItem value="تم التغليف جاهز للتوصيل">تم التغليف جاهز للتوصيل</SelectItem>
+                        <SelectItem value="قيد التوصيل">قيد التوصيل</SelectItem>
+                        <SelectItem value="تم التوصيل">تم التوصيل</SelectItem>
+                        <SelectItem value="عائد">عائد</SelectItem>
                         <SelectItem value="مكتمل">مكتمل</SelectItem>
                       </SelectContent>
                     </Select>
