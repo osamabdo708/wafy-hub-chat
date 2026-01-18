@@ -74,9 +74,13 @@ const AgentOrders = () => {
     const colors: Record<string, string> = {
       مسودة: "bg-gray-500/10 text-gray-600",
       "قيد الانتظار": "bg-yellow-500/10 text-yellow-600",
-      مؤكد: "bg-blue-500/10 text-blue-600",
-      مكتمل: "bg-green-500/10 text-green-600",
       ملغي: "bg-red-500/10 text-red-600",
+      مؤكد: "bg-blue-500/10 text-blue-600",
+      "تم التغليف جاهز للتوصيل": "bg-purple-500/10 text-purple-600",
+      "قيد التوصيل": "bg-orange-500/10 text-orange-600",
+      "تم التوصيل": "bg-teal-500/10 text-teal-600",
+      عائد: "bg-pink-500/10 text-pink-600",
+      مكتمل: "bg-green-500/10 text-green-600",
     };
     return colors[status] || "bg-gray-500/10 text-gray-600";
   };

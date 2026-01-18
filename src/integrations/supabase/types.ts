@@ -1197,7 +1197,16 @@ export type Database = {
       app_role: "admin" | "moderator" | "user" | "super_admin"
       channel_type: "whatsapp" | "facebook" | "instagram" | "telegram" | "email"
       conversation_status: "جديد" | "مفتوح" | "مغلق" | "معلق"
-      order_status: "مسودة" | "قيد الانتظار" | "مؤكد" | "مكتمل" | "ملغي"
+      order_status:
+        | "مسودة"
+        | "قيد الانتظار"
+        | "ملغي"
+        | "مؤكد"
+        | "تم التغليف جاهز للتوصيل"
+        | "قيد التوصيل"
+        | "تم التوصيل"
+        | "عائد"
+        | "مكتمل"
       user_role: "admin" | "manager" | "agent" | "viewer"
     }
     CompositeTypes: {
@@ -1329,7 +1338,17 @@ export const Constants = {
       app_role: ["admin", "moderator", "user", "super_admin"],
       channel_type: ["whatsapp", "facebook", "instagram", "telegram", "email"],
       conversation_status: ["جديد", "مفتوح", "مغلق", "معلق"],
-      order_status: ["مسودة", "قيد الانتظار", "مؤكد", "مكتمل", "ملغي"],
+      order_status: [
+        "مسودة",
+        "قيد الانتظار",
+        "ملغي",
+        "مؤكد",
+        "تم التغليف جاهز للتوصيل",
+        "قيد التوصيل",
+        "تم التوصيل",
+        "عائد",
+        "مكتمل",
+      ],
       user_role: ["admin", "manager", "agent", "viewer"],
     },
   },

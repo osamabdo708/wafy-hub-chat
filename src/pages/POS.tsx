@@ -360,7 +360,7 @@ const POS = () => {
             price: item.price * item.quantity,
             payment_method: paymentMethod === "cash" ? "نقدي" : "الكتروني",
             payment_status: "مدفوع",
-            status: "قيد الانتظار",
+            status: "مكتمل",
             source_platform: "POS",
             notes: `الكمية: ${item.quantity}`,
             order_number: '',
