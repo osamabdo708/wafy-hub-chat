@@ -707,6 +707,7 @@ const Inbox = () => {
               customerEmail={selectedConversation.customer_email}
               customerAvatar={selectedConversation.customer_avatar}
               channel={selectedConversation.channel}
+              clientId={selectedConversation.client_id}
             />
           ) : (
             <Card className="p-6">

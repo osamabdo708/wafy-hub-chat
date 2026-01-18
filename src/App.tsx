@@ -28,6 +28,7 @@ import Installation from "./pages/Installation";
 import NotFound from "./pages/NotFound";
 import Agents from "./pages/Agents";
 import Clients from "./pages/Clients";
+import ClientDetails from "./pages/ClientDetails";
 import SuperAdmin from "./pages/SuperAdmin";
 import PaymentStatus from "./pages/PaymentStatus";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
@@ -60,6 +61,7 @@ const App = () => (
                 <Route path="/orders/:orderId" element={<OrderDetails />} />
                 <Route path="/pos" element={<POS />} />
                 <Route path="/clients" element={<Clients />} />
+                <Route path="/clients/:clientId" element={<ClientDetails />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/reports" element={<Reports />} />
