@@ -178,11 +178,10 @@ const SuperAdmin = () => {
       });
       
       // Initialize Shopify settings even if they don't exist yet
-      const shopifyKeys = ['SHOPIFY_STORE_URL', 'SHOPIFY_ACCESS_TOKEN', 'SHOPIFY_API_VERSION'];
+      const shopifyKeys = ['SHOPIFY_STORE_URL', 'SHOPIFY_ACCESS_TOKEN'];
       shopifyKeys.forEach(key => {
         if (!initial[key]) {
-          // Set default API version if not set
-          initial[key] = key === 'SHOPIFY_API_VERSION' ? '2026-01' : '';
+          initial[key] = '';
         }
       });
       
@@ -202,7 +201,6 @@ const SuperAdmin = () => {
       const shopifySettingsConfig: Record<string, { description: string; is_sensitive: boolean }> = {
         'SHOPIFY_STORE_URL': { description: 'Shopify Store URL', is_sensitive: false },
         'SHOPIFY_ACCESS_TOKEN': { description: 'Shopify Access Token', is_sensitive: true },
-        'SHOPIFY_API_VERSION': { description: 'Shopify API Version', is_sensitive: false },
       };
 
       categorySettings.forEach(s => {
@@ -1311,33 +1309,6 @@ const SuperAdmin = () => {
                   احصل على Access Token من Shopify App في Shopify Partner Dashboard
                 </p>
               </div>
-
-              {/* Shopify API Version */}
-              <div className="space-y-2">
-                <Label htmlFor="SHOPIFY_API_VERSION" className="text-sm font-medium flex items-center gap-2">
-                  <Globe className="w-4 h-4" />
-                  Shopify API Version
-                </Label>
-                <Input
-                  id="SHOPIFY_API_VERSION"
-                  placeholder="2026-01"
-                  value={editedSettings['SHOPIFY_API_VERSION'] || '2026-01'}
-                  onChange={(e) => setEditedSettings(prev => ({
-                    ...prev,
-                    SHOPIFY_API_VERSION: e.target.value
-                  }))}
-                  className="font-mono text-sm"
-                  dir="ltr"
-                />
-                {getSettingValue('SHOPIFY_API_VERSION') && (
-                  <p className="text-xs text-muted-foreground">
-                    القيمة الحالية: {getSettingValue('SHOPIFY_API_VERSION')}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground mt-1">
-                  الإصدار الافتراضي: 2026-01 (الأحدث). استخدم إصدارات أحدث مثل 2025-04 أو 2026-01
-                </p>
-              </div>
             </div>
 
             {/* Setup Instructions */}
@@ -1352,14 +1323,8 @@ const SuperAdmin = () => {
                 <li>في قسم API credentials، انسخ Admin API access token</li>
                 <li>أو استخدم Private app access token من متجرك</li>
                 <li>الصق القيم في الحقول أعلاه واضغط "حفظ التغييرات"</li>
-                <li>API Version: استخدم <span className="font-mono text-foreground">2026-01</span> (الأحدث) أو <span className="font-mono text-foreground">2025-04</span> للتوافق مع Markets API</li>
                 <li>استخدم زر "فحص" في قسم Integration Status للتحقق من الاتصال</li>
               </ol>
-              <div className="mt-4 p-3 rounded bg-yellow-500/10 border border-yellow-500/20">
-                <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400">
-                  ⚠️ ملاحظة: Shopify تقوم بإيقاف العديد من REST API endpoints. يُنصح باستخدام API version 2025-04 أو أحدث للتوافق مع التحديثات المستقبلية.
-                </p>
-              </div>
             </div>
           </Card>
 
