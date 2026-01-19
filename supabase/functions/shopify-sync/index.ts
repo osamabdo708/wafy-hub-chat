@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getAppSetting } from "../_shared/get-app-setting.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,31 +30,8 @@ interface ShopifyVariant {
   option3: string | null;
 }
 
-// Normalize the Shopify store URL so admins can paste either
-// "mystore.myshopify.com" or "https://mystore.myshopify.com/"
-function normalizeStoreUrl(rawUrl: string): string {
-  let url = rawUrl.trim();
-
-  // Remove protocol if included
-  url = url.replace(/^https?:\/\//i, "");
-
-  // Remove any leading/trailing slashes
-  url = url.replace(/^\/+/, "").replace(/\/+$/, "");
-
-  return url;
-}
-
-async function shopifyRequest(
-  storeUrl: string,
-  accessToken: string,
-  endpoint: string,
-  method: string = "GET",
-  body?: any,
-  apiVersion?: string,
-) {
-  // Use provided API version or default to latest (2026-01)
-  const version = apiVersion || '2026-01';
-  const url = `https://${storeUrl}/admin/api/${version}/${endpoint}`;
+async function shopifyRequest(storeUrl: string, accessToken: string, endpoint: string, method: string = 'GET', body?: any) {
+  const url = `https://${storeUrl}/admin/api/2024-01/${endpoint}`;
   
   const options: RequestInit = {
     method,
@@ -69,7 +45,7 @@ async function shopifyRequest(
     options.body = JSON.stringify(body);
   }
   
-  console.log(`Shopify API: ${method} ${endpoint} (API Version: ${version})`);
+  console.log(`Shopify API: ${method} ${endpoint}`);
   const response = await fetch(url, options);
   
   if (!response.ok) {
@@ -87,39 +63,34 @@ serve(async (req) => {
   }
 
   try {
+    const storeUrl = Deno.env.get('SHOPIFY_STORE_URL');
+    const accessToken = Deno.env.get('SHOPIFY_ACCESS_TOKEN');
+
+    if (!storeUrl || !accessToken) {
+      throw new Error('Shopify credentials not configured');
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Get Shopify settings from app_settings table (with fallback to env vars)
-    const rawStoreUrl = await getAppSetting("SHOPIFY_STORE_URL") || Deno.env.get("SHOPIFY_STORE_URL");
-    const accessToken = await getAppSetting("SHOPIFY_ACCESS_TOKEN") || Deno.env.get("SHOPIFY_ACCESS_TOKEN");
-    const apiVersion = await getAppSetting("SHOPIFY_API_VERSION") || Deno.env.get("SHOPIFY_API_VERSION") || "2026-01";
-
-    if (!rawStoreUrl || !accessToken) {
-      throw new Error('Shopify credentials not configured. Please set SHOPIFY_STORE_URL and SHOPIFY_ACCESS_TOKEN in settings.');
-    }
-
-    const storeUrl = normalizeStoreUrl(rawStoreUrl);
-
     const { action, workspaceId, productId, data } = await req.json();
 
-    console.log(`Shopify sync action: ${action}, workspaceId: ${workspaceId}, API Version: ${apiVersion}, Store URL: ${storeUrl}`);
+    console.log(`Shopify sync action: ${action}, workspaceId: ${workspaceId}`);
 
     switch (action) {
       case 'test_connection': {
-        const shopData = await shopifyRequest(storeUrl, accessToken, 'shop.json', 'GET', undefined, apiVersion);
+        const shopData = await shopifyRequest(storeUrl, accessToken, 'shop.json');
         return new Response(JSON.stringify({ 
           success: true, 
-          shop: shopData.shop,
-          api_version: apiVersion
+          shop: shopData.shop 
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       case 'sync_products_from_shopify': {
         // Get all products from Shopify
-        const productsData = await shopifyRequest(storeUrl, accessToken, 'products.json?limit=250', 'GET', undefined, apiVersion);
+        const productsData = await shopifyRequest(storeUrl, accessToken, 'products.json?limit=250');
         const shopifyProducts = productsData.products;
 
         console.log(`Fetched ${shopifyProducts.length} products from Shopify`);
@@ -236,10 +207,10 @@ serve(async (req) => {
 
         if (shopifyId) {
           // Update existing product
-          result = await shopifyRequest(storeUrl, accessToken, `products/${shopifyId}.json`, 'PUT', shopifyProduct, apiVersion);
+          result = await shopifyRequest(storeUrl, accessToken, `products/${shopifyId}.json`, 'PUT', shopifyProduct);
         } else {
           // Create new product
-          result = await shopifyRequest(storeUrl, accessToken, 'products.json', 'POST', shopifyProduct, apiVersion);
+          result = await shopifyRequest(storeUrl, accessToken, 'products.json', 'POST', shopifyProduct);
           
           // Save Shopify ID back to our database
           await supabase
@@ -295,9 +266,9 @@ serve(async (req) => {
             let result;
 
             if (shopifyId) {
-              result = await shopifyRequest(storeUrl, accessToken, `products/${shopifyId}.json`, 'PUT', shopifyProduct, apiVersion);
+              result = await shopifyRequest(storeUrl, accessToken, `products/${shopifyId}.json`, 'PUT', shopifyProduct);
             } else {
-              result = await shopifyRequest(storeUrl, accessToken, 'products.json', 'POST', shopifyProduct, apiVersion);
+              result = await shopifyRequest(storeUrl, accessToken, 'products.json', 'POST', shopifyProduct);
               
               await supabase
                 .from('products')
@@ -352,7 +323,7 @@ serve(async (req) => {
               }
             };
 
-            const result = await shopifyRequest(storeUrl, accessToken, 'smart_collections.json', 'POST', collection, apiVersion);
+            const result = await shopifyRequest(storeUrl, accessToken, 'smart_collections.json', 'POST', collection);
             results.push({ category: category.name, success: true, collectionId: result.smart_collection?.id });
           } catch (err: any) {
             // Collection might already exist
@@ -387,7 +358,7 @@ serve(async (req) => {
 
       case 'sync_orders_from_shopify': {
         // Get orders from Shopify
-        const ordersData = await shopifyRequest(storeUrl, accessToken, 'orders.json?status=any&limit=250', 'GET', undefined, apiVersion);
+        const ordersData = await shopifyRequest(storeUrl, accessToken, 'orders.json?status=any&limit=250');
         const shopifyOrders = ordersData.orders;
 
         console.log(`Fetched ${shopifyOrders.length} orders from Shopify`);
