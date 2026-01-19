@@ -30,11 +30,11 @@ import {
   User,
   AlertTriangle,
   RotateCcw,
-  Store,
+  ShoppingBag,
   Send,
   MessageCircle
 } from "lucide-react";
-import StoreSettings from "@/components/settings/StoreSettings";
+import ShopifySettings from "@/components/settings/ShopifySettings";
 import ShippingSettings from "@/components/settings/ShippingSettings";
 import PaymentSettings from "@/components/settings/PaymentSettings";
 import { ChannelConfigManager } from "@/components/admin/ChannelConfigManager";
@@ -596,9 +596,9 @@ const SuperAdmin = () => {
             <Send className="w-4 h-4" />
             Telegram
           </TabsTrigger>
-          <TabsTrigger value="store" className="gap-2">
-            <Store className="w-4 h-4" />
-            المتجر
+          <TabsTrigger value="shopify" className="gap-2">
+            <ShoppingBag className="w-4 h-4" />
+            Shopify
           </TabsTrigger>
           <TabsTrigger value="shipping" className="gap-2">
             <Truck className="w-4 h-4" />
@@ -1156,9 +1156,9 @@ const SuperAdmin = () => {
           </Card>
         </TabsContent>
 
-        {/* Store Settings Tab */}
-        <TabsContent value="store" className="space-y-6">
-          <StoreSettings />
+        {/* Shopify Settings Tab */}
+        <TabsContent value="shopify" className="space-y-6">
+          <ShopifySettings />
         </TabsContent>
 
         {/* Shipping Settings Tab */}
