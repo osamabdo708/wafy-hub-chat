@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2, User, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2, User } from "lucide-react";
 import agentIcon from "@/assets/agent-icon.png";
 import posIcon from "@/assets/pos-icon.png";
 import storeIcon from "@/assets/store-icon.png";
@@ -38,8 +38,6 @@ const Orders = () => {
   const clientFilter = searchParams.get("client");
   
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const ordersPerPage = 6;
   const [formData, setFormData] = useState({
     customer_name: "",
     customer_phone: "",
@@ -307,59 +305,11 @@ const Orders = () => {
     });
   };
 
-  // Pagination logic
-  const totalPages = Math.ceil(orders.length / ordersPerPage);
-  const startIndex = (currentPage - 1) * ordersPerPage;
-  const endIndex = startIndex + ordersPerPage;
-  const paginatedOrders = orders.slice(startIndex, endIndex);
-
-  // Reset to page 1 when orders change or filter changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [clientFilter, orders.length]);
-
   const stats = {
     total: orders.length,
     pending: orders.filter(o => o.status === "قيد الانتظار").length,
     confirmed: orders.filter(o => o.status === "مؤكد").length,
     cancelled: orders.filter(o => o.status === "ملغي").length,
-  };
-
-  // Generate page numbers array
-  const getPageNumbers = () => {
-    const pages: (number | string)[] = [];
-    const maxVisiblePages = 5;
-    
-    if (totalPages <= maxVisiblePages) {
-      // Show all pages if total pages is less than max visible
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
-    } else {
-      // Show first page
-      pages.push(1);
-      
-      if (currentPage > 3) {
-        pages.push("...");
-      }
-      
-      // Show pages around current page
-      const start = Math.max(2, currentPage - 1);
-      const end = Math.min(totalPages - 1, currentPage + 1);
-      
-      for (let i = start; i <= end; i++) {
-        pages.push(i);
-      }
-      
-      if (currentPage < totalPages - 2) {
-        pages.push("...");
-      }
-      
-      // Show last page
-      pages.push(totalPages);
-    }
-    
-    return pages;
   };
   return (
     <div className="space-y-6">
@@ -624,7 +574,7 @@ const Orders = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedOrders.map((order) => (
+              {orders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.order_number}</TableCell>
                   <TableCell>
@@ -775,54 +725,6 @@ const Orders = () => {
           </Table>
         )}
       </Card>
-
-      {orders.length > 0 && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-          >
-            <ChevronRight className="w-4 h-4 ml-1" />
-            السابق
-          </Button>
-          
-          <div className="flex items-center gap-1">
-            {getPageNumbers().map((page, index) => {
-              if (page === "...") {
-                return (
-                  <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
-                    ...
-                  </span>
-                );
-              }
-              
-              return (
-                <Button
-                  key={page}
-                  variant={currentPage === page ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCurrentPage(page as number)}
-                  className="min-w-[40px]"
-                >
-                  {page}
-                </Button>
-              );
-            })}
-          </div>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
-          >
-            التالي
-            <ChevronLeft className="w-4 h-4 mr-1" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 };
