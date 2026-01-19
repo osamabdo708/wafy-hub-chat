@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon, Palette, Tags, Trash2 } from "lucide-react";
+import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon, Palette, Tags, Trash2, RefreshCw, ShoppingBag, ExternalLink } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,17 +21,23 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
 
 const productSchema = z.object({
   name: z.string().trim().min(1, "اسم المنتج مطلوب").max(200, "الاسم طويل جداً"),
-  description: z.string().trim().max(1000, "الوصف طويل جداً").optional(),
+  description: z.string().trim().max(5000, "الوصف طويل جداً").optional(),
   price: z.string().trim().min(1, "السعر مطلوب"),
+  compare_at_price: z.string().trim().optional(),
   min_negotiable_price: z.string().trim().optional(),
   category: z.string().trim().max(100, "الفئة طويلة جداً").optional(),
   stock: z.string().trim(),
+  sku: z.string().trim().max(100, "SKU طويل جداً").optional(),
+  barcode: z.string().trim().max(100, "الباركود طويل جداً").optional(),
+  vendor: z.string().trim().max(100, "المورد طويل جداً").optional(),
+  tags: z.string().trim().max(500, "الوسوم طويلة جداً").optional(),
 });
 
 interface AttributeValue {
@@ -56,6 +62,14 @@ interface ColorAttribute {
 interface ProductAttributes {
   colors?: ColorAttribute[];
   custom?: CustomAttribute[];
+  shopify_id?: number;
+  vendor?: string;
+  tags?: string;
+  sku?: string;
+  barcode?: string;
+  compare_at_price?: number;
+  variants?: any[];
+  options?: any[];
 }
 
 interface Product {
@@ -87,10 +101,13 @@ const Products = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [syncingProduct, setSyncingProduct] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     price: "",
+    compare_at_price: "",
     min_negotiable_price: "",
     purchase_price: "",
     category_id: "",
@@ -99,6 +116,12 @@ const Products = () => {
     gallery_images: [] as string[],
     colors: [] as ColorAttribute[],
     customAttributes: [] as CustomAttribute[],
+    sku: "",
+    barcode: "",
+    vendor: "",
+    tags: "",
+    track_quantity: true,
+    is_active: true,
   });
   const [newColor, setNewColor] = useState({ name: "", hex: "#000000", image_url: "", price: "" });
   const [newAttributeName, setNewAttributeName] = useState("");
@@ -364,6 +387,7 @@ const Products = () => {
         name: product.name,
         description: product.description || "",
         price: product.price.toString(),
+        compare_at_price: product.attributes?.compare_at_price?.toString() || "",
         min_negotiable_price: product.min_negotiable_price?.toString() || "",
         purchase_price: product.purchase_price?.toString() || "",
         category_id: product.category_id || "",
@@ -372,6 +396,12 @@ const Products = () => {
         gallery_images: product.gallery_images || [],
         colors: product.attributes?.colors || [],
         customAttributes: product.attributes?.custom || [],
+        sku: product.attributes?.sku || "",
+        barcode: product.attributes?.barcode || "",
+        vendor: product.attributes?.vendor || "",
+        tags: product.attributes?.tags || "",
+        track_quantity: true,
+        is_active: product.is_active,
       });
     } else {
       setEditingProduct(null);
@@ -379,6 +409,7 @@ const Products = () => {
         name: "",
         description: "",
         price: "",
+        compare_at_price: "",
         min_negotiable_price: "",
         purchase_price: "",
         category_id: "",
@@ -387,6 +418,12 @@ const Products = () => {
         gallery_images: [],
         colors: [],
         customAttributes: [],
+        sku: "",
+        barcode: "",
+        vendor: "",
+        tags: "",
+        track_quantity: true,
+        is_active: true,
       });
     }
     setFormErrors({});
@@ -495,8 +532,16 @@ const Products = () => {
         stock: parseInt(formData.stock),
         image_url: formData.image_url || null,
         gallery_images: formData.gallery_images,
-        attributes: JSON.parse(JSON.stringify({ colors: formData.colors, custom: formData.customAttributes })),
-        is_active: true,
+        attributes: JSON.parse(JSON.stringify({ 
+          colors: formData.colors, 
+          custom: formData.customAttributes,
+          sku: formData.sku || undefined,
+          barcode: formData.barcode || undefined,
+          vendor: formData.vendor || undefined,
+          tags: formData.tags || undefined,
+          compare_at_price: formData.compare_at_price ? parseFloat(formData.compare_at_price) : undefined,
+        })),
+        is_active: formData.is_active,
       };
 
       if (editingProduct) {
@@ -541,10 +586,33 @@ const Products = () => {
           <h1 className="text-3xl font-bold">المنتجات</h1>
           <p className="text-muted-foreground mt-1">إدارة كتالوج المنتجات</p>
         </div>
-        <Button onClick={() => handleOpenDialog()}>
-          <Plus className="w-4 h-4 ml-2" />
-          إضافة منتج
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={async () => {
+            if (!workspaceId) return;
+            setSyncingAll(true);
+            try {
+              const { data, error } = await supabase.functions.invoke('shopify-sync', {
+                body: { action: 'sync_products_from_shopify', workspaceId }
+              });
+              if (error) throw error;
+              if (data.success) {
+                toast.success(`تم استيراد ${data.synced} منتج من Shopify`);
+                fetchProducts();
+              }
+            } catch (err: any) {
+              toast.error(err.message || 'فشل استيراد المنتجات');
+            } finally {
+              setSyncingAll(false);
+            }
+          }} disabled={syncingAll}>
+            {syncingAll ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <ShoppingBag className="w-4 h-4 ml-2" />}
+            استيراد من Shopify
+          </Button>
+          <Button onClick={() => handleOpenDialog()}>
+            <Plus className="w-4 h-4 ml-2" />
+            إضافة منتج
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -1,6 +1,15 @@
 project_id = "pegkzuxbgswqouieordl"
 
 # ============================================
+# SHOPIFY INTEGRATION
+# ============================================
+[functions.shopify-sync]
+verify_jwt = false
+
+[functions.shopify-webhook]
+verify_jwt = false
+
+# ============================================
 # UNIFIED WEBHOOK (Single endpoint for all Meta channels)
 # ============================================
 [functions.unified-webhook]
