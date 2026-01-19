@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon, Palette, Tags, Trash2, RefreshCw, ShoppingBag, ExternalLink } from "lucide-react";
+import { Plus, Package, Edit, Loader2, Upload, X, Image as ImageIcon, Palette, Tags, Trash2, RefreshCw, ShoppingBag, ExternalLink, DollarSign, Package2, Truck, Search, FileText, Settings } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -37,9 +39,38 @@ const productSchema = z.object({
   sku: z.string().trim().max(100, "SKU طويل جداً").optional(),
   barcode: z.string().trim().max(100, "الباركود طويل جداً").optional(),
   vendor: z.string().trim().max(100, "المورد طويل جداً").optional(),
+  product_type: z.string().trim().max(100, "نوع المنتج طويل جداً").optional(),
   tags: z.string().trim().max(500, "الوسوم طويلة جداً").optional(),
+  weight: z.string().trim().optional(),
+  seo_title: z.string().trim().max(70, "عنوان SEO طويل جداً").optional(),
+  seo_description: z.string().trim().max(320, "وصف SEO طويل جداً").optional(),
+  handle: z.string().trim().max(255, "الرابط طويل جداً").optional(),
 });
 
+interface OptionValue {
+  value: string;
+  image_url?: string;
+}
+
+interface ProductOption {
+  name: string; // e.g., "Size", "Color", "Material"
+  values: OptionValue[]; // e.g., ["Small", "Medium", "Large"]
+}
+
+interface ProductVariant {
+  id?: string;
+  option1?: string; // First option value
+  option2?: string; // Second option value
+  option3?: string; // Third option value
+  price?: number; // Variant-specific price (overrides base price)
+  sku?: string;
+  barcode?: string;
+  inventory_quantity?: number;
+  weight?: number;
+  image_url?: string;
+}
+
+// Legacy interfaces for backward compatibility
 interface AttributeValue {
   value: string;
   image_url?: string;
@@ -60,16 +91,27 @@ interface ColorAttribute {
 }
 
 interface ProductAttributes {
+  // Shopify-style options and variants
+  options?: ProductOption[]; // Up to 3 options (e.g., Size, Color, Material)
+  variants?: ProductVariant[]; // Generated combinations of option values
+  
+  // Legacy support
   colors?: ColorAttribute[];
   custom?: CustomAttribute[];
+  
   shopify_id?: number;
   vendor?: string;
+  product_type?: string;
   tags?: string;
   sku?: string;
   barcode?: string;
   compare_at_price?: number;
-  variants?: any[];
-  options?: any[];
+  weight?: string;
+  weight_unit?: string;
+  requires_shipping?: boolean;
+  seo_title?: string;
+  seo_description?: string;
+  handle?: string;
 }
 
 interface Product {
@@ -114,15 +156,30 @@ const Products = () => {
     stock: "0",
     image_url: "",
     gallery_images: [] as string[],
+    // Shopify-style options (up to 3)
+    options: [] as ProductOption[],
+    variants: [] as ProductVariant[],
+    // Legacy support
     colors: [] as ColorAttribute[],
     customAttributes: [] as CustomAttribute[],
     sku: "",
     barcode: "",
     vendor: "",
+    product_type: "",
     tags: "",
     track_quantity: true,
     is_active: true,
+    weight: "",
+    weight_unit: "kg",
+    requires_shipping: true,
+    seo_title: "",
+    seo_description: "",
+    handle: "",
   });
+  const [newOptionName, setNewOptionName] = useState("");
+  const [newOptionValue, setNewOptionValue] = useState({ value: "", image_url: "" });
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
+  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [newColor, setNewColor] = useState({ name: "", hex: "#000000", image_url: "", price: "" });
   const [newAttributeName, setNewAttributeName] = useState("");
   const [newAttributeValue, setNewAttributeValue] = useState({ value: "", image_url: "", price: "" });
@@ -162,6 +219,64 @@ const Products = () => {
     };
     init();
   }, []);
+
+  // Auto-generate variants when options change (only when dialog is open)
+  useEffect(() => {
+    if (!dialogOpen) return;
+    
+    const optionsWithValues = formData.options.filter(opt => opt.values.length > 0);
+    
+    if (optionsWithValues.length === 0) {
+      setFormData(prev => ({ ...prev, variants: [] }));
+      return;
+    }
+
+    // Get all value arrays
+    const valueArrays = optionsWithValues.map(opt => opt.values.map(v => v.value));
+    
+    // Generate all combinations
+    const combinations: string[][] = [];
+    const generateCombinations = (arrays: string[][], current: string[] = [], index: number = 0) => {
+      if (index === arrays.length) {
+        combinations.push([...current]);
+        return;
+      }
+      for (const value of arrays[index]) {
+        current.push(value);
+        generateCombinations(arrays, current, index + 1);
+        current.pop();
+      }
+    };
+    
+    generateCombinations(valueArrays);
+    
+    // Create variants from combinations
+    setFormData(prev => {
+      const newVariants: ProductVariant[] = combinations.map((combo, idx) => {
+        // Check if variant already exists
+        const existing = prev.variants.find(v => 
+          v.option1 === combo[0] && 
+          v.option2 === combo[1] && 
+          v.option3 === combo[2]
+        );
+        
+        if (existing) {
+          return existing;
+        }
+        
+        return {
+          id: `variant-${Date.now()}-${idx}`,
+          option1: combo[0] || undefined,
+          option2: combo[1] || undefined,
+          option3: combo[2] || undefined,
+          price: prev.price ? parseFloat(prev.price) : undefined,
+          inventory_quantity: prev.track_quantity ? parseInt(prev.stock) : undefined,
+        };
+      });
+      
+      return { ...prev, variants: newVariants };
+    });
+  }, [formData.options.map(opt => `${opt.name}:${opt.values.map(v => v.value).join(',')}`).join('|'), dialogOpen]);
 
   const fetchCategories = async (wsId: string) => {
     try {
@@ -380,6 +495,111 @@ const Products = () => {
     setFormData({ ...formData, colors: updatedColors });
   };
 
+  // Shopify-style Options and Variants functions
+  const addOption = () => {
+    if (formData.options.length >= 3) {
+      toast.error("يمكنك إضافة 3 خيارات كحد أقصى");
+      return;
+    }
+    if (!newOptionName.trim()) {
+      toast.error("يرجى إدخال اسم الخيار");
+      return;
+    }
+    setFormData({
+      ...formData,
+      options: [...formData.options, { name: newOptionName.trim(), values: [] }],
+    });
+    setNewOptionName("");
+  };
+
+  const removeOption = (index: number) => {
+    const updatedOptions = formData.options.filter((_, i) => i !== index);
+    setFormData({ ...formData, options: updatedOptions });
+  };
+
+  const addOptionValue = (optionIndex: number) => {
+    if (!newOptionValue.value.trim()) {
+      toast.error("يرجى إدخال قيمة الخيار");
+      return;
+    }
+    const updatedOptions = [...formData.options];
+    if (updatedOptions[optionIndex].values.some(v => v.value.toLowerCase() === newOptionValue.value.trim().toLowerCase())) {
+      toast.error("هذه القيمة موجودة بالفعل");
+      return;
+    }
+    updatedOptions[optionIndex].values.push({
+      value: newOptionValue.value.trim(),
+      image_url: newOptionValue.image_url || undefined,
+    });
+    setFormData({ ...formData, options: updatedOptions });
+    setNewOptionValue({ value: "", image_url: "" });
+  };
+
+  const removeOptionValue = (optionIndex: number, valueIndex: number) => {
+    const updatedOptions = [...formData.options];
+    updatedOptions[optionIndex].values = updatedOptions[optionIndex].values.filter((_, i) => i !== valueIndex);
+    setFormData({ ...formData, options: updatedOptions });
+  };
+
+  // Generate all variant combinations from options (like Shopify)
+  const generateVariants = () => {
+    if (formData.options.length === 0) {
+      setFormData({ ...formData, variants: [] });
+      return;
+    }
+
+    // Get all value arrays
+    const valueArrays = formData.options.map(opt => opt.values.map(v => v.value));
+    
+    // Generate all combinations
+    const combinations: string[][] = [];
+    const generateCombinations = (arrays: string[][], current: string[] = [], index: number = 0) => {
+      if (index === arrays.length) {
+        combinations.push([...current]);
+        return;
+      }
+      for (const value of arrays[index]) {
+        current.push(value);
+        generateCombinations(arrays, current, index + 1);
+        current.pop();
+      }
+    };
+    
+    generateCombinations(valueArrays);
+    
+    // Create variants from combinations
+    const newVariants: ProductVariant[] = combinations.map((combo, idx) => {
+      // Check if variant already exists
+      const existing = formData.variants.find(v => 
+        v.option1 === combo[0] && 
+        v.option2 === combo[1] && 
+        v.option3 === combo[2]
+      );
+      
+      if (existing) {
+        return existing;
+      }
+      
+      return {
+        id: `variant-${idx}`,
+        option1: combo[0] || undefined,
+        option2: combo[1] || undefined,
+        option3: combo[2] || undefined,
+        price: formData.price ? parseFloat(formData.price) : undefined,
+        inventory_quantity: formData.track_quantity ? parseInt(formData.stock) : undefined,
+      };
+    });
+    
+    setFormData({ ...formData, variants: newVariants });
+  };
+
+  const updateVariant = (variantId: string, updates: Partial<ProductVariant>) => {
+    const updatedVariants = formData.variants.map(v => 
+      v.id === variantId ? { ...v, ...updates } : v
+    );
+    setFormData({ ...formData, variants: updatedVariants });
+  };
+
   const handleOpenDialog = (product?: Product) => {
     if (product) {
       setEditingProduct(product);
@@ -394,14 +614,23 @@ const Products = () => {
         stock: product.stock.toString(),
         image_url: product.image_url || "",
         gallery_images: product.gallery_images || [],
+        options: product.attributes?.options || [],
+        variants: product.attributes?.variants || [],
         colors: product.attributes?.colors || [],
         customAttributes: product.attributes?.custom || [],
         sku: product.attributes?.sku || "",
         barcode: product.attributes?.barcode || "",
         vendor: product.attributes?.vendor || "",
+        product_type: product.attributes?.product_type || "",
         tags: product.attributes?.tags || "",
         track_quantity: true,
         is_active: product.is_active,
+        weight: product.attributes?.weight || "",
+        weight_unit: product.attributes?.weight_unit || "kg",
+        requires_shipping: product.attributes?.requires_shipping !== false,
+        seo_title: product.attributes?.seo_title || "",
+        seo_description: product.attributes?.seo_description || "",
+        handle: product.attributes?.handle || "",
       });
     } else {
       setEditingProduct(null);
@@ -416,14 +645,23 @@ const Products = () => {
         stock: "0",
         image_url: "",
         gallery_images: [],
+        options: [],
+        variants: [],
         colors: [],
         customAttributes: [],
         sku: "",
         barcode: "",
         vendor: "",
+        product_type: "",
         tags: "",
         track_quantity: true,
         is_active: true,
+        weight: "",
+        weight_unit: "kg",
+        requires_shipping: true,
+        seo_title: "",
+        seo_description: "",
+        handle: "",
       });
     }
     setFormErrors({});
@@ -533,13 +771,24 @@ const Products = () => {
         image_url: formData.image_url || null,
         gallery_images: formData.gallery_images,
         attributes: JSON.parse(JSON.stringify({ 
+          // Shopify-style options and variants
+          options: formData.options,
+          variants: formData.variants,
+          // Legacy support
           colors: formData.colors, 
           custom: formData.customAttributes,
           sku: formData.sku || undefined,
           barcode: formData.barcode || undefined,
           vendor: formData.vendor || undefined,
+          product_type: formData.product_type || undefined,
           tags: formData.tags || undefined,
           compare_at_price: formData.compare_at_price ? parseFloat(formData.compare_at_price) : undefined,
+          weight: formData.weight || undefined,
+          weight_unit: formData.weight_unit || undefined,
+          requires_shipping: formData.requires_shipping,
+          seo_title: formData.seo_title || undefined,
+          seo_description: formData.seo_description || undefined,
+          handle: formData.handle || undefined,
         })),
         is_active: formData.is_active,
       };
@@ -726,7 +975,7 @@ const Products = () => {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingProduct ? "تعديل المنتج" : "إضافة منتج جديد"}
@@ -736,37 +985,275 @@ const Products = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">اسم المنتج *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="مثال: زيت الأرغان الطبيعي"
-              />
-              {formErrors.name && (
-                <p className="text-sm text-destructive">{formErrors.name}</p>
-              )}
-            </div>
+          <Tabs defaultValue="basic" className="w-full">
+            <TabsList className="grid w-full grid-cols-6 mb-4">
+              <TabsTrigger value="basic" className="flex items-center gap-1">
+                <FileText className="w-4 h-4" />
+                <span className="hidden sm:inline">معلومات أساسية</span>
+              </TabsTrigger>
+              <TabsTrigger value="media" className="flex items-center gap-1">
+                <ImageIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">الصور</span>
+              </TabsTrigger>
+              <TabsTrigger value="pricing" className="flex items-center gap-1">
+                <DollarSign className="w-4 h-4" />
+                <span className="hidden sm:inline">التسعير</span>
+              </TabsTrigger>
+              <TabsTrigger value="inventory" className="flex items-center gap-1">
+                <Package2 className="w-4 h-4" />
+                <span className="hidden sm:inline">المخزون</span>
+              </TabsTrigger>
+              <TabsTrigger value="shipping" className="flex items-center gap-1">
+                <Truck className="w-4 h-4" />
+                <span className="hidden sm:inline">الشحن</span>
+              </TabsTrigger>
+              <TabsTrigger value="variants" className="flex items-center gap-1">
+                <Palette className="w-4 h-4" />
+                <span className="hidden sm:inline">المتغيرات</span>
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">الوصف</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="وصف المنتج"
-                rows={3}
-              />
-              {formErrors.description && (
-                <p className="text-sm text-destructive">{formErrors.description}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+            {/* Basic Information Tab */}
+            <TabsContent value="basic" className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="price">السعر (₪) *</Label>
+                <Label htmlFor="name">اسم المنتج *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="مثال: زيت الأرغان الطبيعي"
+                />
+                {formErrors.name && (
+                  <p className="text-sm text-destructive">{formErrors.name}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">الوصف</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="وصف المنتج"
+                  rows={6}
+                />
+                {formErrors.description && (
+                  <p className="text-sm text-destructive">{formErrors.description}</p>
+                )}
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">تنظيم المنتج</h3>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="product_type">نوع المنتج</Label>
+                    <Input
+                      id="product_type"
+                      value={formData.product_type}
+                      onChange={(e) => setFormData({ ...formData, product_type: e.target.value })}
+                      placeholder="مثال: زيوت طبيعية"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="vendor">المورد</Label>
+                    <Input
+                      id="vendor"
+                      value={formData.vendor}
+                      onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
+                      placeholder="اسم المورد"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="category_id">الفئات</Label>
+                  <Select 
+                    value={formData.category_id || "none"} 
+                    onValueChange={(value) => setFormData({ ...formData, category_id: value === "none" ? "" : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر فئة" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">بدون فئة</SelectItem>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="tags">الوسوم</Label>
+                  <Input
+                    id="tags"
+                    value={formData.tags}
+                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                    placeholder="وسوم مفصولة بفواصل: طبيعي، عضوي، للبشرة"
+                  />
+                  <p className="text-xs text-muted-foreground">استخدم الفواصل لفصل الوسوم</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">معاينة محرك البحث</h3>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="seo_title">عنوان الصفحة</Label>
+                  <Input
+                    id="seo_title"
+                    value={formData.seo_title}
+                    onChange={(e) => setFormData({ ...formData, seo_title: e.target.value })}
+                    placeholder={formData.name || "عنوان الصفحة"}
+                    maxLength={70}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {formData.seo_title.length || formData.name.length}/70 حرف
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="seo_description">الوصف التعريفي</Label>
+                  <Textarea
+                    id="seo_description"
+                    value={formData.seo_description}
+                    onChange={(e) => setFormData({ ...formData, seo_description: e.target.value })}
+                    placeholder={formData.description || "وصف للمنتج"}
+                    rows={3}
+                    maxLength={320}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {formData.seo_description.length || formData.description.length}/320 حرف
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="handle">رابط URL</Label>
+                  <Input
+                    id="handle"
+                    value={formData.handle}
+                    onChange={(e) => setFormData({ ...formData, handle: e.target.value })}
+                    placeholder={formData.name.toLowerCase().replace(/\s+/g, '-') || "product-url"}
+                  />
+                  <p className="text-xs text-muted-foreground">يتم إنشاؤه تلقائياً من اسم المنتج</p>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Media Tab */}
+            <TabsContent value="media" className="space-y-4">
+
+              <div className="space-y-2">
+                <Label>الصورة الرئيسية</Label>
+                <input
+                  ref={thumbnailInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleThumbnailUpload}
+                  className="hidden"
+                />
+                {formData.image_url ? (
+                  <div className="relative w-40 h-40 rounded-lg overflow-hidden border">
+                    <img
+                      src={formData.image_url}
+                      alt="Thumbnail"
+                      className="w-full h-full object-cover"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-1 right-1 w-6 h-6"
+                      onClick={removeThumbnail}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-32 border-dashed"
+                    onClick={() => thumbnailInputRef.current?.click()}
+                    disabled={uploadingThumbnail}
+                  >
+                    {uploadingThumbnail ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="w-6 h-6" />
+                        <span className="text-sm">رفع صورة رئيسية</span>
+                      </div>
+                    )}
+                  </Button>
+                )}
+                <p className="text-xs text-muted-foreground">الصورة التي ستظهر في نتائج البحث والمتجر</p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label>معرض الصور</Label>
+                <input
+                  ref={galleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleGalleryUpload}
+                  className="hidden"
+                />
+                
+                <div className="grid grid-cols-4 gap-2">
+                  {formData.gallery_images.map((url, index) => (
+                    <div key={index} className="relative aspect-square rounded-lg overflow-hidden border">
+                      <img
+                        src={url}
+                        alt={`Gallery ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-1 right-1 w-5 h-5"
+                        onClick={() => removeGalleryImage(index)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="aspect-square border-dashed"
+                    onClick={() => galleryInputRef.current?.click()}
+                    disabled={uploadingGallery}
+                  >
+                    {uploadingGallery ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <ImageIcon className="w-5 h-5" />
+                        <span className="text-xs">إضافة</span>
+                      </div>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">يمكنك إضافة عدة صور للمنتج</p>
+              </div>
+            </TabsContent>
+
+            {/* Pricing Tab */}
+            <TabsContent value="pricing" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="price">السعر *</Label>
                 <Input
                   id="price"
                   type="number"
@@ -781,6 +1268,21 @@ const Products = () => {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="compare_at_price">سعر المقارنة</Label>
+                <Input
+                  id="compare_at_price"
+                  type="number"
+                  step="0.01"
+                  value={formData.compare_at_price}
+                  onChange={(e) => setFormData({ ...formData, compare_at_price: e.target.value })}
+                  placeholder="0.00"
+                />
+                <p className="text-xs text-muted-foreground">يُستخدم لعرض السعر الأصلي المخفض</p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
                 <Label htmlFor="min_negotiable_price">الحد الأدنى للتفاوض (₪)</Label>
                 <Input
                   id="min_negotiable_price"
@@ -792,160 +1294,378 @@ const Products = () => {
                 />
                 <p className="text-xs text-muted-foreground">للمارد الذكي</p>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="purchase_price">سعر الشراء (₪)</Label>
-              <Input
-                id="purchase_price"
-                type="number"
-                step="0.01"
-                value={formData.purchase_price}
-                onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
-                placeholder="0.00"
-              />
-              <p className="text-xs text-muted-foreground">اختياري - لحساب الأرباح لاحقاً</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="stock">الكمية *</Label>
+                <Label htmlFor="purchase_price">سعر الشراء (₪)</Label>
                 <Input
-                  id="stock"
+                  id="purchase_price"
                   type="number"
-                  value={formData.stock}
-                  onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                  placeholder="0"
+                  step="0.01"
+                  value={formData.purchase_price}
+                  onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
+                  placeholder="0.00"
                 />
-                {formErrors.stock && (
-                  <p className="text-sm text-destructive">{formErrors.stock}</p>
-                )}
+                <p className="text-xs text-muted-foreground">اختياري - لحساب الأرباح لاحقاً</p>
+              </div>
+            </TabsContent>
+
+            {/* Inventory Tab */}
+            <TabsContent value="inventory" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="track_quantity">تتبع الكمية</Label>
+                  <p className="text-xs text-muted-foreground">تتبع المخزون لهذا المنتج</p>
+                </div>
+                <Switch
+                  id="track_quantity"
+                  checked={formData.track_quantity}
+                  onCheckedChange={(checked) => setFormData({ ...formData, track_quantity: checked })}
+                />
+              </div>
+
+              {formData.track_quantity && (
+                <div className="space-y-2">
+                  <Label htmlFor="stock">الكمية المتوفرة *</Label>
+                  <Input
+                    id="stock"
+                    type="number"
+                    value={formData.stock}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                    placeholder="0"
+                  />
+                  {formErrors.stock && (
+                    <p className="text-sm text-destructive">{formErrors.stock}</p>
+                  )}
+                </div>
+              )}
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label htmlFor="sku">SKU (رمز المنتج)</Label>
+                <Input
+                  id="sku"
+                  value={formData.sku}
+                  onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                  placeholder="SKU-001"
+                />
+                <p className="text-xs text-muted-foreground">رمز تعريف المنتج الفريد</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category_id">الفئة</Label>
-                <Select 
-                  value={formData.category_id || "none"} 
-                  onValueChange={(value) => setFormData({ ...formData, category_id: value === "none" ? "" : value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر فئة" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">بدون فئة</SelectItem>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="barcode">الباركود</Label>
+                <Input
+                  id="barcode"
+                  value={formData.barcode}
+                  onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                  placeholder="1234567890123"
+                />
+                <p className="text-xs text-muted-foreground">رمز الباركود للمنتج</p>
               </div>
-            </div>
+            </TabsContent>
 
-            {/* Thumbnail Upload */}
-            <div className="space-y-2">
-              <Label>الصورة الرئيسية</Label>
-              <input
-                ref={thumbnailInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleThumbnailUpload}
-                className="hidden"
-              />
-              {formData.image_url ? (
-                <div className="relative w-32 h-32 rounded-lg overflow-hidden border">
-                  <img
-                    src={formData.image_url}
-                    alt="Thumbnail"
-                    className="w-full h-full object-cover"
-                  />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-1 right-1 w-6 h-6"
-                    onClick={removeThumbnail}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+            {/* Shipping Tab */}
+            <TabsContent value="shipping" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="requires_shipping">يتطلب الشحن</Label>
+                  <p className="text-xs text-muted-foreground">هل يحتاج هذا المنتج للشحن؟</p>
                 </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-24 border-dashed"
-                  onClick={() => thumbnailInputRef.current?.click()}
-                  disabled={uploadingThumbnail}
-                >
-                  {uploadingThumbnail ? (
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2">
-                      <Upload className="w-6 h-6" />
-                      <span className="text-sm">رفع صورة رئيسية</span>
-                    </div>
-                  )}
-                </Button>
-              )}
-            </div>
+                <Switch
+                  id="requires_shipping"
+                  checked={formData.requires_shipping}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requires_shipping: checked })}
+                />
+              </div>
 
-            {/* Gallery Upload */}
-            <div className="space-y-2">
-              <Label>معرض الصور</Label>
-              <input
-                ref={galleryInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleGalleryUpload}
-                className="hidden"
-              />
-              
-              <div className="grid grid-cols-4 gap-2">
-                {formData.gallery_images.map((url, index) => (
-                  <div key={index} className="relative aspect-square rounded-lg overflow-hidden border">
-                    <img
-                      src={url}
-                      alt={`Gallery ${index + 1}`}
-                      className="w-full h-full object-cover"
-                    />
+              {formData.requires_shipping && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="weight">الوزن</Label>
+                      <Input
+                        id="weight"
+                        type="number"
+                        step="0.01"
+                        value={formData.weight}
+                        onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="weight_unit">الوحدة</Label>
+                      <Select 
+                        value={formData.weight_unit} 
+                        onValueChange={(value) => setFormData({ ...formData, weight_unit: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kg">كيلوغرام (kg)</SelectItem>
+                          <SelectItem value="g">غرام (g)</SelectItem>
+                          <SelectItem value="lb">رطل (lb)</SelectItem>
+                          <SelectItem value="oz">أونصة (oz)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
+            {/* Variants Tab */}
+            <TabsContent value="variants" className="space-y-4">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold mb-2">خيارات المنتج</h3>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    أضف خيارات مثل المقاس واللون. يمكنك إضافة حتى 3 خيارات. سيتم إنشاء المتغيرات تلقائياً من جميع التركيبات.
+                  </p>
+                </div>
+
+                {/* Existing Options */}
+                {formData.options.map((option, optionIndex) => (
+                  <div key={optionIndex} className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Label className="font-medium">{option.name}</Label>
+                        <Badge variant="secondary">{option.values.length} قيمة</Badge>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="w-7 h-7 hover:bg-destructive hover:text-destructive-foreground"
+                        onClick={() => removeOption(optionIndex)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+
+                    {/* Option Values */}
+                    {option.values.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {option.values.map((val, valIndex) => (
+                          <div
+                            key={valIndex}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-background"
+                          >
+                            {val.image_url && (
+                              <img
+                                src={val.image_url}
+                                alt={val.value}
+                                className="w-6 h-6 rounded object-cover"
+                              />
+                            )}
+                            <span className="text-sm">{val.value}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="w-5 h-5 hover:bg-destructive hover:text-destructive-foreground"
+                              onClick={() => removeOptionValue(optionIndex, valIndex)}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add Value Form */}
+                    {selectedOptionIndex === optionIndex && (
+                      <div className="pt-2 border-t space-y-2">
+                        <div className="flex items-end gap-2">
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-xs">القيمة</Label>
+                            <Input
+                              value={newOptionValue.value}
+                              onChange={(e) => setNewOptionValue({ ...newOptionValue, value: e.target.value })}
+                              placeholder="مثال: أحمر"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  addOptionValue(optionIndex);
+                                }
+                              }}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => addOptionValue(optionIndex)}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     <Button
                       type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-1 right-1 w-5 h-5"
-                      onClick={() => removeGalleryImage(index)}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedOptionIndex(selectedOptionIndex === optionIndex ? null : optionIndex)}
                     >
-                      <X className="w-3 h-3" />
+                      <Plus className="w-4 h-4 ml-1" />
+                      إضافة قيمة
                     </Button>
                   </div>
                 ))}
-                
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="aspect-square border-dashed"
-                  onClick={() => galleryInputRef.current?.click()}
-                  disabled={uploadingGallery}
-                >
-                  {uploadingGallery ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-1">
-                      <ImageIcon className="w-5 h-5" />
-                      <span className="text-xs">إضافة</span>
-                    </div>
-                  )}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">يمكنك إضافة عدة صور للمنتج</p>
-            </div>
 
-            {/* Color Attributes */}
-            <div className="space-y-3">
-              <Label className="flex items-center gap-2">
-                <Palette className="w-4 h-4" />
-                الألوان المتوفرة
-              </Label>
+                {/* Add New Option */}
+                {formData.options.length < 3 && (
+                  <div className="p-4 rounded-lg border border-dashed space-y-3">
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1 space-y-1">
+                        <Label className="text-sm">إضافة خيار جديد</Label>
+                        <Input
+                          value={newOptionName}
+                          onChange={(e) => setNewOptionName(e.target.value)}
+                          placeholder="مثال: المقاس، اللون، المادة..."
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addOption();
+                            }
+                          }}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={addOption}
+                        disabled={!newOptionName.trim()}
+                      >
+                        <Plus className="w-4 h-4 ml-1" />
+                        إضافة خيار
+                      </Button>
+                    </div>
+                    {formData.options.length === 2 && (
+                      <p className="text-xs text-muted-foreground">
+                        يمكنك إضافة خيار واحد فقط (الحد الأقصى 3 خيارات)
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {formData.options.length >= 3 && (
+                  <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground text-center">
+                    تم الوصول إلى الحد الأقصى (3 خيارات)
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Generated Variants */}
+                {formData.variants.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold">المتغيرات ({formData.variants.length})</h3>
+                        <p className="text-xs text-muted-foreground">
+                          تم إنشاء المتغيرات تلقائياً من جميع التركيبات
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="max-h-96 overflow-y-auto space-y-2">
+                      {formData.variants.map((variant, idx) => {
+                        const variantTitle = [
+                          variant.option1,
+                          variant.option2,
+                          variant.option3
+                        ].filter(Boolean).join(' / ') || 'افتراضي';
+                        
+                        return (
+                          <div
+                            key={variant.id || idx}
+                            className="p-3 rounded-lg border bg-background space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{variantTitle}</p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingVariant(editingVariant?.id === variant.id ? null : variant)}
+                              >
+                                <Settings className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            {editingVariant?.id === variant.id && (
+                              <div className="pt-2 border-t space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">السعر (₪)</Label>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={variant.price?.toString() || formData.price}
+                                      onChange={(e) => updateVariant(variant.id!, { price: parseFloat(e.target.value) || undefined })}
+                                      placeholder={formData.price || "0.00"}
+                                    />
+                                  </div>
+                                  {formData.track_quantity && (
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">الكمية</Label>
+                                      <Input
+                                        type="number"
+                                        value={variant.inventory_quantity?.toString() || "0"}
+                                        onChange={(e) => updateVariant(variant.id!, { inventory_quantity: parseInt(e.target.value) || 0 })}
+                                        placeholder="0"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">SKU</Label>
+                                    <Input
+                                      value={variant.sku || ""}
+                                      onChange={(e) => updateVariant(variant.id!, { sku: e.target.value || undefined })}
+                                      placeholder="SKU-001"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">الباركود</Label>
+                                    <Input
+                                      value={variant.barcode || ""}
+                                      onChange={(e) => updateVariant(variant.id!, { barcode: e.target.value || undefined })}
+                                      placeholder="123456789"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {editingVariant?.id !== variant.id && (
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <span>السعر: {variant.price || formData.price || "0"} ₪</span>
+                                {formData.track_quantity && (
+                                  <span>الكمية: {variant.inventory_quantity || 0}</span>
+                                )}
+                                {variant.sku && <span>SKU: {variant.sku}</span>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {formData.options.length === 0 && (
+                  <div className="p-6 rounded-lg border border-dashed text-center text-muted-foreground">
+                    <Package2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">أضف خيارات لإنشاء متغيرات تلقائياً</p>
+                  </div>
+                )}
+              </div>
               
               {/* Existing Colors */}
               {formData.colors.length > 0 && (
@@ -1229,167 +1949,22 @@ const Products = () => {
                   إضافة اللون
                 </Button>
               </div>
-            </div>
+            </TabsContent>
+          </Tabs>
 
-            {/* Custom Attributes */}
-            <div className="space-y-3">
-              <Label className="flex items-center gap-2">
-                <Tags className="w-4 h-4" />
-                سمات إضافية (مقاسات، خامات، إلخ)
-              </Label>
+          <Separator />
 
-              {/* Existing Custom Attributes */}
-              {formData.customAttributes.length > 0 && (
-                <div className="space-y-3">
-                  {formData.customAttributes.map((attr, attrIndex) => (
-                    <div key={attrIndex} className="p-3 rounded-lg border bg-muted/30">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="font-medium text-sm">{attr.name}</p>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant={selectedAttributeIndex === attrIndex ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setSelectedAttributeIndex(selectedAttributeIndex === attrIndex ? null : attrIndex)}
-                          >
-                            <Plus className="w-3 h-3 ml-1" />
-                            إضافة قيمة
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="w-7 h-7 hover:bg-destructive hover:text-destructive-foreground"
-                            onClick={() => removeCustomAttribute(attrIndex)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Attribute Values */}
-                      {attr.values.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          {attr.values.map((val, valIndex) => (
-                            <div
-                              key={valIndex}
-                              className="flex items-center gap-2 px-2 py-1 rounded-lg border bg-background"
-                            >
-                              {val.image_url && (
-                                <img
-                                  src={val.image_url}
-                                  alt={val.value}
-                                  className="w-6 h-6 rounded object-cover"
-                                />
-                              )}
-                              <span className="text-sm">{val.value}</span>
-                              {val.price && <span className="text-xs text-muted-foreground">({val.price} ر)</span>}
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="w-5 h-5 hover:bg-destructive hover:text-destructive-foreground"
-                                onClick={() => removeAttributeValue(attrIndex, valIndex)}
-                              >
-                                <X className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Add Value Form (shown when selected) */}
-                      {selectedAttributeIndex === attrIndex && (
-                        <div className="pt-2 border-t space-y-2">
-                          <div className="flex items-end gap-2">
-                            <div className="flex-1 space-y-1">
-                              <Label className="text-xs">القيمة</Label>
-                              <Input
-                                value={newAttributeValue.value}
-                                onChange={(e) => setNewAttributeValue({ ...newAttributeValue, value: e.target.value })}
-                                placeholder={`مثال: ${attr.name === 'المقاس' ? 'XL' : 'قيمة'}`}
-                              />
-                            </div>
-                            <div className="w-20 space-y-1">
-                              <Label className="text-xs">السعر</Label>
-                              <Input
-                                type="number"
-                                value={newAttributeValue.price}
-                                onChange={(e) => setNewAttributeValue({ ...newAttributeValue, price: e.target.value })}
-                                placeholder="0"
-                              />
-                            </div>
-                            <input
-                              ref={attributeImageInputRef}
-                              type="file"
-                              accept="image/*"
-                              onChange={handleAttributeImageUpload}
-                              className="hidden"
-                            />
-                            {newAttributeValue.image_url ? (
-                              <div className="relative w-10 h-10 rounded overflow-hidden border">
-                                <img
-                                  src={newAttributeValue.image_url}
-                                  alt="Value"
-                                  className="w-full h-full object-cover"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="destructive"
-                                  size="icon"
-                                  className="absolute top-0 right-0 w-4 h-4"
-                                  onClick={() => setNewAttributeValue({ ...newAttributeValue, image_url: "" })}
-                                >
-                                  <X className="w-2 h-2" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="w-10 h-10"
-                                onClick={() => attributeImageInputRef.current?.click()}
-                                disabled={uploadingAttributeImage}
-                              >
-                                {uploadingAttributeImage ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <ImageIcon className="w-4 h-4" />
-                                )}
-                              </Button>
-                            )}
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => addAttributeValue(attrIndex)}
-                              disabled={uploadingAttributeImage}
-                            >
-                              <Plus className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Add New Attribute */}
-              <div className="flex items-end gap-2">
-                <div className="flex-1 space-y-1">
-                  <Label className="text-xs">إضافة سمة جديدة</Label>
-                  <Input
-                    value={newAttributeName}
-                    onChange={(e) => setNewAttributeName(e.target.value)}
-                    placeholder="مثال: المقاس، الخامة، النوع..."
-                  />
-                </div>
-                <Button type="button" variant="outline" onClick={addCustomAttribute}>
-                  <Plus className="w-4 h-4 ml-1" />
-                  إضافة سمة
-                </Button>
-              </div>
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="is_active">حالة المنتج</Label>
+              <Switch
+                id="is_active"
+                checked={formData.is_active}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              />
+              <span className="text-sm text-muted-foreground">
+                {formData.is_active ? "نشط" : "مسودة"}
+              </span>
             </div>
           </div>
 
