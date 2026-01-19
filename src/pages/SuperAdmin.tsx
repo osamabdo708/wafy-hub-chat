@@ -176,15 +176,6 @@ const SuperAdmin = () => {
       data.settings?.forEach((s: AppSetting) => {
         initial[s.key] = s.is_sensitive ? '' : s.value;
       });
-      
-      // Initialize Shopify settings even if they don't exist yet
-      const shopifyKeys = ['SHOPIFY_STORE_URL', 'SHOPIFY_ACCESS_TOKEN'];
-      shopifyKeys.forEach(key => {
-        if (!initial[key]) {
-          initial[key] = '';
-        }
-      });
-      
       setEditedSettings(initial);
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -197,12 +188,6 @@ const SuperAdmin = () => {
       const categorySettings = settings.filter(s => s.category === category);
       const updates: Record<string, string> = {};
       
-      // Define Shopify settings configuration
-      const shopifySettingsConfig: Record<string, { description: string; is_sensitive: boolean }> = {
-        'SHOPIFY_STORE_URL': { description: 'Shopify Store URL', is_sensitive: false },
-        'SHOPIFY_ACCESS_TOKEN': { description: 'Shopify Access Token', is_sensitive: true },
-      };
-
       categorySettings.forEach(s => {
         const newValue = editedSettings[s.key];
         if (newValue && newValue !== s.value && !newValue.startsWith('••••')) {
@@ -210,53 +195,12 @@ const SuperAdmin = () => {
         }
       });
 
-      // For Shopify category, also check for settings that might not exist yet
-      if (category === 'shopify') {
-        Object.keys(shopifySettingsConfig).forEach(key => {
-          const newValue = editedSettings[key];
-          const existingSetting = categorySettings.find(s => s.key === key);
-          
-          // If setting doesn't exist and has a value, create it
-          if (!existingSetting && newValue && newValue.trim() !== '' && !newValue.startsWith('••••')) {
-            updates[key] = newValue;
-          }
-          // If setting exists and value changed
-          else if (existingSetting && newValue && newValue !== existingSetting.value && !newValue.startsWith('••••')) {
-            updates[key] = newValue;
-          }
-        });
-      }
-
       if (Object.keys(updates).length === 0) {
         toast.info("لا توجد تغييرات لحفظها");
         setSavingSettings(false);
         return;
       }
 
-      // For Shopify settings that don't exist, create them first
-      if (category === 'shopify') {
-        for (const [key, value] of Object.entries(updates)) {
-          const existingSetting = settings.find(s => s.key === key);
-          if (!existingSetting && shopifySettingsConfig[key]) {
-            const config = shopifySettingsConfig[key];
-            const { error: insertError } = await supabase
-              .from('app_settings')
-              .insert({
-                key,
-                value,
-                description: config.description,
-                category: 'shopify',
-                is_sensitive: config.is_sensitive
-              });
-            
-            if (insertError && insertError.code !== '23505') { // Ignore duplicate key error
-              console.error(`Error creating setting ${key}:`, insertError);
-            }
-          }
-        }
-      }
-
-      // Update existing settings
       const { data, error } = await supabase.functions.invoke('manage-app-settings', {
         body: { action: 'update', settings: updates }
       });
@@ -1214,121 +1158,6 @@ const SuperAdmin = () => {
 
         {/* Shopify Settings Tab */}
         <TabsContent value="shopify" className="space-y-6">
-          {/* Shopify Credentials */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <ShoppingBag className="w-5 h-5 text-green-500" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">بيانات Shopify</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Store URL و Access Token من Shopify App
-                  </p>
-                </div>
-              </div>
-              <Button 
-                onClick={() => handleSaveSettings('shopify')}
-                disabled={savingSettings}
-                className="gap-2"
-              >
-                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                حفظ التغييرات
-              </Button>
-            </div>
-            
-            <Separator className="mb-6" />
-            
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Shopify Store URL */}
-              <div className="space-y-2">
-                <Label htmlFor="SHOPIFY_STORE_URL" className="text-sm font-medium flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4" />
-                  Shopify Store URL
-                </Label>
-                <Input
-                  id="SHOPIFY_STORE_URL"
-                  placeholder="mystore.myshopify.com"
-                  value={editedSettings['SHOPIFY_STORE_URL'] || ''}
-                  onChange={(e) => setEditedSettings(prev => ({
-                    ...prev,
-                    SHOPIFY_STORE_URL: e.target.value
-                  }))}
-                  className="font-mono text-sm"
-                  dir="ltr"
-                />
-                {getSettingValue('SHOPIFY_STORE_URL') && (
-                  <p className="text-xs text-muted-foreground">
-                    القيمة الحالية: {getSettingValue('SHOPIFY_STORE_URL')}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground mt-1">
-                  أدخل عنوان المتجر بدون https:// (مثال: mystore.myshopify.com)
-                </p>
-              </div>
-
-              {/* Shopify Access Token */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="SHOPIFY_ACCESS_TOKEN" className="text-sm font-medium flex items-center gap-2">
-                    <Key className="w-4 h-4" />
-                    Shopify Access Token
-                  </Label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSensitive('SHOPIFY_ACCESS_TOKEN')}
-                    className="h-8 px-2"
-                  >
-                    {showSensitive['SHOPIFY_ACCESS_TOKEN'] ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </Button>
-                </div>
-                <Input
-                  id="SHOPIFY_ACCESS_TOKEN"
-                  type={showSensitive['SHOPIFY_ACCESS_TOKEN'] ? 'text' : 'password'}
-                  placeholder="أدخل Access Token"
-                  value={editedSettings['SHOPIFY_ACCESS_TOKEN'] || ''}
-                  onChange={(e) => setEditedSettings(prev => ({
-                    ...prev,
-                    SHOPIFY_ACCESS_TOKEN: e.target.value
-                  }))}
-                  className="font-mono text-sm"
-                  dir="ltr"
-                />
-                {getSettingValue('SHOPIFY_ACCESS_TOKEN') && (
-                  <p className="text-xs text-muted-foreground">
-                    القيمة الحالية: {getSettingValue('SHOPIFY_ACCESS_TOKEN')}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground mt-1">
-                  احصل على Access Token من Shopify App في Shopify Partner Dashboard
-                </p>
-              </div>
-            </div>
-
-            {/* Setup Instructions */}
-            <div className="mt-6 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                <Settings className="w-4 h-4" />
-                خطوات الحصول على Shopify Access Token
-              </h4>
-              <ol className="text-sm space-y-2 text-muted-foreground list-decimal list-inside">
-                <li>انتقل إلى <span className="font-mono text-foreground">partners.shopify.com</span></li>
-                <li>أنشئ تطبيق جديد أو اختر تطبيق موجود</li>
-                <li>في قسم API credentials، انسخ Admin API access token</li>
-                <li>أو استخدم Private app access token من متجرك</li>
-                <li>الصق القيم في الحقول أعلاه واضغط "حفظ التغييرات"</li>
-                <li>استخدم زر "فحص" في قسم Integration Status للتحقق من الاتصال</li>
-              </ol>
-            </div>
-          </Card>
-
-          {/* Integration Status */}
           <ShopifySettings />
         </TabsContent>
 
