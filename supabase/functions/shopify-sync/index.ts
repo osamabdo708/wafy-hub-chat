@@ -31,7 +31,28 @@ interface ShopifyVariant {
   option3: string | null;
 }
 
-async function shopifyRequest(storeUrl: string, accessToken: string, endpoint: string, method: string = 'GET', body?: any, apiVersion?: string) {
+// Normalize the Shopify store URL so admins can paste either
+// "mystore.myshopify.com" or "https://mystore.myshopify.com/"
+function normalizeStoreUrl(rawUrl: string): string {
+  let url = rawUrl.trim();
+
+  // Remove protocol if included
+  url = url.replace(/^https?:\/\//i, "");
+
+  // Remove any leading/trailing slashes
+  url = url.replace(/^\/+/, "").replace(/\/+$/, "");
+
+  return url;
+}
+
+async function shopifyRequest(
+  storeUrl: string,
+  accessToken: string,
+  endpoint: string,
+  method: string = "GET",
+  body?: any,
+  apiVersion?: string,
+) {
   // Use provided API version or default to latest (2026-01)
   const version = apiVersion || '2026-01';
   const url = `https://${storeUrl}/admin/api/${version}/${endpoint}`;
@@ -72,17 +93,19 @@ serve(async (req) => {
     );
 
     // Get Shopify settings from app_settings table (with fallback to env vars)
-    const storeUrl = await getAppSetting('SHOPIFY_STORE_URL') || Deno.env.get('SHOPIFY_STORE_URL');
-    const accessToken = await getAppSetting('SHOPIFY_ACCESS_TOKEN') || Deno.env.get('SHOPIFY_ACCESS_TOKEN');
-    const apiVersion = await getAppSetting('SHOPIFY_API_VERSION') || Deno.env.get('SHOPIFY_API_VERSION') || '2026-01';
+    const rawStoreUrl = await getAppSetting("SHOPIFY_STORE_URL") || Deno.env.get("SHOPIFY_STORE_URL");
+    const accessToken = await getAppSetting("SHOPIFY_ACCESS_TOKEN") || Deno.env.get("SHOPIFY_ACCESS_TOKEN");
+    const apiVersion = await getAppSetting("SHOPIFY_API_VERSION") || Deno.env.get("SHOPIFY_API_VERSION") || "2026-01";
 
-    if (!storeUrl || !accessToken) {
+    if (!rawStoreUrl || !accessToken) {
       throw new Error('Shopify credentials not configured. Please set SHOPIFY_STORE_URL and SHOPIFY_ACCESS_TOKEN in settings.');
     }
 
+    const storeUrl = normalizeStoreUrl(rawStoreUrl);
+
     const { action, workspaceId, productId, data } = await req.json();
 
-    console.log(`Shopify sync action: ${action}, workspaceId: ${workspaceId}, API Version: ${apiVersion}`);
+    console.log(`Shopify sync action: ${action}, workspaceId: ${workspaceId}, API Version: ${apiVersion}, Store URL: ${storeUrl}`);
 
     switch (action) {
       case 'test_connection': {
