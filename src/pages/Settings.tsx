@@ -112,7 +112,7 @@ const Settings = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
-          <LayoutDashboard className="w-8 h-8" />
+          {/* <LayoutDashboard className="w-8 h-8" /> */}
           لوحة التحكم
         </h1>
         <p className="text-muted-foreground mt-1">إدارة القنوات وإعدادات المارد الذكي</p>
