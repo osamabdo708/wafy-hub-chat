@@ -150,37 +150,49 @@ const Settings = () => {
 
 
       {/* Shopify Connection Card */}
-      {shopifyConnected && (
-        <Card className="p-6 border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-[#96bf48] flex items-center justify-center shadow-lg">
-                <Store className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-lg font-bold">Shopify</Label>
-                  <CheckCircle2 className="w-5 h-5 text-green-500" />
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {shopifyShopName ? `متصل بـ ${shopifyShopName}` : 'متصل بمتجر Shopify'}
-                </p>
-              </div>
-            </div>
-            {shopifyStoreUrl && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`https://${shopifyStoreUrl.replace(/^https?:\/\//, '')}`, '_blank')}
-                className="gap-2"
-              >
-                <ExternalLink className="w-4 h-4" />
-                زيارة المتجر
-              </Button>
-            )}
+{/* Shopify Connection Card */}
+{shopifyConnected && (
+  <Card className="p-6 border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-lg">
+          <img
+            src="https://i.ibb.co/KTGdqGX/shopify-glyph.png"
+            alt="Shopify"
+            className="w-8 h-8 object-contain"
+          />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <Label className="text-lg font-bold">Shopify</Label>
+            <CheckCircle2 className="w-5 h-5 text-green-500" />
           </div>
-        </Card>
+          <p className="text-sm text-muted-foreground mt-1">
+            {shopifyShopName ? `متصل بـ ${shopifyShopName}` : 'متصل بمتجر Shopify'}
+          </p>
+        </div>
+      </div>
+
+      {shopifyStoreUrl && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            window.open(
+              `https://${shopifyStoreUrl.replace(/^https?:\/\//, '')}`,
+              '_blank'
+            )
+          }
+          className="gap-2"
+        >
+          <ExternalLink className="w-4 h-4" />
+          زيارة المتجر
+        </Button>
       )}
+    </div>
+  </Card>
+)}
+
 
       {/* Channels Section */}
       <div>
