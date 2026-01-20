@@ -105,7 +105,8 @@ serve(async (req) => {
           payment_status: order.financial_status === 'paid' ? 'مدفوع' : 'غير مدفوع',
           shipping_address: order.shipping_address ? 
             `${order.shipping_address.address1 || ''} ${order.shipping_address.address2 || ''}, ${order.shipping_address.city || ''}, ${order.shipping_address.country || ''}` : null,
-          source_platform: 'shopify',
+          // source_platform: 'shopify',
+          source_platform: 'المتجر',
           notes: order.note || null,
         };
 
