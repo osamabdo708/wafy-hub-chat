@@ -6,6 +6,7 @@ import { Users, Phone, ShoppingCart, Crown, UserPlus, UserCheck, Star, Package }
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
 import { getChannelIconComponent } from "@/components/ChannelIcons";
 import chatIcon from "@/assets/chat-icon.png";
@@ -108,6 +109,8 @@ const getStatusColor = (status: string) => {
 const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(5);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -175,10 +178,42 @@ const Clients = () => {
       }
 
       setLoading(false);
+      setVisibleCount(5);
     };
 
     fetchClients();
   }, []);
+
+  useEffect(() => {
+    // Reset visible clients when search changes
+    setVisibleCount(5);
+  }, [searchQuery]);
+
+  const filteredClients = clients.filter((client) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    const name = client.name?.toLowerCase() ?? "";
+    const phone = client.phone ?? "";
+    const email = client.email?.toLowerCase() ?? "";
+
+    return (
+      name.includes(query) ||
+      phone.includes(query) ||
+      email.includes(query)
+    );
+  });
+
+  const visibleClients = filteredClients.slice(0, visibleCount);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (event) => {
+    const target = event.currentTarget;
+    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 40) {
+      setVisibleCount((prev) =>
+        Math.min(prev + 5, filteredClients.length)
+      );
+    }
+  };
 
   const totalClients = clients.length;
   const vipClients = clients.filter(c => c.order_count >= 5).length;
@@ -239,9 +274,6 @@ const Clients = () => {
 
       {/* Clients Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>قائمة العملاء</CardTitle>
-        </CardHeader>
         <CardContent>
           {loading ? (
             <div className="space-y-2">
@@ -249,129 +281,163 @@ const Clients = () => {
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : clients.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>لا يوجد عملاء بعد</p>
-              <p className="text-sm">سيتم إنشاء العملاء تلقائياً عند استلام المحادثات</p>
-            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead className="text-right font-semibold">العميل</TableHead>
-                  <TableHead className="text-right font-semibold">التواصل</TableHead>
-                  <TableHead className="text-right font-semibold">المحادثة</TableHead>
-                  <TableHead className="text-right font-semibold">الطلبات</TableHead>
-                  <TableHead className="text-right font-semibold">إجمالي المشتريات</TableHead>
-                  <TableHead className="text-right font-semibold">آخر طلب</TableHead>
-                  <TableHead className="text-right font-semibold">التصنيف</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clients.map((client) => {
-                  const classification = getClientClassification(client.order_count);
-                  const IconComponent = classification.icon;
-                  return (
-                    <TableRow key={client.id} className="hover:bg-muted/30">
-                      <TableCell>
-                        <div 
-                          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => navigate(`/clients/${client.id}`)}
-                        >
-                          <Avatar className="h-10 w-10">
-                            <AvatarImage src={client.avatar_url || undefined} alt={client.name} />
-                            <AvatarFallback className="bg-primary/10 text-primary font-medium">
-                              {getInitials(client.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium text-primary hover:underline">{client.name}</p>
-                            {client.channel && (
-                              <div className="flex items-center gap-1.5 mt-1">
-                                {getChannelIconComponent(client.channel, "w-4 h-4")}
-                                <span className="text-xs text-muted-foreground capitalize">{client.channel}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          {client.phone && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span dir="ltr" className="text-muted-foreground">{client.phone}</span>
-                            </div>
-                          )}
-                          <div className="text-sm text-muted-foreground">
-                            {client.conversation_count} محادثة
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {client.conversation_id ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/inbox?conversation=${client.conversation_id}`);
-                            }}
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors"
-                          >
-                            <img src={chatIcon} alt="Chat" className="w-5 h-5" />
-                            <span className="text-sm font-medium text-primary">فتح المحادثة</span>
-                          </button>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">لا يوجد محادثة</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/orders?client=${client.id}`);
-                          }}
-                          className="flex items-center gap-2 hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors"
-                        >
-                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
-                            <Package className="h-4 w-4 text-primary" />
-                          </div>
-                          <span className="font-semibold text-primary underline-offset-2 hover:underline">{client.order_count}</span>
-                        </button>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-semibold text-primary">
-                          {formatCurrency(client.total_spent)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {client.latest_order ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">{client.latest_order.order_number}</span>
-                              <Badge className={`text-xs ${getStatusColor(client.latest_order.status || '')}`}>
-                                {client.latest_order.status}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(client.latest_order.created_at).toLocaleDateString("ar-SA")}
-                            </p>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">لا يوجد طلبات</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${classification.bgColor} ${classification.textColor} ${classification.borderColor}`}>
-                          <IconComponent className="h-4 w-4" />
-                          <span className="font-medium text-sm">{classification.label}</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <>
+              <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-center md:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  ابحث عن عميل بالاسم، رقم الجوال أو البريد الإلكتروني
+                </p>
+                <Input
+                  type="search"
+                  placeholder="بحث عن عميل..."
+                  className="w-full md:w-64"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              {clients.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>لا يوجد عملاء بعد</p>
+                  <p className="text-sm">سيتم إنشاء العملاء تلقائياً عند استلام المحادثات</p>
+                </div>
+              ) : filteredClients.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>لا يوجد عملاء مطابقة لبحثك</p>
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="max-h-[420px] overflow-y-auto pr-1"
+                    onScroll={handleScroll}
+                  >
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="text-right font-semibold">العميل</TableHead>
+                          <TableHead className="text-right font-semibold">التواصل</TableHead>
+                          <TableHead className="text-right font-semibold">المحادثة</TableHead>
+                          <TableHead className="text-right font-semibold">الطلبات</TableHead>
+                          <TableHead className="text-right font-semibold">إجمالي المشتريات</TableHead>
+                          <TableHead className="text-right font-semibold">آخر طلب</TableHead>
+                          <TableHead className="text-right font-semibold">التصنيف</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {visibleClients.map((client) => {
+                          const classification = getClientClassification(client.order_count);
+                          const IconComponent = classification.icon;
+                          return (
+                            <TableRow key={client.id} className="hover:bg-muted/30">
+                              <TableCell>
+                                <div 
+                                  className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                                  onClick={() => navigate(`/clients/${client.id}`)}
+                                >
+                                  <Avatar className="h-10 w-10">
+                                    <AvatarImage src={client.avatar_url || undefined} alt={client.name} />
+                                    <AvatarFallback className="bg-primary/10 text-primary font-medium">
+                                      {getInitials(client.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="font-medium text-primary hover:underline">{client.name}</p>
+                                    {client.channel && (
+                                      <div className="flex items-center gap-1.5 mt-1">
+                                        {getChannelIconComponent(client.channel, "w-4 h-4")}
+                                        <span className="text-xs text-muted-foreground capitalize">{client.channel}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  {client.phone && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                                      <span dir="ltr" className="text-muted-foreground">{client.phone}</span>
+                                    </div>
+                                  )}
+                                  <div className="text-sm text-muted-foreground">
+                                    {client.conversation_count} محادثة
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {client.conversation_id ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate(`/inbox?conversation=${client.conversation_id}`);
+                                    }}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors"
+                                  >
+                                    <img src={chatIcon} alt="Chat" className="w-5 h-5" />
+                                    <span className="text-sm font-medium text-primary">فتح المحادثة</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">لا يوجد محادثة</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/orders?client=${client.id}`);
+                                  }}
+                                  className="flex items-center gap-2 hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors"
+                                >
+                                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
+                                    <Package className="h-4 w-4 text-primary" />
+                                  </div>
+                                  <span className="font-semibold text-primary underline-offset-2 hover:underline">{client.order_count}</span>
+                                </button>
+                              </TableCell>
+                              <TableCell>
+                                <span className="font-semibold text-primary">
+                                  {formatCurrency(client.total_spent)}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                {client.latest_order ? (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium">{client.latest_order.order_number}</span>
+                                      <Badge className={`text-xs ${getStatusColor(client.latest_order.status || '')}`}>
+                                        {client.latest_order.status}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {new Date(client.latest_order.created_at).toLocaleDateString("ar-SA")}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">لا يوجد طلبات</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${classification.bgColor} ${classification.textColor} ${classification.borderColor}`}>
+                                  <IconComponent className="h-4 w-4" />
+                                  <span className="font-medium text-sm">{classification.label}</span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {visibleClients.length < filteredClients.length && (
+                    <p className="mt-2 text-center text-xs text-muted-foreground">
+                      مرّر لأسفل لعرض المزيد من العملاء
+                    </p>
+                  )}
+                </>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
