@@ -197,7 +197,7 @@ const Settings = () => {
       {/* Channels Section */}
       <div>
         <h3 className="text-lg font-bold mb-2">قنوات التواصل</h3>
-        <p className="text-muted-foreground text-sm mb-4">حالة القنوات المتصلة - يتم إدارتها من قبل المشرف</p>
+        {/* <p className="text-muted-foreground text-sm mb-4">حالة القنوات المتصلة - يتم إدارتها من قبل المشرف</p> */}
       </div>
       
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -227,11 +227,11 @@ const Settings = () => {
         />
       </div>
 
-      <div className="p-4 rounded-lg bg-muted/50 border">
+      {/* <div className="p-4 rounded-lg bg-muted/50 border">
         <p className="text-sm text-muted-foreground text-center">
           💡 يتم إدارة ربط القنوات من قبل المشرف العام في لوحة التحكم
         </p>
-      </div>
+      </div> */}
     </div>
   );
 };
