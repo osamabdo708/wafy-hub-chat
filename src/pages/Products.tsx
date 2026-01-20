@@ -179,7 +179,6 @@ const Products = () => {
   const [newOptionName, setNewOptionName] = useState("");
   const [newOptionValue, setNewOptionValue] = useState({ value: "", image_url: "" });
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
-  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [newColor, setNewColor] = useState({ name: "", hex: "#000000", image_url: "", price: "" });
   const [newAttributeName, setNewAttributeName] = useState("");
   const [newAttributeValue, setNewAttributeValue] = useState({ value: "", image_url: "", price: "" });
@@ -1558,103 +1557,111 @@ const Products = () => {
 
                 <Separator />
 
-                {/* Generated Variants */}
+                {/* Generated Variants - Shopify-style table */}
                 {formData.variants.length > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-sm font-semibold">المتغيرات ({formData.variants.length})</h3>
                         <p className="text-xs text-muted-foreground">
-                          تم إنشاء المتغيرات تلقائياً من جميع التركيبات
+                          تم إنشاء المتغيرات تلقائياً من جميع التركيبات. قم بتحديث السعر والمخزون لكل متغير كما في Shopify.
                         </p>
                       </div>
                     </div>
 
-                    <div className="max-h-96 overflow-y-auto space-y-2">
-                      {formData.variants.map((variant, idx) => {
-                        const variantTitle = [
-                          variant.option1,
-                          variant.option2,
-                          variant.option3
-                        ].filter(Boolean).join(' / ') || 'افتراضي';
-                        
-                        return (
-                          <div
-                            key={variant.id || idx}
-                            className="p-3 rounded-lg border bg-background space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <p className="text-sm font-medium">{variantTitle}</p>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setEditingVariant(editingVariant?.id === variant.id ? null : variant)}
-                              >
-                                <Settings className="w-4 h-4" />
-                              </Button>
-                            </div>
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="max-h-96 overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted">
+                            <tr>
+                              <th className="px-3 py-2 text-right font-medium w-10">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-muted-foreground/40"
+                                  // Placeholder for future bulk actions, keeps UI close to Shopify
+                                  onChange={() => {}}
+                                />
+                              </th>
+                              <th className="px-3 py-2 text-right font-medium">المتغير</th>
+                              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">السعر (₪)</th>
+                              {formData.track_quantity && (
+                                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">المتوفر</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {formData.variants.map((variant, idx) => {
+                              const variantTitle = [
+                                variant.option1,
+                                variant.option2,
+                                variant.option3,
+                              ]
+                                .filter(Boolean)
+                                .join(" / ") || "افتراضي";
 
-                            {editingVariant?.id === variant.id && (
-                              <div className="pt-2 border-t space-y-2">
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">السعر (₪)</Label>
+                              return (
+                                <tr
+                                  key={variant.id || idx}
+                                  className="border-t bg-background hover:bg-muted/60 transition-colors"
+                                >
+                                  <td className="px-3 py-2 align-middle">
+                                    <input
+                                      type="checkbox"
+                                      className="rounded border-muted-foreground/40"
+                                      // Individual selection placeholder
+                                      onChange={() => {}}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 align-middle">
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{variantTitle}</span>
+                                      {variant.sku && (
+                                        <span className="text-xs text-muted-foreground">SKU: {variant.sku}</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 align-middle">
                                     <Input
                                       type="number"
                                       step="0.01"
                                       value={variant.price?.toString() || formData.price}
-                                      onChange={(e) => updateVariant(variant.id!, { price: parseFloat(e.target.value) || undefined })}
+                                      onChange={(e) =>
+                                        updateVariant(variant.id!, {
+                                          price: e.target.value
+                                            ? parseFloat(e.target.value)
+                                            : undefined,
+                                        })
+                                      }
                                       placeholder={formData.price || "0.00"}
+                                      className="h-9"
                                     />
-                                  </div>
+                                  </td>
                                   {formData.track_quantity && (
-                                    <div className="space-y-1">
-                                      <Label className="text-xs">الكمية</Label>
+                                    <td className="px-3 py-2 align-middle">
                                       <Input
                                         type="number"
-                                        value={variant.inventory_quantity?.toString() || "0"}
-                                        onChange={(e) => updateVariant(variant.id!, { inventory_quantity: parseInt(e.target.value) || 0 })}
+                                        value={
+                                          variant.inventory_quantity?.toString() ||
+                                          (formData.track_quantity ? formData.stock : "0")
+                                        }
+                                        onChange={(e) =>
+                                          updateVariant(variant.id!, {
+                                            inventory_quantity: e.target.value
+                                              ? parseInt(e.target.value)
+                                              : 0,
+                                          })
+                                        }
                                         placeholder="0"
+                                        className="h-9"
                                       />
-                                    </div>
+                                    </td>
                                   )}
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">SKU</Label>
-                                    <Input
-                                      value={variant.sku || ""}
-                                      onChange={(e) => updateVariant(variant.id!, { sku: e.target.value || undefined })}
-                                      placeholder="SKU-001"
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">الباركود</Label>
-                                    <Input
-                                      value={variant.barcode || ""}
-                                      onChange={(e) => updateVariant(variant.id!, { barcode: e.target.value || undefined })}
-                                      placeholder="123456789"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {editingVariant?.id !== variant.id && (
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span>السعر: {variant.price || formData.price || "0"} ₪</span>
-                                {formData.track_quantity && (
-                                  <span>الكمية: {variant.inventory_quantity || 0}</span>
-                                )}
-                                {variant.sku && <span>SKU: {variant.sku}</span>}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 )}
