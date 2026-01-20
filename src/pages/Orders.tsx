@@ -702,6 +702,11 @@ const Orders = () => {
                         <img src={agentIcon} alt="المارد" className="w-4 h-4" />
                         <span className="text-sm">المارد</span>
                       </div>
+                    ) : order.order_number?.startsWith('SHOP-') ? (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-emerald-500/10 border-emerald-500/30">
+                        <img src="https://i.ibb.co/KTGdqGX/shopify-glyph.png" alt="Shopify" className="w-4 h-4" />
+                        <span className="text-sm text-emerald-700">المتجر</span>
+                      </div>
                     ) : order.source_platform === 'المتجر' || order.source_platform === 'store' || order.created_by === 'store' ? (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-emerald-500/10 border-emerald-500/30">
                         <img src={storeIcon} alt="المتجر" className="w-4 h-4" />
