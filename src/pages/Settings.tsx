@@ -155,11 +155,11 @@ const Settings = () => {
   <Card className="p-6 border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-4">
-        <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-lg">
+        <div className="w-14 h-14 flex items-center justify-center">
           <img
             src="https://i.ibb.co/KTGdqGX/shopify-glyph.png"
             alt="Shopify"
-            className="w-8 h-8 object-contain"
+            className="w-full h-full object-contain"
           />
         </div>
         <div>
