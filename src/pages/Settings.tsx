@@ -164,7 +164,7 @@ const Settings = () => {
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <Label className="text-lg font-bold">Shopify</Label>
+            <Label className="text-lg font-bold">شوبيفاي</Label>
             <CheckCircle2 className="w-5 h-5 text-green-500" />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
