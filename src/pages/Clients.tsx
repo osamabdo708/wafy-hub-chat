@@ -283,7 +283,7 @@ const Clients = () => {
             </div>
           ) : (
             <>
-              <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-center md:justify-between" style="margin-top:1rem;">
                 <p className="text-sm text-muted-foreground">
                   ابحث عن عميل بالاسم، رقم الجوال أو البريد الإلكتروني
                 </p>
