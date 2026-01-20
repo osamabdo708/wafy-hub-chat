@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { LayoutDashboard } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { LayoutDashboard, Store, ExternalLink, CheckCircle2 } from "lucide-react";
 import { ChannelCard } from "@/components/ChannelCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,17 +19,20 @@ const Settings = () => {
   const { toast } = useToast();
   const [defaultAiEnabled, setDefaultAiEnabled] = useState(false);
   const [loadingAiSetting, setLoadingAiSetting] = useState(true);
+  const [shopifyConnected, setShopifyConnected] = useState(false);
+  const [shopifyStoreUrl, setShopifyStoreUrl] = useState<string | null>(null);
+  const [shopifyShopName, setShopifyShopName] = useState<string | null>(null);
 
-  // Load the default AI setting from workspace settings
+  // Load the default AI setting and Shopify status from workspace settings
   useEffect(() => {
-    const loadAiSetting = async () => {
+    const loadSettings = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
         const { data: workspace } = await supabase
           .from('workspaces')
-          .select('settings')
+          .select('id, settings')
           .eq('owner_user_id', user.id)
           .limit(1)
           .single();
@@ -37,14 +41,30 @@ const Settings = () => {
           const settings = workspace.settings as { default_ai_enabled?: boolean };
           setDefaultAiEnabled(settings.default_ai_enabled || false);
         }
+
+        // Load Shopify settings
+        if (workspace) {
+          const { data: shopifySettings } = await supabase
+            .from('shopify_settings')
+            .select('is_connected, store_url, shop_name')
+            .eq('workspace_id', workspace.id)
+            .limit(1)
+            .single();
+
+          if (shopifySettings) {
+            setShopifyConnected(shopifySettings.is_connected || false);
+            setShopifyStoreUrl(shopifySettings.store_url);
+            setShopifyShopName(shopifySettings.shop_name);
+          }
+        }
       } catch (error) {
-        console.error('Error loading AI setting:', error);
+        console.error('Error loading settings:', error);
       } finally {
         setLoadingAiSetting(false);
       }
     };
 
-    loadAiSetting();
+    loadSettings();
   }, []);
 
   const handleToggleDefaultAi = async (enabled: boolean) => {
@@ -102,7 +122,7 @@ const Settings = () => {
       <Card className="p-6 border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+            <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-lg">
               <img src={agentIcon} alt="المارد" className="w-9 h-9" />
             </div>
             <div>
@@ -116,10 +136,43 @@ const Settings = () => {
             checked={defaultAiEnabled} 
             onCheckedChange={handleToggleDefaultAi}
             disabled={loadingAiSetting}
-            className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-blue-500 scale-125"
+            className="data-[state=checked]:bg-primary scale-125"
           />
         </div>
       </Card>
+
+      {/* Shopify Connection Card */}
+      {shopifyConnected && (
+        <Card className="p-6 border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-[#96bf48] flex items-center justify-center shadow-lg">
+                <Store className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-lg font-bold">Shopify</Label>
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {shopifyShopName ? `متصل بـ ${shopifyShopName}` : 'متصل بمتجر Shopify'}
+                </p>
+              </div>
+            </div>
+            {shopifyStoreUrl && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`https://${shopifyStoreUrl.replace(/^https?:\/\//, '')}`, '_blank')}
+                className="gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                زيارة المتجر
+              </Button>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Channels Section */}
       <div>
