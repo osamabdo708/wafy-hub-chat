@@ -119,27 +119,35 @@ const Settings = () => {
       </div>
 
       {/* AI Auto-Enable Card */}
-      <Card className="p-6 border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-lg">
-              <img src={agentIcon} alt="المارد" className="w-9 h-9" />
-            </div>
-            <div>
-              <Label className="text-lg font-bold">تفعيل المارد تلقائياً</Label>
-              <p className="text-sm text-muted-foreground mt-1">
-                تفعيل المارد لجميع المحادثات الجديدة بشكل افتراضي
-              </p>
-            </div>
-          </div>
-          <Switch 
-            checked={defaultAiEnabled} 
-            onCheckedChange={handleToggleDefaultAi}
-            disabled={loadingAiSetting}
-            className="data-[state=checked]:bg-primary scale-125"
-          />
-        </div>
-      </Card>
+{/* AI Auto-Enable Card */}
+<Card className="p-6 border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+  <div className="flex items-center justify-between">
+    <div className="flex items-center gap-4">
+      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+        <img src={agentIcon} alt="المارد" className="w-9 h-9" />
+      </div>
+      <div>
+        <Label className="text-lg font-bold">تفعيل المارد تلقائياً</Label>
+        <p className="text-sm text-muted-foreground mt-1">
+          تفعيل المارد لجميع المحادثات الجديدة بشكل افتراضي
+        </p>
+      </div>
+    </div>
+
+    <Switch
+      checked={defaultAiEnabled}
+      onCheckedChange={handleToggleDefaultAi}
+      disabled={loadingAiSetting}
+      className="
+        scale-125
+        data-[state=checked]:bg-gradient-to-r
+        data-[state=checked]:from-purple-500
+        data-[state=checked]:to-blue-500
+      "
+    />
+  </div>
+</Card>
+
 
       {/* Shopify Connection Card */}
       {shopifyConnected && (
