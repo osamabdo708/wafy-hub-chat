@@ -63,13 +63,6 @@ serve(async (req) => {
   }
 
   try {
-    const storeUrl = Deno.env.get('SHOPIFY_STORE_URL');
-    const accessToken = Deno.env.get('SHOPIFY_ACCESS_TOKEN');
-
-    if (!storeUrl || !accessToken) {
-      throw new Error('Shopify credentials not configured');
-    }
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -78,6 +71,29 @@ serve(async (req) => {
     const { action, workspaceId, productId, data } = await req.json();
 
     console.log(`Shopify sync action: ${action}, workspaceId: ${workspaceId}`);
+
+    // Get Shopify settings from database
+    const { data: settings, error: settingsError } = await supabase
+      .from('shopify_settings')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error('Settings error:', settingsError);
+      throw new Error('Failed to fetch Shopify settings');
+    }
+
+    if (!settings || !settings.is_connected) {
+      throw new Error('Shopify is not connected. Please complete the OAuth flow first.');
+    }
+
+    const storeUrl = settings.store_url;
+    const accessToken = settings.access_token_encrypted; // In production, decrypt this
+
+    if (!storeUrl || !accessToken) {
+      throw new Error('Shopify credentials not configured');
+    }
 
     switch (action) {
       case 'test_connection': {

@@ -1065,6 +1065,68 @@ export type Database = {
           },
         ]
       }
+      shopify_settings: {
+        Row: {
+          access_token_encrypted: string | null
+          api_key: string | null
+          api_secret_encrypted: string | null
+          created_at: string
+          id: string
+          is_connected: boolean | null
+          last_sync_at: string | null
+          shop_currency: string | null
+          shop_domain: string | null
+          shop_email: string | null
+          shop_name: string | null
+          store_url: string | null
+          updated_at: string
+          webhook_secret: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          api_key?: string | null
+          api_secret_encrypted?: string | null
+          created_at?: string
+          id?: string
+          is_connected?: boolean | null
+          last_sync_at?: string | null
+          shop_currency?: string | null
+          shop_domain?: string | null
+          shop_email?: string | null
+          shop_name?: string | null
+          store_url?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          api_key?: string | null
+          api_secret_encrypted?: string | null
+          created_at?: string
+          id?: string
+          is_connected?: boolean | null
+          last_sync_at?: string | null
+          shop_currency?: string | null
+          shop_domain?: string | null
+          shop_email?: string | null
+          shop_name?: string | null
+          store_url?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopify_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
