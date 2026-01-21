@@ -112,6 +112,7 @@ interface ProductAttributes {
   seo_title?: string;
   seo_description?: string;
   handle?: string;
+  sync_to_shopify?: boolean;
 }
 
 interface Product {
@@ -172,6 +173,7 @@ const Products = () => {
     seo_title: "",
     seo_description: "",
     handle: "",
+    sync_to_shopify: false,
   });
   const [newOptionName, setNewOptionName] = useState("");
   const [editingOptionIndex, setEditingOptionIndex] = useState<number | null>(null);
@@ -489,6 +491,7 @@ const Products = () => {
         seo_title: product.attributes?.seo_title || "",
         seo_description: product.attributes?.seo_description || "",
         handle: product.attributes?.handle || "",
+        sync_to_shopify: product.attributes?.sync_to_shopify || !!product.attributes?.shopify_id,
       });
     } else {
       setEditingProduct(null);
@@ -518,6 +521,7 @@ const Products = () => {
         seo_title: "",
         seo_description: "",
         handle: "",
+        sync_to_shopify: false,
       });
     }
     setFormErrors({});
@@ -623,9 +627,12 @@ const Products = () => {
           seo_title: formData.seo_title || undefined,
           seo_description: formData.seo_description || undefined,
           handle: formData.handle || undefined,
+          sync_to_shopify: formData.sync_to_shopify,
         })),
         is_active: formData.is_active,
       };
+
+      let savedProductId: string | null = null;
 
       if (editingProduct) {
         const { error } = await supabase
@@ -634,6 +641,7 @@ const Products = () => {
           .eq('id', editingProduct.id);
 
         if (error) throw error;
+        savedProductId = editingProduct.id;
         toast.success('تم تحديث المنتج بنجاح');
       } else {
         if (!workspaceId) {
@@ -641,12 +649,35 @@ const Products = () => {
           return;
         }
 
-        const { error } = await supabase
+        const { data: insertedProduct, error } = await supabase
           .from('products')
-          .insert([{ ...productData, workspace_id: workspaceId }]);
+          .insert([{ ...productData, workspace_id: workspaceId }])
+          .select('id')
+          .single();
 
         if (error) throw error;
+        savedProductId = insertedProduct?.id || null;
         toast.success('تم إضافة المنتج بنجاح');
+      }
+
+      // Sync to Shopify if checkbox is checked
+      if (formData.sync_to_shopify && savedProductId && workspaceId) {
+        try {
+          const { data, error } = await supabase.functions.invoke('shopify-sync', {
+            body: { 
+              action: 'sync_product_to_shopify', 
+              workspaceId,
+              productId: savedProductId
+            }
+          });
+          if (error) throw error;
+          if (data.success) {
+            toast.success('تمت مزامنة المنتج مع Shopify بنجاح');
+          }
+        } catch (syncError: any) {
+          console.error('Shopify sync error:', syncError);
+          toast.error('فشل مزامنة المنتج مع Shopify: ' + (syncError.message || 'خطأ غير معروف'));
+        }
       }
 
       setDialogOpen(false);
@@ -1250,158 +1281,174 @@ const Products = () => {
 
             {/* Variants Tab - Shopify Style */}
             <TabsContent value="variants" className="space-y-4">
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-sm font-semibold mb-2">Variants</h3>
-                </div>
+              <Card className="p-4">
+                <h3 className="text-base font-semibold mb-4">المتغيرات</h3>
 
-                {/* Options Section - Shopify Style */}
-                <div className="space-y-4">
-                  {/* Display options as buttons/pills */}
+                {/* Options Section - Shopify Card Style */}
+                <div className="space-y-3">
                   {formData.options.map((option, optionIndex) => (
-                    <div key={optionIndex} className="space-y-2">
-                      {/* Option name as label */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{option.name}</span>
-                        {editingOptionIndex !== optionIndex && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs"
-                            onClick={() => startEditingOption(optionIndex)}
-                          >
-                            Edit
-                          </Button>
-                        )}
-                      </div>
-                      
-                      {/* Option values as buttons/pills */}
-                      {editingOptionIndex !== optionIndex && option.values.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {option.values.map((val, valIndex) => (
-                            <Button
-                              key={valIndex}
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8"
-                            >
-                              {val.value}
-                            </Button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Editing mode - Shopify style */}
-                      {editingOptionIndex === optionIndex && (
-                        <div className="p-4 border rounded-lg space-y-3">
-                          <div className="space-y-2">
-                            <Label className="text-xs">Option name</Label>
-                            <Input
-                              value={editingOptionName}
-                              onChange={(e) => setEditingOptionName(e.target.value)}
-                              placeholder="e.g., Size, Color"
-                              className="h-8"
-                            />
+                    <Card key={optionIndex} className="p-4 bg-muted/30">
+                      {editingOptionIndex !== optionIndex ? (
+                        // View mode - collapsed option card
+                        <div 
+                          className="flex items-center gap-3 cursor-pointer"
+                          onClick={() => startEditingOption(optionIndex)}
+                        >
+                          <div className="flex flex-col gap-1.5 text-muted-foreground">
+                            <span className="w-1 h-1 bg-current rounded-full" />
+                            <span className="w-1 h-1 bg-current rounded-full" />
+                            <span className="w-1 h-1 bg-current rounded-full" />
+                            <span className="w-1 h-1 bg-current rounded-full" />
+                            <span className="w-1 h-1 bg-current rounded-full" />
+                            <span className="w-1 h-1 bg-current rounded-full" />
                           </div>
-                          
-                          <div className="space-y-2">
-                            <Label className="text-xs">Option values</Label>
-                            <div className="space-y-2">
-                              {editingOptionValues.map((value, valIndex) => (
-                                <div key={valIndex} className="flex items-center gap-2">
-                                  <Input
-                                    value={value}
-                                    onChange={(e) => updateOptionValueInEdit(valIndex, e.target.value)}
-                                    className="h-8 flex-1"
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => removeOptionValueFromEdit(valIndex)}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium mb-1.5">{option.name}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {option.values.map((val, valIndex) => (
+                                <Badge key={valIndex} variant="secondary" className="text-xs">
+                                  {val.value}
+                                </Badge>
                               ))}
-                              <Input
-                                value={newOptionValueInput}
-                                onChange={(e) => setNewOptionValueInput(e.target.value)}
-                                placeholder="Add another value"
-                                className="h-8"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    addOptionValueToEdit();
-                                  }
-                                }}
-                              />
                             </div>
                           </div>
+                        </div>
+                      ) : (
+                        // Edit mode - expanded option card
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex flex-col gap-1.5 text-muted-foreground">
+                              <span className="w-1 h-1 bg-current rounded-full" />
+                              <span className="w-1 h-1 bg-current rounded-full" />
+                              <span className="w-1 h-1 bg-current rounded-full" />
+                              <span className="w-1 h-1 bg-current rounded-full" />
+                              <span className="w-1 h-1 bg-current rounded-full" />
+                              <span className="w-1 h-1 bg-current rounded-full" />
+                            </div>
+                            <div className="flex-1 space-y-4">
+                              {/* Option name field */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">اسم الخيار</Label>
+                                <Input
+                                  value={editingOptionName}
+                                  onChange={(e) => setEditingOptionName(e.target.value)}
+                                  placeholder="مثال: المقاس، اللون"
+                                  className="h-9"
+                                />
+                              </div>
+                              
+                              {/* Option values */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">قيم الخيار</Label>
+                                <div className="space-y-2">
+                                  {editingOptionValues.map((value, valIndex) => (
+                                    <div key={valIndex} className="flex items-center gap-2">
+                                      <div className="flex flex-col gap-1 text-muted-foreground/50">
+                                        <span className="w-1 h-1 bg-current rounded-full" />
+                                        <span className="w-1 h-1 bg-current rounded-full" />
+                                        <span className="w-1 h-1 bg-current rounded-full" />
+                                        <span className="w-1 h-1 bg-current rounded-full" />
+                                        <span className="w-1 h-1 bg-current rounded-full" />
+                                        <span className="w-1 h-1 bg-current rounded-full" />
+                                      </div>
+                                      <Input
+                                        value={value}
+                                        onChange={(e) => updateOptionValueInEdit(valIndex, e.target.value)}
+                                        className="h-9 flex-1"
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                                        onClick={() => removeOptionValueFromEdit(valIndex)}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                  
+                                  {/* Add new value input */}
+                                  <Input
+                                    value={newOptionValueInput}
+                                    onChange={(e) => setNewOptionValueInput(e.target.value)}
+                                    placeholder="إضافة قيمة جديدة"
+                                    className="h-9"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        addOptionValueToEdit();
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </div>
 
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => {
-                                removeOption(optionIndex);
-                                cancelOptionEdit();
-                              }}
-                            >
-                              Delete
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={saveOptionEdit}
-                            >
-                              Done
-                            </Button>
+                              {/* Action buttons */}
+                              <div className="flex items-center gap-2 pt-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => {
+                                    removeOption(optionIndex);
+                                    cancelOptionEdit();
+                                  }}
+                                >
+                                  حذف
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={saveOptionEdit}
+                                >
+                                  تم
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}
-                    </div>
+                    </Card>
                   ))}
 
-                  {/* Add another option */}
+                  {/* Add another option button */}
                   {formData.options.length < 3 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (newOptionName.trim()) {
-                          addOption();
-                          setNewOptionName("");
-                        }
-                      }}
-                      disabled={!newOptionName.trim()}
-                      className="w-full"
-                    >
-                      <Plus className="w-4 h-4 ml-2" />
-                      Add another option
-                    </Button>
-                  )}
-                  
-                  {formData.options.length < 3 && (
-                    <Input
-                      value={newOptionName}
-                      onChange={(e) => setNewOptionName(e.target.value)}
-                      placeholder="Option name"
-                      className="h-8"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newOptionName.trim()) {
-                          e.preventDefault();
-                          addOption();
-                          setNewOptionName("");
-                        }
-                      }}
-                    />
+                    <div className="pt-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={newOptionName}
+                          onChange={(e) => setNewOptionName(e.target.value)}
+                          placeholder="اسم الخيار (مثال: المقاس، اللون)"
+                          className="h-9 flex-1"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newOptionName.trim()) {
+                              e.preventDefault();
+                              addOption();
+                              setNewOptionName("");
+                            }
+                          }}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          if (newOptionName.trim()) {
+                            addOption();
+                            setNewOptionName("");
+                          }
+                        }}
+                        className="w-full mt-2 text-primary"
+                      >
+                        <Plus className="w-4 h-4 ml-2" />
+                        إضافة خيار آخر
+                      </Button>
+                    </div>
                   )}
                 </div>
+              </Card>
 
                 <Separator />
 
@@ -1412,10 +1459,10 @@ const Products = () => {
                       <div className="flex items-center gap-3">
                         <Select value={groupByOption} onValueChange={setGroupByOption}>
                           <SelectTrigger className="w-40 h-8">
-                            <SelectValue placeholder="Group by" />
+                            <SelectValue placeholder="تجميع حسب" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">None</SelectItem>
+                            <SelectItem value="">بدون تجميع</SelectItem>
                             {formData.options.map((opt, idx) => (
                               <SelectItem key={idx} value={opt.name}>{opt.name}</SelectItem>
                             ))}
@@ -1440,9 +1487,9 @@ const Products = () => {
                                 setExpandedGroups(new Set());
                               }
                             }}
-                            className="rounded"
+                            className="rounded accent-primary"
                           />
-                          <Label className="text-xs cursor-pointer">Variant · {expandAll ? 'Collapse all' : 'Expand all'}</Label>
+                          <Label className="text-xs cursor-pointer">المتغيرات · {expandAll ? 'طي الكل' : 'توسيع الكل'}</Label>
                         </div>
                       </div>
                     </div>
@@ -1452,11 +1499,11 @@ const Products = () => {
                         <thead className="bg-muted border-b">
                           <tr>
                             <th className="px-3 py-2 text-right font-medium w-10">
-                              <input type="checkbox" className="rounded" onChange={() => {}} />
+                              <input type="checkbox" className="rounded accent-primary" onChange={() => {}} />
                             </th>
-                            <th className="px-3 py-2 text-right font-medium">Variant</th>
-                            <th className="px-3 py-2 text-right font-medium">Price</th>
-                            <th className="px-3 py-2 text-right font-medium">Available</th>
+                            <th className="px-3 py-2 text-right font-medium">المتغير</th>
+                            <th className="px-3 py-2 text-right font-medium">السعر</th>
+                            <th className="px-3 py-2 text-right font-medium">المتوفر</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1468,7 +1515,7 @@ const Products = () => {
                                   variant.option1,
                                   variant.option2,
                                   variant.option3,
-                                ].filter(Boolean).join(' / ') || 'Default';
+                                ].filter(Boolean).join(' / ') || 'الافتراضي';
                                 
                                 return (
                                   <tr key={variant.id || idx} className="border-t hover:bg-muted/50">
@@ -1637,35 +1684,52 @@ const Products = () => {
                     </div>
 
                     {/* Total inventory footer */}
-                    <div className="text-xs text-muted-foreground">
-                      Total inventory: {formData.variants.reduce((sum, v) => sum + (v.inventory_quantity || 0), 0)} available
+                    <div className="text-xs text-muted-foreground text-center py-2">
+                      إجمالي المخزون: {formData.variants.reduce((sum, v) => sum + (v.inventory_quantity || 0), 0)} متوفر
                     </div>
                   </div>
                 )}
 
                 {formData.options.length === 0 && (
-                  <div className="p-6 rounded-lg border border-dashed text-center text-muted-foreground">
-                    <Package2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Add options to create variants automatically</p>
-                  </div>
+                  <Card className="p-8 text-center">
+                    <Package2 className="w-10 h-10 mx-auto mb-3 text-muted-foreground/50" />
+                    <p className="text-sm text-muted-foreground">أضف خيارات لإنشاء المتغيرات تلقائياً</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">مثال: المقاس (صغير، وسط، كبير) أو اللون (أحمر، أزرق، أخضر)</p>
+                  </Card>
                 )}
-              </div>
             </TabsContent>
           </Tabs>
 
           <Separator />
 
-          <div className="flex items-center justify-between py-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="is_active">حالة المنتج</Label>
-              <Switch
-                id="is_active"
-                checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+          <div className="space-y-4 py-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="is_active">حالة المنتج</Label>
+                <Switch
+                  id="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {formData.is_active ? "نشط" : "مسودة"}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+              <input 
+                type="checkbox"
+                id="sync_to_shopify"
+                checked={formData.sync_to_shopify}
+                onChange={(e) => setFormData({ ...formData, sync_to_shopify: e.target.checked })}
+                className="h-4 w-4 rounded border-border accent-primary"
               />
-              <span className="text-sm text-muted-foreground">
-                {formData.is_active ? "نشط" : "مسودة"}
-              </span>
+              <div className="flex-1">
+                <Label htmlFor="sync_to_shopify" className="cursor-pointer">مزامنة مع Shopify</Label>
+                <p className="text-xs text-muted-foreground">سيتم إضافة/تحديث هذا المنتج في متجر Shopify عند الحفظ</p>
+              </div>
+              <ShoppingBag className="w-5 h-5 text-muted-foreground" />
             </div>
           </div>
 
