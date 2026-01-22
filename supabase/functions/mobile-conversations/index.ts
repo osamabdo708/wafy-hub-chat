@@ -3,8 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const supabaseAdmin = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,215 +17,98 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Missing Authorization header",
-          error_ar: "رأس التفويض مفقود",
-        }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
+    // ---------------- HARD-CODE WORKSPACE ----------------
+    const workspaceId = "66ade248-7216-44b2-b212-6c6357fd5281";
 
-    /* -------------------------------------------------
-       1. USER CLIENT (AUTH ONLY)
-    ------------------------------------------------- */
-    const supabaseUser = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      {
-        global: {
-          headers: { Authorization: authHeader },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseUser.auth.getUser();
-
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Unauthorized",
-          error_ar: "غير مصرح",
-        }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    /* -------------------------------------------------
-       2. SERVICE CLIENT (DB ACCESS)
-    ------------------------------------------------- */
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
-    /* -------------------------------------------------
-       3. WORKSPACE
-    ------------------------------------------------- */
-    const { data: workspace, error: workspaceError } =
-      await supabaseAdmin
-        .from("workspaces")
-        .select("id")
-        .eq("owner_user_id", user.id)
-        .single();
-
-    if (workspaceError || !workspace) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Workspace not found",
-          error_ar: "لم يتم العثور على مساحة العمل",
-        }),
-        { status: 404, headers: corsHeaders }
-      );
-    }
-
-    const workspaceId = workspace.id;
-
-    /* -------------------------------------------------
-       4. QUERY PARAMS
-    ------------------------------------------------- */
-    const url = new URL(req.url);
-    const channel = url.searchParams.get("channel");
-    const limit = Number(url.searchParams.get("limit") ?? 50);
-
-    /* -------------------------------------------------
-       5. CONVERSATIONS
-    ------------------------------------------------- */
-    let convQuery = supabaseAdmin
+    // ---------------- FETCH CONVERSATIONS ----------------
+    const { data: conversationsData, error: conversationsError } = await supabaseAdmin
       .from("conversations")
-      .select(`
-        id,
-        customer_name,
-        customer_phone,
-        customer_email,
-        customer_avatar,
-        channel,
-        status,
-        last_message_at,
-        ai_enabled,
-        assigned_agent_id,
-        client_id
-      `)
+      .select(
+        "id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled, assigned_agent_id, client_id"
+      )
       .eq("workspace_id", workspaceId)
-      .order("last_message_at", { ascending: false })
-      .limit(limit);
+      .order("last_message_at", { ascending: false });
 
-    if (channel) {
-      convQuery = convQuery.eq("channel", channel);
-    }
+    if (conversationsError) throw conversationsError;
 
-    const { data: conversations, error: convError } =
-      await convQuery;
-
-    if (convError) {
-      console.error(convError);
-      throw convError;
-    }
-
-    /* -------------------------------------------------
-       6. UNREAD COUNTS
-    ------------------------------------------------- */
-    const conversationIds = conversations.map(c => c.id);
-
-    const { data: unreadRows } = await supabaseAdmin
-      .from("messages")
-      .select("conversation_id")
-      .in("conversation_id", conversationIds)
-      .eq("sender_type", "customer")
-      .eq("is_read", false);
-
-    const unreadMap: Record<string, number> = {};
-    unreadRows?.forEach(r => {
-      unreadMap[r.conversation_id] =
-        (unreadMap[r.conversation_id] || 0) + 1;
-    });
-
-    /* -------------------------------------------------
-       7. AGENTS
-    ------------------------------------------------- */
-    const agentIds = [
-      ...new Set(conversations.map(c => c.assigned_agent_id).filter(Boolean)),
-    ];
-
-    let agentsMap: Record<string, any> = {};
-
-    if (agentIds.length > 0) {
-      const { data: agents } = await supabaseAdmin
-        .from("agents")
-        .select("id, name, is_ai")
-        .in("id", agentIds);
-
-      agents?.forEach(a => {
-        agentsMap[a.id] = a;
-      });
-    }
-
-    /* -------------------------------------------------
-       8. ORDERS
-    ------------------------------------------------- */
+    // ---------------- FETCH CLIENT ORDERS ----------------
     const clientIds = [
-      ...new Set(conversations.map(c => c.client_id).filter(Boolean)),
+      ...new Set(
+        (conversationsData || []).map((c) => c.client_id).filter(Boolean)
+      ),
     ];
-
-    let orderCountMap: Record<string, number> = {};
+    let clientOrderCounts: Record<string, number> = {};
 
     if (clientIds.length > 0) {
-      const { data: orders } = await supabaseAdmin
+      const { data: ordersData } = await supabaseAdmin
         .from("orders")
         .select("client_id")
         .in("client_id", clientIds);
 
-      orders?.forEach(o => {
-        orderCountMap[o.client_id] =
-          (orderCountMap[o.client_id] || 0) + 1;
+      (ordersData || []).forEach((order) => {
+        if (order.client_id) {
+          clientOrderCounts[order.client_id] =
+            (clientOrderCounts[order.client_id] || 0) + 1;
+        }
       });
     }
 
-    /* -------------------------------------------------
-       9. RESPONSE
-    ------------------------------------------------- */
-    const data = conversations.map(conv => ({
-      id: conv.id,
-      customer_name: conv.customer_name,
-      customer_phone: conv.customer_phone,
-      customer_email: conv.customer_email,
-      customer_avatar: conv.customer_avatar,
-      channel: conv.channel,
-      status: conv.status,
-      last_message_at: conv.last_message_at,
-      ai_enabled: conv.ai_enabled,
-      unread_count: unreadMap[conv.id] || 0,
-      order_count: conv.client_id
-        ? orderCountMap[conv.client_id] || 0
-        : 0,
-      assigned_agent: conv.assigned_agent_id
-        ? agentsMap[conv.assigned_agent_id] || null
-        : null,
-    }));
+    // ---------------- FETCH AGENTS ----------------
+    const agentIds = [
+      ...new Set(
+        (conversationsData || []).map((c) => c.assigned_agent_id).filter(Boolean)
+      ),
+    ];
+    let agentsMap: Record<string, { id: string; name: string; is_ai: boolean }> =
+      {};
+
+    if (agentIds.length > 0) {
+      const { data: agentsData } = await supabaseAdmin
+        .from("agents")
+        .select("id, name, is_ai")
+        .in("id", agentIds);
+
+      agentsMap = (agentsData || []).reduce((acc, agent) => {
+        acc[agent.id] = agent;
+        return acc;
+      }, {} as Record<string, { id: string; name: string; is_ai: boolean }>);
+    }
+
+    // ---------------- FETCH UNREAD COUNTS ----------------
+    const conversationsWithUnread = await Promise.all(
+      (conversationsData || []).map(async (conv) => {
+        const { count, error: countError } = await supabaseAdmin
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .eq("conversation_id", conv.id)
+          .eq("is_read", false)
+          .eq("sender_type", "customer");
+
+        if (countError) {
+          console.error("Unread count error:", countError);
+        }
+
+        return {
+          ...conv,
+          unread_count: count || 0,
+          assigned_agent: conv.assigned_agent_id
+            ? agentsMap[conv.assigned_agent_id] || null
+            : null,
+          order_count: conv.client_id ? clientOrderCounts[conv.client_id] || 0 : 0,
+        };
+      })
+    );
 
     return new Response(
-      JSON.stringify({ success: true, data }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+      JSON.stringify({ success: true, conversations: conversationsWithUnread }),
+      { headers: corsHeaders }
     );
   } catch (err) {
-    console.error("mobile-conversations error:", err);
+    console.error("mobile-conversations REAL ERROR:", err);
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Failed to fetch conversations",
+        error: err?.message || String(err),
         error_ar: "فشل في جلب المحادثات",
       }),
       { status: 500, headers: corsHeaders }
