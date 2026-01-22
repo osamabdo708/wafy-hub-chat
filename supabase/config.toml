@@ -116,3 +116,12 @@ verify_jwt = true
 
 [functions.paytabs-webhook]
 verify_jwt = false
+
+# ============================================
+# MOBILE INTEGRATION
+# ============================================
+[functions.mobile-login]
+verify_jwt = false
+
+[functions.mobile-conversations]
+verify_jwt = false
