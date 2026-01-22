@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-session-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 Deno.serve(async (req) => {
@@ -21,48 +21,51 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Get session token from header
-    const sessionToken = req.headers.get("x-session-token");
-
-    if (!sessionToken) {
+    // Get auth token from header
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: "Session token is required",
-          error_ar: "رمز الجلسة مطلوب"
+          error: "Authorization token required",
+          error_ar: "رمز التفويض مطلوب"
         }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Verify session token and get agent
-    const { data: agent, error: agentError } = await supabase
-      .from("agents")
-      .select("id, name, workspace_id, session_token, session_expires_at")
-      .eq("session_token", sessionToken)
-      .eq("is_user_agent", true)
-      .maybeSingle();
+    const token = authHeader.replace("Bearer ", "");
 
-    if (agentError || !agent) {
+    // Verify the token and get user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      console.log("Invalid token:", userError?.message);
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: "Invalid or expired session",
-          error_ar: "جلسة غير صالحة أو منتهية"
+          error: "Invalid or expired token",
+          error_ar: "رمز غير صالح أو منتهي الصلاحية"
         }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check if session expired
-    if (agent.session_expires_at && new Date(agent.session_expires_at) < new Date()) {
+    // Get user's workspace
+    const { data: workspace } = await supabase
+      .from("workspaces")
+      .select("id")
+      .eq("owner_user_id", user.id)
+      .single();
+
+    if (!workspace) {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: "Session expired",
-          error_ar: "انتهت صلاحية الجلسة"
+          error: "No workspace found for user",
+          error_ar: "لم يتم العثور على مساحة عمل للمستخدم"
         }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -70,11 +73,11 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "20");
-    const status = url.searchParams.get("status"); // active, closed, all
+    const status = url.searchParams.get("status"); // open, closed
     const channel = url.searchParams.get("channel"); // whatsapp, telegram, etc.
     const offset = (page - 1) * limit;
 
-    // Build query for conversations assigned to this agent
+    // Build query for conversations in user's workspace
     let query = supabase
       .from("conversations")
       .select(`
@@ -84,24 +87,17 @@ Deno.serve(async (req) => {
         customer_avatar,
         channel,
         status,
-        ai_enabled,
+        last_message_at,
         created_at,
-        updated_at,
-        client_id,
-        clients (
-          id,
-          name,
-          phone,
-          avatar_url
-        )
-      `, { count: 'exact' })
-      .eq("workspace_id", agent.workspace_id)
-      .eq("assigned_agent_id", agent.id)
-      .order("updated_at", { ascending: false })
+        unread_count,
+        assigned_agent_id
+      `, { count: "exact" })
+      .eq("workspace_id", workspace.id)
+      .order("last_message_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
     // Apply filters
-    if (status && status !== "all") {
+    if (status) {
       query = query.eq("status", status);
     }
     if (channel) {
@@ -122,30 +118,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get last message and unread count for each conversation
-    const conversationsWithDetails = await Promise.all(
+    // Get last message for each conversation
+    const conversationsWithLastMessage = await Promise.all(
       (conversations || []).map(async (conv) => {
-        // Get last message
         const { data: lastMessage } = await supabase
           .from("messages")
-          .select("id, content, sender_type, created_at")
+          .select("content, sender_type, created_at")
           .eq("conversation_id", conv.id)
           .order("created_at", { ascending: false })
           .limit(1)
-          .maybeSingle();
-
-        // Get unread count
-        const { count: unreadCount } = await supabase
-          .from("messages")
-          .select("id", { count: "exact", head: true })
-          .eq("conversation_id", conv.id)
-          .eq("sender_type", "customer")
-          .eq("is_read", false);
+          .single();
 
         return {
           ...conv,
-          last_message: lastMessage,
-          unread_count: unreadCount || 0,
+          last_message: lastMessage || null,
         };
       })
     );
@@ -154,7 +140,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         data: {
-          conversations: conversationsWithDetails,
+          conversations: conversationsWithLastMessage,
           pagination: {
             page,
             limit,

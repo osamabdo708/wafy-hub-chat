@@ -33,30 +33,31 @@ const MobileIntegration = () => {
       name: "تسجيل الدخول",
       method: "POST",
       path: "/mobile-login",
-      description: "تسجيل دخول الوكيل والحصول على رمز الجلسة",
+      description: "تسجيل دخول المستخدم والحصول على رمز الوصول",
       icon: Key,
       request: {
         headers: {
           "Content-Type": "application/json",
         },
         body: {
-          email: "agent@example.com",
+          email: "info@example.com",
           password: "password123"
         }
       },
       response: {
         success: true,
         data: {
-          agent: {
+          user: {
             id: "uuid",
-            name: "اسم الوكيل",
-            email: "agent@example.com",
+            email: "info@example.com",
+            full_name: "اسم المستخدم",
             avatar_url: "https://...",
             workspace_id: "uuid",
             workspace_name: "اسم مساحة العمل"
           },
-          session_token: "token_string",
-          expires_at: "2026-02-21T00:00:00.000Z"
+          access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          refresh_token: "refresh_token_string",
+          expires_at: "2026-01-23T00:00:00.000Z"
         }
       }
     },
@@ -65,16 +66,16 @@ const MobileIntegration = () => {
       name: "قائمة المحادثات",
       method: "GET",
       path: "/mobile-conversations",
-      description: "جلب المحادثات المعينة للوكيل مع التصفية والتصفح",
+      description: "جلب جميع المحادثات في مساحة العمل مع التصفية والتصفح",
       icon: MessageSquare,
       request: {
         headers: {
-          "x-session-token": "session_token_from_login"
+          "Authorization": "Bearer access_token_from_login"
         },
         queryParams: {
           page: "1",
           limit: "20",
-          status: "active | closed | all",
+          status: "open | closed",
           channel: "whatsapp | telegram | facebook | instagram"
         }
       },
@@ -88,17 +89,16 @@ const MobileIntegration = () => {
               customer_phone: "+966...",
               customer_avatar: "https://...",
               channel: "whatsapp",
-              status: "active",
-              ai_enabled: false,
+              status: "open",
+              last_message_at: "2026-01-22T00:00:00.000Z",
               created_at: "2026-01-22T00:00:00.000Z",
-              updated_at: "2026-01-22T00:00:00.000Z",
+              unread_count: 3,
+              assigned_agent_id: "uuid",
               last_message: {
-                id: "uuid",
                 content: "آخر رسالة",
                 sender_type: "customer",
                 created_at: "2026-01-22T00:00:00.000Z"
-              },
-              unread_count: 3
+              }
             }
           ],
           pagination: {
@@ -256,8 +256,8 @@ const MobileIntegration = () => {
           <div className="text-sm">
             <p className="font-medium text-amber-700 dark:text-amber-400">ملاحظات مهمة:</p>
             <ul className="mt-1 space-y-1 text-muted-foreground list-disc list-inside">
-              <li>يجب استخدام <code className="bg-muted px-1 rounded">x-session-token</code> في جميع الطلبات المحمية</li>
-              <li>رمز الجلسة صالح لمدة 30 يوم</li>
+              <li>يجب استخدام <code className="bg-muted px-1 rounded">Authorization: Bearer token</code> في جميع الطلبات المحمية</li>
+              <li>رمز الوصول صالح لمدة ساعة واحدة، استخدم refresh_token للتجديد</li>
               <li>جميع الاستجابات تتضمن رسائل خطأ بالعربية والإنجليزية</li>
             </ul>
           </div>
