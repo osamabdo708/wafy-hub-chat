@@ -1,57 +1,47 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      {
+        global: {
+          headers: {
+            Authorization: req.headers.get("Authorization")!,
+          },
+        },
+      }
+    );
 
-    // Get auth token from header
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    /* ---------------------------------------------
+       1. AUTHENTICATE USER
+    --------------------------------------------- */
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "Authorization token required",
-          error_ar: "رمز التفويض مطلوب"
-        }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: corsHeaders }
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
-
-    // Verify the token and get user
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-
-    if (userError || !user) {
-      console.log("Invalid token:", userError?.message);
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "Invalid or expired token",
-          error_ar: "رمز غير صالح أو منتهي الصلاحية"
-        }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get user's workspace
+    /* ---------------------------------------------
+       2. GET USER WORKSPACE
+    --------------------------------------------- */
     const { data: workspace } = await supabase
       .from("workspaces")
       .select("id")
@@ -60,107 +50,143 @@ Deno.serve(async (req) => {
 
     if (!workspace) {
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "No workspace found for user",
-          error_ar: "لم يتم العثور على مساحة عمل للمستخدم"
-        }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Workspace not found" }),
+        { status: 404, headers: corsHeaders }
       );
     }
 
-    // Parse query parameters
-    const url = new URL(req.url);
-    const page = parseInt(url.searchParams.get("page") || "1");
-    const limit = parseInt(url.searchParams.get("limit") || "20");
-    const status = url.searchParams.get("status"); // open, closed
-    const channel = url.searchParams.get("channel"); // whatsapp, telegram, etc.
-    const offset = (page - 1) * limit;
+    const workspaceId = workspace.id;
 
-    // Build query for conversations in user's workspace
+    /* ---------------------------------------------
+       3. QUERY PARAMS
+    --------------------------------------------- */
+    const url = new URL(req.url);
+    const channel = url.searchParams.get("channel"); // optional
+    const limit = Number(url.searchParams.get("limit") ?? 50);
+
+    /* ---------------------------------------------
+       4. FETCH CONVERSATIONS
+    --------------------------------------------- */
     let query = supabase
       .from("conversations")
       .select(`
         id,
         customer_name,
         customer_phone,
+        customer_email,
         customer_avatar,
         channel,
         status,
         last_message_at,
-        created_at,
-        unread_count,
-        assigned_agent_id
-      `, { count: "exact" })
-      .eq("workspace_id", workspace.id)
+        ai_enabled,
+        assigned_agent_id,
+        client_id
+      `)
+      .eq("workspace_id", workspaceId)
       .order("last_message_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .limit(limit);
 
-    // Apply filters
-    if (status) {
-      query = query.eq("status", status);
-    }
     if (channel) {
       query = query.eq("channel", channel);
     }
 
-    const { data: conversations, error: convError, count } = await query;
+    const { data: conversations, error } = await query;
 
-    if (convError) {
-      console.error("Error fetching conversations:", convError);
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "Failed to fetch conversations",
-          error_ar: "فشل في جلب المحادثات"
-        }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (error) throw error;
+
+    /* ---------------------------------------------
+       5. UNREAD COUNTS
+    --------------------------------------------- */
+    const conversationIds = conversations.map(c => c.id);
+
+    const { data: unreadData } = await supabase
+      .from("messages")
+      .select("conversation_id")
+      .in("conversation_id", conversationIds)
+      .eq("sender_type", "customer")
+      .eq("is_read", false);
+
+    const unreadMap: Record<string, number> = {};
+    unreadData?.forEach(m => {
+      unreadMap[m.conversation_id] =
+        (unreadMap[m.conversation_id] || 0) + 1;
+    });
+
+    /* ---------------------------------------------
+       6. AGENTS
+    --------------------------------------------- */
+    const agentIds = [
+      ...new Set(conversations.map(c => c.assigned_agent_id).filter(Boolean)),
+    ];
+
+    let agentsMap: Record<string, any> = {};
+
+    if (agentIds.length > 0) {
+      const { data: agents } = await supabase
+        .from("agents")
+        .select("id, name, is_ai")
+        .in("id", agentIds);
+
+      agents?.forEach(agent => {
+        agentsMap[agent.id] = agent;
+      });
     }
 
-    // Get last message for each conversation
-    const conversationsWithLastMessage = await Promise.all(
-      (conversations || []).map(async (conv) => {
-        const { data: lastMessage } = await supabase
-          .from("messages")
-          .select("content, sender_type, created_at")
-          .eq("conversation_id", conv.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
+    /* ---------------------------------------------
+       7. CLIENT ORDER COUNTS
+    --------------------------------------------- */
+    const clientIds = [
+      ...new Set(conversations.map(c => c.client_id).filter(Boolean)),
+    ];
 
-        return {
-          ...conv,
-          last_message: lastMessage || null,
-        };
-      })
-    );
+    let orderCountMap: Record<string, number> = {};
+
+    if (clientIds.length > 0) {
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("client_id")
+        .in("client_id", clientIds);
+
+      orders?.forEach(o => {
+        orderCountMap[o.client_id] =
+          (orderCountMap[o.client_id] || 0) + 1;
+      });
+    }
+
+    /* ---------------------------------------------
+       8. FINAL RESPONSE
+    --------------------------------------------- */
+    const response = conversations.map(conv => ({
+      id: conv.id,
+      customer_name: conv.customer_name,
+      customer_phone: conv.customer_phone,
+      customer_email: conv.customer_email,
+      customer_avatar: conv.customer_avatar,
+      channel: conv.channel,
+      status: conv.status,
+      last_message_at: conv.last_message_at,
+      ai_enabled: conv.ai_enabled,
+      unread_count: unreadMap[conv.id] || 0,
+      order_count: conv.client_id
+        ? orderCountMap[conv.client_id] || 0
+        : 0,
+      assigned_agent: conv.assigned_agent_id
+        ? agentsMap[conv.assigned_agent_id] || null
+        : null,
+    }));
 
     return new Response(
       JSON.stringify({
         success: true,
-        data: {
-          conversations: conversationsWithLastMessage,
-          pagination: {
-            page,
-            limit,
-            total: count || 0,
-            total_pages: Math.ceil((count || 0) / limit),
-          }
-        }
+        data: response,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
-  } catch (error) {
-    console.error("Unexpected error:", error);
+  } catch (err) {
+    console.error("mobile-conversations error:", err);
     return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: "Internal server error",
-        error_ar: "خطأ داخلي في الخادم"
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers: corsHeaders }
     );
   }
 });
