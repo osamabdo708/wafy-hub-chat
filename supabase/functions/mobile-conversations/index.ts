@@ -36,8 +36,19 @@ Deno.serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
 
+    // Create authenticated client with user's token
+    const userSupabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+
     // Verify the token and get user
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
 
     if (userError || !user) {
       console.log("Invalid token:", userError?.message);
