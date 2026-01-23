@@ -100,7 +100,6 @@ Deno.serve(async (req) => {
         status,
         last_message_at,
         created_at,
-        unread_count,
         assigned_agent_id
       `, { count: "exact" })
       .eq("workspace_id", workspace.id)
@@ -140,8 +139,21 @@ Deno.serve(async (req) => {
           .limit(1)
           .single();
 
+        // Count unread customer messages (same logic used in the web inbox)
+        const { count: unreadCount, error: unreadError } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", conv.id)
+          .eq("is_read", false)
+          .eq("sender_type", "customer");
+
+        if (unreadError) {
+          console.error("Error counting unread messages:", unreadError);
+        }
+
         return {
           ...conv,
+          unread_count: unreadCount || 0,
           last_message: lastMessage || null,
         };
       })
