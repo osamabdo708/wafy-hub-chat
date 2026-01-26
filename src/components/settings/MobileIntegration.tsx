@@ -109,6 +109,47 @@ const MobileIntegration = () => {
           }
         }
       }
+    },
+    {
+      id: "messages",
+      name: "رسائل المحادثة",
+      method: "GET",
+      path: "/mobile-messages",
+      description: "جلب جميع الرسائل لمحادثة معينة باستخدام معرف المحادثة",
+      icon: MessageSquare,
+      request: {
+        headers: {
+          "Authorization": "Bearer access_token_from_login"
+        },
+        queryParams: {
+          conversation_id: "uuid",
+          page: "1",
+          limit: "50"
+        }
+      },
+      response: {
+        success: true,
+        data: {
+          messages: [
+            {
+              id: "uuid",
+              content: "نص الرسالة",
+              sender_type: "customer | agent",
+              sender_id: "uuid | null",
+              attachments: null,
+              is_read: true,
+              created_at: "2026-01-22T00:00:00.000Z",
+              message_id: "external_message_id"
+            }
+          ],
+          pagination: {
+            page: 1,
+            limit: 50,
+            total: 150,
+            total_pages: 3
+          }
+        }
+      }
     }
   ];
 
