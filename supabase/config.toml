@@ -125,3 +125,7 @@ verify_jwt = false
 
 [functions.mobile-conversations]
 verify_jwt = false
+
+[functions.mobile-messages]
+verify_jwt = false
+
