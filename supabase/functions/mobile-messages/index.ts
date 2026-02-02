@@ -100,13 +100,17 @@ Deno.serve(async (req) => {
       try {
         const body = await req.json();
         conversationId = body.conversation_id;
-        page = body.page || 1;
-        limit = body.limit || 50;
+        page = parseInt(String(body.page)) || 1;
+        limit = parseInt(String(body.limit)) || 50;
       } catch (e) {
         console.log("Body parsing failed:", e);
       }
     }
 
+    // Ensure page and limit are integers
+    page = Math.max(1, Math.floor(Number(page) || 1));
+    limit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
+    
     const offset = (page - 1) * limit;
 
     console.log("Parsed params - conversationId:", conversationId, "page:", page, "limit:", limit);
@@ -172,16 +176,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    const totalCount = typeof count === 'number' ? count : 0;
+    const totalPages = Math.ceil(totalCount / limit);
+
     return new Response(
       JSON.stringify({
         success: true,
         data: {
           messages: messages || [],
           pagination: {
-            page,
-            limit,
-            total: count || 0,
-            total_pages: Math.ceil((count || 0) / limit),
+            page: page,
+            limit: limit,
+            total: totalCount,
+            total_pages: totalPages,
           }
         }
       }),
