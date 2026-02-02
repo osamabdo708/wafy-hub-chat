@@ -12,15 +12,9 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
     // Get auth token from header
     const authHeader = req.headers.get("authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -34,10 +28,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
+    // Create authenticated client with user's token
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     // Verify the token and get user
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+    
+    // Service client for data operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     if (userError || !user) {
       console.log("Invalid token:", userError?.message);
@@ -69,12 +80,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse query parameters
-    const url = new URL(req.url);
-    const conversationId = url.searchParams.get("conversation_id");
-    const page = parseInt(url.searchParams.get("page") || "1");
-    const limit = parseInt(url.searchParams.get("limit") || "50");
+    // Parse query parameters - handle both URL search params and request body
+    let conversationId: string | null = null;
+    let page = 1;
+    let limit = 50;
+
+    // Try to get from URL query params first
+    try {
+      const url = new URL(req.url);
+      conversationId = url.searchParams.get("conversation_id");
+      page = parseInt(url.searchParams.get("page") || "1");
+      limit = parseInt(url.searchParams.get("limit") || "50");
+    } catch (e) {
+      console.log("URL parsing failed, trying request body:", e);
+    }
+
+    // If not in URL, try request body (for POST requests)
+    if (!conversationId && req.method === "POST") {
+      try {
+        const body = await req.json();
+        conversationId = body.conversation_id;
+        page = body.page || 1;
+        limit = body.limit || 50;
+      } catch (e) {
+        console.log("Body parsing failed:", e);
+      }
+    }
+
     const offset = (page - 1) * limit;
+
+    console.log("Parsed params - conversationId:", conversationId, "page:", page, "limit:", limit);
 
     // Validate conversation_id
     if (!conversationId) {
