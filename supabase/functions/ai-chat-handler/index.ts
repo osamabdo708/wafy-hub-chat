@@ -306,7 +306,7 @@ ${customerOrdersHistory ? `\n📜 طلبات سابقة للعميل: ${customer
         type: "function",
         function: {
           name: "create_order",
-          description: "أنشئ طلب بعد جمع: المنتج + المتغيرات (إذا موجودة) + الاسم + الهاتف + العنوان + الشحن + الدفع",
+          description: "أنشئ طلب بعد جمع: المنتج + المتغيرات (إذا موجودة) + الاسم + الهاتف + العنوان + الشحن + الدفع. مهم: إذا المنتج فيه متغيرات (ألوان/مقاسات) لازم تجمعها من العميل قبل الطلب",
           parameters: {
             type: "object",
             properties: {
@@ -314,7 +314,7 @@ ${customerOrdersHistory ? `\n📜 طلبات سابقة للعميل: ${customer
               product_name: { type: "string", description: "اسم المنتج" },
               selected_variants: {
                 type: "object",
-                description: "المتغيرات المختارة ديناميكياً: {اللون: 'أبيض', المقاس: '42', النوع: 'قطن'...}",
+                description: "المتغيرات المختارة: {اللون: 'أبيض', المقاس: '42'...}. إجباري إذا المنتج فيه متغيرات",
                 additionalProperties: { type: "string" }
               },
               quantity: { type: "number", description: "الكمية", default: 1 },
@@ -379,25 +379,43 @@ ${customerOrdersHistory ? `\n📜 طلبات سابقة للعميل: ${customer
           if (productError || !product) {
             aiReply = 'معليش، ما لقيت المنتج. ممكن تعيد تحديده؟ 🤔';
           } else {
-            const quantity = args.quantity || 1;
+            // Check if product has variants and if they were provided
+            const requiredVariants = getRequiredVariants(product);
+            const missingVariants: string[] = [];
             
-            if (product.stock !== null && product.stock < quantity) {
-              aiReply = `للأسف المخزون ما يكفي 😔 متوفر بس ${product.stock} حبة`;
-            } else {
-              // Calculate correct price based on selected variant
-              let finalProductPrice = args.final_product_price || product.price;
-
-              // If color was selected, get the color's price
-              if (args.selected_variants?.اللون) {
-                const parsed = parseProductAttributes(product);
-                const colorVariant = parsed.variants.find(v => v.name === 'اللون');
-                if (colorVariant) {
-                  const selectedColor = colorVariant.options.find(o => o.value === args.selected_variants.اللون);
-                  if (selectedColor) {
-                    finalProductPrice = selectedColor.price;
-                  }
+            if (requiredVariants.length > 0) {
+              for (const variantName of requiredVariants) {
+                if (!args.selected_variants || !args.selected_variants[variantName]) {
+                  missingVariants.push(variantName);
                 }
               }
+            }
+            
+            if (missingVariants.length > 0) {
+              // Missing required variants - ask user for them
+              const missingList = missingVariants.join('، ');
+              aiReply = `عشان أكمل الطلب، محتاج أعرف: ${missingList} 🤔`;
+              console.log('[AI-CHAT] Missing variants:', missingVariants);
+            } else {
+              const quantity = args.quantity || 1;
+            
+              if (product.stock !== null && product.stock < quantity) {
+                aiReply = `للأسف المخزون ما يكفي 😔 متوفر بس ${product.stock} حبة`;
+              } else {
+                // Calculate correct price based on selected variant
+                let finalProductPrice = args.final_product_price || product.price;
+
+                // If color was selected, get the color's price
+                if (args.selected_variants?.اللون) {
+                  const parsed = parseProductAttributes(product);
+                  const colorVariant = parsed.variants.find(v => v.name === 'اللون');
+                  if (colorVariant) {
+                    const selectedColor = colorVariant.options.find(o => o.value === args.selected_variants.اللون);
+                    if (selectedColor) {
+                      finalProductPrice = selectedColor.price;
+                    }
+                  }
+                }
 
               // Get shipping method details
               const { data: shippingMethod } = await supabase
@@ -529,6 +547,7 @@ ${paymentData.payment_url}
 🧾 الفاتورة: ${invoiceUrl}
 
 شكراً لك! ✨`;
+                }
                 }
               }
             }

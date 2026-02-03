@@ -147,7 +147,9 @@ const ChatView = ({
     product_id: '',
     shipping_method_id: '',
     quantity: 1,
-    notes: ''
+    notes: '',
+    selected_color: '',
+    selected_variants: {} as Record<string, string>
   });
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -345,6 +347,16 @@ const ChatView = ({
     }
   };
 
+  // Get selected product and its variants
+  const selectedProductForForm = products.find(p => p.id === orderForm.product_id);
+  const productHasVariants = selectedProductForForm?.attributes?.colors?.length > 0 || 
+                             selectedProductForForm?.attributes?.custom?.length > 0;
+  
+  // Get selected color for sub-attributes
+  const selectedColorForForm = selectedProductForForm?.attributes?.colors?.find(
+    (c: any) => c.name === orderForm.selected_color
+  );
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -363,6 +375,37 @@ const ChatView = ({
       return;
     }
 
+    // Validate variants if product has them
+    if (selectedProductForForm) {
+      const hasColors = selectedProductForForm.attributes?.colors?.length > 0;
+      const hasCustom = selectedProductForForm.attributes?.custom?.length > 0;
+      
+      if (hasColors && !orderForm.selected_color) {
+        toast.error('يرجى اختيار اللون');
+        return;
+      }
+      
+      // Check sub-attributes of selected color
+      if (selectedColorForForm?.attributes?.length > 0) {
+        for (const attr of selectedColorForForm.attributes) {
+          if (!orderForm.selected_variants[attr.name]) {
+            toast.error(`يرجى اختيار ${attr.name}`);
+            return;
+          }
+        }
+      }
+      
+      // Check custom attributes
+      if (hasCustom) {
+        for (const attr of selectedProductForForm.attributes.custom) {
+          if (!orderForm.selected_variants[attr.name]) {
+            toast.error(`يرجى اختيار ${attr.name}`);
+            return;
+          }
+        }
+      }
+    }
+
     try {
       if (!workspaceId) {
         toast.error('لم يتم العثور على بيانات المحادثة');
@@ -371,13 +414,56 @@ const ChatView = ({
 
       const selectedProduct = products.find(p => p.id === orderForm.product_id);
       const selectedShipping = shippingMethods.find(s => s.id === orderForm.shipping_method_id);
-      const productTotal = selectedProduct ? selectedProduct.price * orderForm.quantity : 0;
+      
+      // Calculate price including variant prices
+      let productBasePrice = selectedProduct ? selectedProduct.price : 0;
+      
+      // Add color price if selected
+      if (orderForm.selected_color && selectedProduct?.attributes?.colors) {
+        const colorObj = selectedProduct.attributes.colors.find((c: any) => c.name === orderForm.selected_color);
+        if (colorObj?.price) {
+          productBasePrice += Number(colorObj.price);
+        }
+        
+        // Add sub-attribute prices
+        if (colorObj?.attributes) {
+          for (const attr of colorObj.attributes) {
+            const selectedVal = orderForm.selected_variants[attr.name];
+            const valObj = attr.values?.find((v: any) => v.value === selectedVal);
+            if (valObj?.price) {
+              productBasePrice += Number(valObj.price);
+            }
+          }
+        }
+      }
+      
+      // Add custom attribute prices
+      if (selectedProduct?.attributes?.custom) {
+        for (const attr of selectedProduct.attributes.custom) {
+          const selectedVal = orderForm.selected_variants[attr.name];
+          const valObj = attr.values?.find((v: any) => v.value === selectedVal);
+          if (valObj?.price) {
+            productBasePrice += Number(valObj.price);
+          }
+        }
+      }
+      
+      const productTotal = productBasePrice * orderForm.quantity;
       const shippingPrice = selectedShipping ? Number(selectedShipping.price) : 0;
       const totalPrice = productTotal + shippingPrice;
 
       // Generate order number
       const { data: orderNumber } = await supabase.rpc('generate_order_number');
       const finalOrderNumber = orderNumber || `ORD-${Date.now()}`;
+
+      // Build variants notes
+      let variantsNotes = '';
+      if (orderForm.selected_color) {
+        variantsNotes += `اللون: ${orderForm.selected_color}\n`;
+      }
+      for (const [key, value] of Object.entries(orderForm.selected_variants)) {
+        variantsNotes += `${key}: ${value}\n`;
+      }
 
       const { error } = await supabase
         .from('orders')
@@ -396,7 +482,7 @@ const ChatView = ({
           created_by: 'employee',
           shipping_address: orderForm.address,
           payment_status: orderForm.payment_method === 'نقدي' ? 'pending' : 'awaiting_payment',
-          notes: `طريقة الدفع: ${orderForm.payment_method}\nطريقة الشحن: ${selectedShipping?.name || 'غير محدد'}${orderForm.notes ? `\n${orderForm.notes}` : ''}`
+          notes: `${variantsNotes}طريقة الدفع: ${orderForm.payment_method}\nطريقة الشحن: ${selectedShipping?.name || 'غير محدد'}${orderForm.notes ? `\n${orderForm.notes}` : ''}`
         });
 
       if (error) throw error;
@@ -494,7 +580,9 @@ const ChatView = ({
         product_id: '',
         shipping_method_id: '',
         quantity: 1,
-        notes: ''
+        notes: '',
+        selected_color: '',
+        selected_variants: {}
       });
       toast.success('تم إنشاء الطلب بنجاح');
       fetchOrders(); // Refresh orders list
@@ -782,7 +870,12 @@ const ChatView = ({
                 <Label htmlFor="order_product">المنتج *</Label>
                 <Select
                   value={orderForm.product_id}
-                  onValueChange={(value) => setOrderForm({ ...orderForm, product_id: value })}
+                  onValueChange={(value) => setOrderForm({ 
+                    ...orderForm, 
+                    product_id: value,
+                    selected_color: '',
+                    selected_variants: {}
+                  })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="اختر منتج" />
@@ -796,6 +889,88 @@ const ChatView = ({
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Color Selection - shown if product has colors */}
+              {selectedProductForForm?.attributes?.colors?.length > 0 && (
+                <div className="space-y-1">
+                  <Label htmlFor="order_color">اللون *</Label>
+                  <Select
+                    value={orderForm.selected_color}
+                    onValueChange={(value) => setOrderForm({ 
+                      ...orderForm, 
+                      selected_color: value,
+                      selected_variants: {}
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر اللون" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedProductForForm.attributes.colors.map((color: any) => (
+                        <SelectItem key={color.name} value={color.name}>
+                          {color.name} {color.price ? `(+${color.price} ₪)` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Color Sub-Attributes - shown if selected color has attributes */}
+              {selectedColorForForm?.attributes?.map((attr: any) => (
+                <div key={attr.name} className="space-y-1">
+                  <Label>{attr.name} *</Label>
+                  <Select
+                    value={orderForm.selected_variants[attr.name] || ''}
+                    onValueChange={(value) => setOrderForm({ 
+                      ...orderForm, 
+                      selected_variants: {
+                        ...orderForm.selected_variants,
+                        [attr.name]: value
+                      }
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={`اختر ${attr.name}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attr.values?.map((val: any) => (
+                        <SelectItem key={val.value} value={val.value}>
+                          {val.value} {val.price ? `(+${val.price} ₪)` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+
+              {/* Custom Attributes - shown if product has custom attributes */}
+              {selectedProductForForm?.attributes?.custom?.map((attr: any) => (
+                <div key={attr.name} className="space-y-1">
+                  <Label>{attr.name} *</Label>
+                  <Select
+                    value={orderForm.selected_variants[attr.name] || ''}
+                    onValueChange={(value) => setOrderForm({ 
+                      ...orderForm, 
+                      selected_variants: {
+                        ...orderForm.selected_variants,
+                        [attr.name]: value
+                      }
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={`اختر ${attr.name}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attr.values?.map((val: any) => (
+                        <SelectItem key={val.value} value={val.value}>
+                          {val.value} {val.price ? `(+${val.price} ₪)` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
 
               <div className="space-y-1">
                 <Label htmlFor="order_shipping">طريقة الشحن *</Label>
