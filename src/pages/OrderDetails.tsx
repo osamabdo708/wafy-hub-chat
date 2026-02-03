@@ -4,9 +4,44 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Package, User, Phone, Mail, MapPin, CreditCard, Truck, Calendar, FileText } from "lucide-react";
+import { ArrowRight, Package, User, Phone, Mail, MapPin, CreditCard, Truck, Calendar, FileText, Palette } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
+
+// Parse variants from notes field
+const parseVariantsFromNotes = (notes: string | null): { variants: Record<string, string>; remainingNotes: string } => {
+  const variants: Record<string, string> = {};
+  let remainingNotes = notes || '';
+  
+  if (!notes) return { variants, remainingNotes };
+  
+  const lines = notes.split('\n');
+  const variantLines: string[] = [];
+  const otherLines: string[] = [];
+  
+  const variantPatterns = ['اللون:', 'المقاس:', 'الحجم:', 'النوع:', 'الخامة:'];
+  
+  for (const line of lines) {
+    const isVariant = variantPatterns.some(pattern => line.startsWith(pattern)) ||
+                      /^[^:]+:\s*[^\n]+$/.test(line.trim()) && 
+                      !line.includes('طريقة الدفع:') && 
+                      !line.includes('طريقة الشحن:') &&
+                      !line.includes('الكمية:') &&
+                      !line.includes('تم الطلب بواسطة');
+    
+    if (isVariant && line.includes(':')) {
+      const [key, ...valueParts] = line.split(':');
+      const value = valueParts.join(':').trim();
+      if (key && value) {
+        variants[key.trim()] = value;
+      }
+    } else {
+      otherLines.push(line);
+    }
+  }
+  
+  return { variants, remainingNotes: otherLines.join('\n').trim() };
+};
 
 const OrderDetails = () => {
   const { orderId } = useParams();
@@ -19,7 +54,7 @@ const OrderDetails = () => {
         .from('orders')
         .select(`
           *,
-          products(name, image_url),
+          products(name, image_url, attributes),
           services(name),
           shipping_methods(name, price)
         `)
@@ -69,6 +104,10 @@ const OrderDetails = () => {
       </div>
     );
   }
+
+  // Parse variants from notes
+  const { variants: parsedVariants, remainingNotes } = parseVariantsFromNotes(order.notes);
+  const hasVariants = Object.keys(parsedVariants).length > 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -147,6 +186,26 @@ const OrderDetails = () => {
                 <span>الخدمة: {order.services.name}</span>
               </div>
             )}
+            
+            {/* Product Variants */}
+            {hasVariants && (
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Palette className="h-4 w-4 text-muted-foreground" />
+                  <span>المتغيرات المختارة:</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(parsedVariants).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <Badge variant="secondary" className="font-normal">
+                        {key}: {value}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <div className="flex items-center gap-3">
               <CreditCard className="h-4 w-4 text-muted-foreground" />
               <span>طريقة الدفع: {order.payment_method || 'غير محدد'}</span>
@@ -199,7 +258,7 @@ const OrderDetails = () => {
         </Card>
 
         {/* Notes */}
-        {order.notes && (
+        {remainingNotes && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -208,7 +267,7 @@ const OrderDetails = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground whitespace-pre-wrap">{order.notes}</p>
+              <p className="text-muted-foreground whitespace-pre-wrap">{remainingNotes}</p>
             </CardContent>
           </Card>
         )}
