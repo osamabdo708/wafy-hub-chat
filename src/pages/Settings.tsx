@@ -8,7 +8,7 @@ import { LayoutDashboard, Store, ExternalLink, CheckCircle2, Smartphone } from "
 import { ChannelCard } from "@/components/ChannelCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import agentIcon from "@/assets/agent-icon.png";
+import maredIcon from "@/assets/mared-icon.png";
 import { 
   WhatsAppIcon, 
   MessengerIcon, 
@@ -137,7 +137,7 @@ const Settings = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
-                  <img src={agentIcon} alt="المارد" className="w-9 h-9" />
+                  <img src={maredIcon} alt="المارد" className="w-9 h-9" />
                 </div>
                 <div>
                   <Label className="text-lg font-bold">تفعيل المارد تلقائياً</Label>

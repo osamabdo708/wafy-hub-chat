@@ -10,7 +10,6 @@ import {
   BarChart3, 
   LayoutDashboard,
   LogOut,
-  Users,
   FolderTree,
   UserCheck
 } from "lucide-react";
@@ -28,7 +27,6 @@ const navItems = [
   { title: "العملاء", url: "/clients", icon: UserCheck },
   { title: "المنتجات", url: "/products", icon: Package },
   { title: "التصنيفات", url: "/categories", icon: FolderTree },
-  { title: "الوكلاء", url: "/agents", icon: Users },
   { title: "التقارير", url: "/reports", icon: BarChart3 },
 ];
 

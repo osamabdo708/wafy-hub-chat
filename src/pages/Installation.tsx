@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Building2, Sparkles, User, Mail, Lock, Loader2, Shield } from "lucide-react";
-import agentIcon from "@/assets/agent-icon.png";
+import maredIcon from "@/assets/mared-icon.png";
 
 const Installation = () => {
   const [step, setStep] = useState(1);
@@ -116,7 +116,7 @@ const Installation = () => {
       <Card className="w-full max-w-lg p-8">
         <div className="flex flex-col items-center mb-8">
           <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-            <img src={agentIcon} alt="المارد" className="w-12 h-12" />
+            <img src={maredIcon} alt="المارد" className="w-12 h-12" />
           </div>
           <h1 className="text-3xl font-bold text-center">تثبيت النظام</h1>
           <p className="text-muted-foreground text-center mt-2">

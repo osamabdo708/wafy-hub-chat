@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ShoppingCart, Plus, X, CreditCard, Banknote, Clock, CheckCircle, XCircle, AlertCircle, FileText, Trash2, User, ChevronLeft, ChevronRight } from "lucide-react";
-import agentIcon from "@/assets/agent-icon.png";
+import maredIcon from "@/assets/mared-icon.png";
 import posIcon from "@/assets/pos-icon.png";
 import storeIcon from "@/assets/store-icon.png";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -699,7 +699,7 @@ const Orders = () => {
                   <TableCell>
                     {order.ai_generated || order.created_by === 'ai' ? (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border bg-gradient-to-br from-purple-500/10 to-pink-500/10">
-                        <img src={agentIcon} alt="المارد" className="w-4 h-4" />
+                        <img src={maredIcon} alt="المارد" className="w-4 h-4" />
                         <span className="text-sm">المارد</span>
                       </div>
                     ) : order.order_number?.startsWith('SHOP-') ? (

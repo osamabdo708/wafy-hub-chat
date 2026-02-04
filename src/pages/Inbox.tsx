@@ -13,8 +13,8 @@ import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import ChatView from "@/components/ChatView";
-import agentIcon from "@/assets/agent-icon.png";
-import { AgentSelector } from "@/components/AgentSelector";
+import maredIcon from "@/assets/mared-icon.png";
+import { MaredToggle } from "@/components/MaredToggle";
 import {
   MessengerIcon, 
   InstagramIcon, 
@@ -22,12 +22,6 @@ import {
   TelegramIcon,
   getChannelIconComponent 
 } from "@/components/ChannelIcons";
-
-interface Agent {
-  id: string;
-  name: string;
-  is_ai: boolean;
-}
 
 interface Conversation {
   id: string;
@@ -40,8 +34,6 @@ interface Conversation {
   customer_avatar?: string;
   ai_enabled?: boolean;
   unread_count?: number;
-  assigned_agent_id?: string | null;
-  assigned_agent?: Agent | null;
   client_id?: string | null;
   order_count?: number;
 }
@@ -100,16 +92,12 @@ const Inbox = () => {
       await fetchConnectedChannels();
     };
     initChannels();
-
-    // Subscribe to channel integration changes - these will be re-subscribed
-    // after we have the workspace ID
   }, []);
 
   // Workspace-scoped channel subscriptions
   useEffect(() => {
     if (!workspaceId) return;
 
-    // Subscribe to channel integration changes for THIS workspace only
     const legacyChannel = supabase
       .channel(`workspace_${workspaceId}_integrations`)
       .on(
@@ -126,7 +114,6 @@ const Inbox = () => {
       )
       .subscribe();
 
-    // Subscribe to new channel_connections table for THIS workspace
     const connectionsChannel = supabase
       .channel(`workspace_${workspaceId}_connections`)
       .on(
@@ -154,8 +141,6 @@ const Inbox = () => {
     if (!loadingChannels) {
       fetchConversations();
 
-      // Subscribe to real-time updates - WORKSPACE-SCOPED channels
-      // Each workspace gets its own channel to prevent cross-workspace updates
       const conversationsChannel = supabase
         .channel(`workspace_${workspaceId}_conversations`)
         .on(
@@ -172,7 +157,6 @@ const Inbox = () => {
         )
         .subscribe();
 
-      // Subscribe to message changes for unread count updates - WORKSPACE-SCOPED
       const messagesChannel = supabase
         .channel(`workspace_${workspaceId}_messages`)
         .on(
@@ -183,7 +167,6 @@ const Inbox = () => {
             table: 'messages'
           },
           (payload) => {
-            // Only refetch if we have a workspace context
             if (workspaceId) {
               fetchConversations();
             }
@@ -200,7 +183,6 @@ const Inbox = () => {
 
   const fetchConnectedChannels = async () => {
     try {
-      // Get current user's workspace
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('No user found');
@@ -225,7 +207,6 @@ const Inbox = () => {
 
       setWorkspaceId(workspace.id);
 
-      // Fetch from legacy channel_integrations for THIS workspace only
       const { data: legacyData, error: legacyError } = await supabase
         .from('channel_integrations')
         .select('channel, is_connected')
@@ -236,7 +217,6 @@ const Inbox = () => {
         console.error('Error fetching legacy integrations:', legacyError);
       }
       
-      // Also fetch from new channel_connections table for THIS workspace only
       const { data: connectionsData, error: connectionsError } = await supabase
         .from('channel_connections')
         .select('provider, status')
@@ -247,14 +227,11 @@ const Inbox = () => {
         console.error('Error fetching channel connections:', connectionsError);
       }
 
-      // Normalize legacy channel names: new OAuth flow stores channel as `${provider}_${provider_channel_id}`
-      // but conversations still use the base provider name (facebook/instagram/whatsapp/tiktok).
       const normalizeChannel = (channel: string): ChannelType => {
         const base = channel.split('_')[0] as ChannelType;
         return base;
       };
 
-      // Combine channels from both sources (deduplicated)
       const legacyChannels = (legacyData || []).map((ch: ConnectedChannel) => normalizeChannel(ch.channel));
       const newChannels = (connectionsData || []).map((conn: { provider: string }) => normalizeChannel(conn.provider));
       
@@ -270,24 +247,21 @@ const Inbox = () => {
 
   const fetchConversations = async () => {
     try {
-      // We need a workspace id to scope conversations
       if (!workspaceId) {
         setConversations([]);
         setLoading(false);
         return;
       }
 
-      // If no channels are connected, show empty state
       if (connectedChannels.length === 0) {
         setConversations([]);
         setLoading(false);
         return;
       }
 
-      // Fetch conversations only for connected channels
       const { data: conversationsData, error: conversationsError } = await supabase
         .from('conversations')
-        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled, assigned_agent_id, client_id')
+        .select('id, customer_name, customer_phone, customer_email, customer_avatar, channel, status, last_message_at, created_at, updated_at, assigned_to, tags, ai_enabled, client_id')
         .in('channel', connectedChannels)
         .eq('workspace_id', workspaceId)
         .order('last_message_at', { ascending: false });
@@ -304,30 +278,11 @@ const Inbox = () => {
           .select('client_id')
           .in('client_id', clientIds);
         
-        // Count orders per client
         (ordersData || []).forEach(order => {
           if (order.client_id) {
             clientOrderCounts[order.client_id] = (clientOrderCounts[order.client_id] || 0) + 1;
           }
         });
-      }
-
-      if (conversationsError) throw conversationsError;
-
-      // Fetch agents for assigned conversations
-      const agentIds = [...new Set((conversationsData || []).map(c => c.assigned_agent_id).filter(Boolean))];
-      let agentsMap: Record<string, Agent> = {};
-      
-      if (agentIds.length > 0) {
-        const { data: agentsData } = await supabase
-          .from('agents')
-          .select('id, name, is_ai')
-          .in('id', agentIds);
-        
-        agentsMap = (agentsData || []).reduce((acc, agent) => {
-          acc[agent.id] = agent;
-          return acc;
-        }, {} as Record<string, Agent>);
       }
 
       // Fetch unread counts for each conversation
@@ -345,7 +300,6 @@ const Inbox = () => {
             return { 
               ...conv, 
               unread_count: 0,
-              assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null,
               order_count: conv.client_id ? (clientOrderCounts[conv.client_id] || 0) : 0
             };
           }
@@ -353,7 +307,6 @@ const Inbox = () => {
           return { 
             ...conv, 
             unread_count: count || 0,
-            assigned_agent: conv.assigned_agent_id ? agentsMap[conv.assigned_agent_id] : null,
             order_count: conv.client_id ? (clientOrderCounts[conv.client_id] || 0) : 0
           };
         })
@@ -361,28 +314,22 @@ const Inbox = () => {
 
       setConversations(conversationsWithUnread);
       
-      // If there's a conversation ID in URL, auto-select it
       if (conversationIdFromUrl) {
         const targetConv = conversationsWithUnread.find(c => c.id === conversationIdFromUrl);
         if (targetConv) {
           setSelectedConversation(targetConv);
-          // Mark messages as read
           if (targetConv.unread_count && targetConv.unread_count > 0) {
             markMessagesAsRead(targetConv.id);
           }
-          // Clear the URL parameter after selecting
           setSearchParams({});
         }
       } else {
-        // If selected conversation no longer exists or has been updated, sync it
         setSelectedConversation(prev => {
           if (!prev) return null;
           const updatedConv = conversationsWithUnread.find(c => c.id === prev.id);
           if (!updatedConv) {
-            // Selected conversation was deleted or no longer available
             return null;
           }
-          // Return updated version of the conversation
           return updatedConv;
         });
       }
@@ -393,45 +340,31 @@ const Inbox = () => {
     }
   };
 
-  const handleAssignAgent = async (conversationId: string, agentId: string | null) => {
+  const handleToggleAI = async (conversationId: string, enabled: boolean) => {
     try {
-      // Check if the assigned agent is AI (المارد)
-      let isAiAgent = false;
-      if (agentId) {
-        const { data: agent } = await supabase
-          .from('agents')
-          .select('is_ai')
-          .eq('id', agentId)
-          .maybeSingle();
-        isAiAgent = agent?.is_ai || false;
-      }
-
       const { error } = await supabase
         .from('conversations')
-        .update({ 
-          assigned_agent_id: agentId,
-          ai_enabled: isAiAgent
-        })
+        .update({ ai_enabled: enabled })
         .eq('id', conversationId);
 
       if (error) throw error;
 
       setConversations(conversations.map(conv => 
         conv.id === conversationId 
-          ? { ...conv, assigned_agent_id: agentId, ai_enabled: isAiAgent }
+          ? { ...conv, ai_enabled: enabled }
           : conv
       ));
 
-      toast.success(agentId ? "تم تعيين الوكيل بنجاح" : "تم إلغاء التعيين");
+      toast.success(enabled ? "تم تفعيل المارد" : "تم تعطيل المارد");
 
-      // If AI agent is assigned, immediately trigger auto-reply
-      if (isAiAgent) {
-        console.log('[ASSIGN-AGENT] AI agent assigned, triggering auto-reply check...');
+      // If AI is enabled, immediately trigger auto-reply
+      if (enabled) {
+        console.log('[TOGGLE-AI] AI enabled, triggering auto-reply check...');
         await supabase.functions.invoke('auto-reply-messages');
       }
     } catch (error) {
-      console.error('Error assigning agent:', error);
-      toast.error("فشل في تعيين الوكيل");
+      console.error('Error toggling AI:', error);
+      toast.error("فشل في تغيير حالة المارد");
     }
   };
 
@@ -444,7 +377,6 @@ const Inbox = () => {
         .eq('sender_type', 'customer')
         .eq('is_read', false);
 
-      // Update local state
       setConversations(conversations.map(conv => 
         conv.id === conversationId 
           ? { ...conv, unread_count: 0 }
@@ -481,7 +413,6 @@ const Inbox = () => {
   useEffect(() => {
     if (connectedChannels.length === 0) return;
 
-    // Auto-reply check every 15 seconds
     const autoReplyInterval = setInterval(async () => {
       try {
         await supabase.functions.invoke('auto-reply-messages');
@@ -649,19 +580,11 @@ const Inbox = () => {
                             </div>
                           </div>
                         </div>
-                        {/* Agent indicator */}
-                        {conversation.assigned_agent && (
-                          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                            conversation.assigned_agent.is_ai 
-                              ? 'bg-purple-500/10 text-purple-600' 
-                              : 'bg-primary/10 text-primary'
-                          }`}>
-                            {conversation.assigned_agent.is_ai ? (
-                              <img src={agentIcon} alt="المارد" className="w-4 h-4" />
-                            ) : (
-                              <User className="w-3 h-3" />
-                            )}
-                            {conversation.assigned_agent.name}
+                        {/* AI indicator */}
+                        {conversation.ai_enabled && (
+                          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-purple-500/10 text-purple-600">
+                            <img src={maredIcon} alt="المارد" className="w-4 h-4" />
+                            المارد
                           </div>
                         )}
                       </div>
@@ -676,9 +599,9 @@ const Inbox = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           <div onClick={(e) => e.stopPropagation()}>
-                            <AgentSelector
-                              value={conversation.assigned_agent_id || null}
-                              onChange={(agentId) => handleAssignAgent(conversation.id, agentId)}
+                            <MaredToggle
+                              enabled={conversation.ai_enabled || false}
+                              onChange={(enabled) => handleToggleAI(conversation.id, enabled)}
                             />
                           </div>
                           <Badge variant={
