@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Parse product attributes DYNAMICALLY - no hardcoded checks
+// Parse product attributes DYNAMICALLY - supports both legacy format and Shopify-style variants
 function parseProductAttributes(product: any) {
   const attrs = product.attributes as any;
   const result: {
@@ -18,12 +18,88 @@ function parseProductAttributes(product: any) {
       options: {
         value: string;
         price: number;
+        image_url?: string;
+        inventory_quantity?: number;
         subVariants?: { name: string; options: string[] }[];
       }[];
     }[];
   } = { hasVariants: false, variants: [] };
 
   if (!attrs) return result;
+
+  // Check for Shopify-style variants first (new format)
+  if (attrs.variants && Array.isArray(attrs.variants) && attrs.variants.length > 0) {
+    result.hasVariants = true;
+    
+    // Get option names from the options array
+    const optionNames: string[] = [];
+    if (attrs.options && Array.isArray(attrs.options)) {
+      for (const opt of attrs.options) {
+        if (opt.name && opt.name !== 'Title') {
+          optionNames.push(opt.name);
+        }
+      }
+    }
+    
+    // If no named options, use option1, option2, option3 as generic names
+    const variantOptions: { [key: string]: { value: string; price: number; image_url?: string; inventory_quantity?: number }[] } = {};
+    
+    for (const variant of attrs.variants) {
+      // Process option1
+      if (variant.option1) {
+        const optName = optionNames[0] || 'الخيار';
+        if (!variantOptions[optName]) variantOptions[optName] = [];
+        const exists = variantOptions[optName].find(o => o.value === variant.option1);
+        if (!exists) {
+          variantOptions[optName].push({
+            value: variant.option1,
+            price: variant.price || product.price,
+            image_url: variant.image_url,
+            inventory_quantity: variant.inventory_quantity
+          });
+        }
+      }
+      // Process option2
+      if (variant.option2) {
+        const optName = optionNames[1] || 'الخيار 2';
+        if (!variantOptions[optName]) variantOptions[optName] = [];
+        const exists = variantOptions[optName].find(o => o.value === variant.option2);
+        if (!exists) {
+          variantOptions[optName].push({
+            value: variant.option2,
+            price: variant.price || product.price,
+            image_url: variant.image_url,
+            inventory_quantity: variant.inventory_quantity
+          });
+        }
+      }
+      // Process option3
+      if (variant.option3) {
+        const optName = optionNames[2] || 'الخيار 3';
+        if (!variantOptions[optName]) variantOptions[optName] = [];
+        const exists = variantOptions[optName].find(o => o.value === variant.option3);
+        if (!exists) {
+          variantOptions[optName].push({
+            value: variant.option3,
+            price: variant.price || product.price,
+            image_url: variant.image_url,
+            inventory_quantity: variant.inventory_quantity
+          });
+        }
+      }
+    }
+    
+    // Add variants to result
+    for (const [optName, options] of Object.entries(variantOptions)) {
+      result.variants.push({
+        name: optName,
+        type: 'custom',
+        options: options
+      });
+    }
+    
+    return result;
+  }
 
   // 1. Colors (if exists)
   if (attrs.colors && Array.isArray(attrs.colors) && attrs.colors.length > 0) {
@@ -137,6 +213,52 @@ function getRequiredVariants(product: any): string[] {
   }
   
   return required;
+}
+
+// Find matching variant from Shopify-style variants
+function findShopifyVariant(product: any, selectedVariants: { [key: string]: string }): any | null {
+  const attrs = product.attributes as any;
+  if (!attrs?.variants || !Array.isArray(attrs.variants)) return null;
+  
+  // Get option names
+  const optionNames: string[] = [];
+  if (attrs.options && Array.isArray(attrs.options)) {
+    for (const opt of attrs.options) {
+      if (opt.name && opt.name !== 'Title') {
+        optionNames.push(opt.name);
+      }
+    }
+  }
+  
+  // Find matching variant
+  for (const variant of attrs.variants) {
+    let matches = true;
+    
+    // Check option1
+    if (optionNames[0] && selectedVariants[optionNames[0]]) {
+      if (variant.option1 !== selectedVariants[optionNames[0]]) matches = false;
+    } else if (selectedVariants['الخيار'] && variant.option1 !== selectedVariants['الخيار']) {
+      matches = false;
+    }
+    
+    // Check option2
+    if (optionNames[1] && selectedVariants[optionNames[1]]) {
+      if (variant.option2 !== selectedVariants[optionNames[1]]) matches = false;
+    } else if (selectedVariants['الخيار 2'] && variant.option2 !== selectedVariants['الخيار 2']) {
+      matches = false;
+    }
+    
+    // Check option3
+    if (optionNames[2] && selectedVariants[optionNames[2]]) {
+      if (variant.option3 !== selectedVariants[optionNames[2]]) matches = false;
+    } else if (selectedVariants['الخيار 3'] && variant.option3 !== selectedVariants['الخيار 3']) {
+      matches = false;
+    }
+    
+    if (matches) return variant;
+  }
+  
+  return null;
 }
 
 serve(async (req) => {
@@ -330,6 +452,22 @@ ${customerOrdersHistory ? `\n📜 طلبات سابقة للعميل: ${customer
             required: ["product_id", "customer_name", "customer_phone", "shipping_address", "shipping_method_id", "payment_method", "total_price"]
           }
         }
+      },
+      {
+        type: "function",
+        function: {
+          name: "notify_admin",
+          description: "أرسل إشعار للمسؤولين عندما يطلب العميل شيء غير متعلق بالطلبات أو المنتجات - مثل شكوى، استفسار تقني، طلب دعم، أو أي موضوع خارج نطاق البيع",
+          parameters: {
+            type: "object",
+            properties: {
+              reason: { type: "string", description: "سبب الإشعار - ما الذي يريده العميل؟" },
+              customer_message: { type: "string", description: "رسالة العميل الأصلية" },
+              urgency: { type: "string", enum: ["low", "medium", "high"], description: "درجة الأهمية" }
+            },
+            required: ["reason", "customer_message"]
+          }
+        }
       }
     ];
 
@@ -398,15 +536,29 @@ ${customerOrdersHistory ? `\n📜 طلبات سابقة للعميل: ${customer
               console.log('[AI-CHAT] Missing variants:', missingVariants);
             } else {
               const quantity = args.quantity || 1;
-            
-              if (product.stock !== null && product.stock < quantity) {
+              
+              // Check for Shopify-style variant and its inventory
+              const shopifyVariant = findShopifyVariant(product, args.selected_variants || {});
+              let stockToCheck = product.stock;
+              let variantPrice = product.price;
+              
+              if (shopifyVariant) {
+                stockToCheck = shopifyVariant.inventory_quantity;
+                variantPrice = shopifyVariant.price || product.price;
+                console.log('[AI-CHAT] Using Shopify variant:', shopifyVariant);
+              }
+              
+              if (stockToCheck !== null && stockToCheck !== undefined && stockToCheck < quantity) {
                 aiReply = `للأسف المخزون ما يكفي 😔 متوفر بس ${product.stock} حبة`;
               } else {
                 // Calculate correct price based on selected variant
-                let finalProductPrice = args.final_product_price || product.price;
+                let finalProductPrice = args.final_product_price || variantPrice || product.price;
 
-                // If color was selected, get the color's price
-                if (args.selected_variants?.اللون) {
+                // If using Shopify variant, use its price
+                if (shopifyVariant) {
+                  finalProductPrice = shopifyVariant.price || product.price;
+                } else if (args.selected_variants?.اللون) {
+                  // Legacy: If color was selected, get the color's price
                   const parsed = parseProductAttributes(product);
                   const colorVariant = parsed.variants.find(v => v.name === 'اللون');
                   if (colorVariant) {
@@ -555,6 +707,42 @@ ${paymentData.payment_url}
         } catch (parseError) {
           console.error('[AI-CHAT] Tool parse error:', parseError);
           aiReply = 'معليش صار خطأ، ممكن نحاول مرة ثانية؟';
+        }
+      }
+      else if (toolCall.function.name === 'notify_admin') {
+        try {
+          const args = JSON.parse(toolCall.function.arguments);
+          console.log('[AI-CHAT] Notifying admin:', args);
+          
+          // Create an internal note/notification for admins
+          // We'll insert a message with sender_type 'system' to flag it for admin attention
+          await supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              content: `⚠️ إشعار للمسؤول:\nالسبب: ${args.reason}\nرسالة العميل: ${args.customer_message}\nالأهمية: ${args.urgency || 'medium'}`,
+              sender_type: 'agent',
+              message_id: `admin_notify_${Date.now()}_${conversationId}`,
+              reply_sent: true,
+              is_old: false
+            });
+          
+          // Update conversation status to flag it needs attention
+          await supabase
+            .from('conversations')
+            .update({
+              status: 'معلق',
+              tags: ['يحتاج مراجعة']
+            })
+            .eq('id', conversationId);
+          
+          // Respond to customer
+          aiReply = assistantMessage?.content || 'شكراً لك! تم إبلاغ فريقنا وسيتواصلون معك قريباً 🙏';
+          
+          console.log('[AI-CHAT] ✅ Admin notified, conversation marked for review');
+        } catch (notifyError) {
+          console.error('[AI-CHAT] Notify admin error:', notifyError);
+          aiReply = 'تم تسجيل طلبك، سيتواصل معك أحد من فريقنا قريباً 🙏';
         }
       }
     } else {
