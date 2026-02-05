@@ -100,7 +100,8 @@ Deno.serve(async (req) => {
         status,
         last_message_at,
         created_at,
-        assigned_agent_id
+        assigned_agent_id,
+        ai_enabled
       `, { count: "exact" })
       .eq("workspace_id", workspace.id)
       .order("last_message_at", { ascending: false })
@@ -155,6 +156,7 @@ Deno.serve(async (req) => {
           ...conv,
           unread_count: unreadCount || 0,
           last_message: lastMessage || null,
+          mared_enabled: conv.ai_enabled || false,
         };
       })
     );
