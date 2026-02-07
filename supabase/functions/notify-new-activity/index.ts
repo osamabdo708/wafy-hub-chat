@@ -69,6 +69,18 @@ serve(async (req) => {
         conversation_id: record.conversation_id,
         channel: conversation.channel,
       };
+    } else if (type === 'new_order') {
+      workspaceId = record.workspace_id;
+      const orderNumber = record.order_number || '';
+      const customerName = record.customer_name || 'عميل';
+      const price = record.price || 0;
+      title = '🛒 طلب جديد';
+      body = `طلب #${orderNumber} من ${customerName} - ${price} ₪`;
+      notifData = {
+        type: 'new_order',
+        order_id: record.id,
+        order_number: orderNumber,
+      };
     } else {
       console.log(`Unknown notification type: ${type}`);
       return new Response(JSON.stringify({ success: false, error: 'Unknown type' }), {
