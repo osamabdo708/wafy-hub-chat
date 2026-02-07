@@ -255,6 +255,17 @@ serve(async (req) => {
 
           conversationId = newConv.id;
           console.log('[TELEGRAM-WEBHOOK] Created new conversation:', conversationId, 'with avatar:', !!profilePicUrl);
+
+          // Send push notification for new conversation
+          try {
+            const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+            const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+            await fetch(`${supabaseUrl}/functions/v1/notify-new-activity`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${supabaseServiceKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'new_conversation', record: { id: conversationId, workspace_id: workspaceId, channel: 'telegram', customer_name: customerName } }),
+            });
+          } catch (e) { console.log('[TELEGRAM-WEBHOOK] Push notification error (non-fatal):', e); }
         }
 
         // Check for duplicate message
@@ -290,6 +301,17 @@ serve(async (req) => {
         }
 
         console.log('[TELEGRAM-WEBHOOK] ✅ Saved message:', messageId);
+
+        // Send push notification for new message
+        try {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+          const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          await fetch(`${supabaseUrl}/functions/v1/notify-new-activity`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${supabaseServiceKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'new_message', record: { conversation_id: conversationId, content: messageText, sender_type: 'customer' } }),
+          });
+        } catch (e) { console.log('[TELEGRAM-WEBHOOK] Push notification error (non-fatal):', e); }
 
         // Trigger auto-reply if AI is enabled
         try {
