@@ -129,3 +129,23 @@ verify_jwt = false
 [functions.mobile-messages]
 verify_jwt = false
 
+[functions.mobile-orders]
+verify_jwt = false
+
+[functions.mobile-clients]
+verify_jwt = false
+
+[functions.mobile-toggle-mared]
+verify_jwt = false
+
+[functions.mobile-device-token]
+verify_jwt = false
+
+# ============================================
+# PUSH NOTIFICATIONS
+# ============================================
+[functions.send-push-notification]
+verify_jwt = false
+
+[functions.notify-new-activity]
+verify_jwt = false

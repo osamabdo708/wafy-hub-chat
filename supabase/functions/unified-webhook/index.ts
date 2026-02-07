@@ -825,6 +825,26 @@ async function saveIncomingMessage(
     } else {
       conversationId = newConv.id;
       console.log('[UNIFIED-WEBHOOK] Created new conversation:', conversationId, 'with name:', displayName, 'in workspace:', workspaceId);
+
+      // Send push notification for new conversation
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        await fetch(`${supabaseUrl}/functions/v1/notify-new-activity`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'new_conversation',
+            record: { id: conversationId, workspace_id: workspaceId, channel, customer_name: displayName },
+          }),
+        });
+        console.log('[UNIFIED-WEBHOOK] New conversation notification sent');
+      } catch (e) {
+        console.log('[UNIFIED-WEBHOOK] Push notification error (non-fatal):', e);
+      }
     }
   }
 
@@ -861,6 +881,26 @@ async function saveIncomingMessage(
   }
 
   console.log('[UNIFIED-WEBHOOK] ✅ Saved message:', messageId, 'to workspace:', workspaceId);
+
+  // Send push notification for new message
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    await fetch(`${supabaseUrl}/functions/v1/notify-new-activity`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'new_message',
+        record: { conversation_id: conversationId, content, sender_type: 'customer' },
+      }),
+    });
+    console.log('[UNIFIED-WEBHOOK] New message notification sent');
+  } catch (e) {
+    console.log('[UNIFIED-WEBHOOK] Push notification error (non-fatal):', e);
+  }
 
   // Trigger auto-reply if AI is enabled for this conversation
   try {
