@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 Deno.serve(async (req) => {
@@ -13,56 +14,65 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    // Get auth token from header
+    const supabaseServiceKey = Deno.env.get(
+      "SUPABASE_SERVICE_ROLE_KEY"
+    )!;
+
+    /* ---------------- AUTH ---------------- */
+
     const authHeader = req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
           error: "Authorization token required",
-          error_ar: "رمز التفويض مطلوب"
+          error_ar: "رمز التفويض مطلوب",
         }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Create authenticated client with user's token
-    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: { Authorization: authHeader },
-      },
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const userSupabase = createClient(
+      supabaseUrl,
+      supabaseAnonKey,
+      {
+        global: { headers: { Authorization: authHeader } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
+    );
 
-    // Verify the token and get user
-    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
-    
-    // Service client for data operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const {
+      data: { user },
+      error: userError,
+    } = await userSupabase.auth.getUser();
 
     if (userError || !user) {
-      console.log("Invalid token:", userError?.message);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
           error: "Invalid or expired token",
-          error_ar: "رمز غير صالح أو منتهي الصلاحية"
+          error_ar: "رمز غير صالح أو منتهي الصلاحية",
         }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Get user's workspace
+    const supabase = createClient(
+      supabaseUrl,
+      supabaseServiceKey,
+      {
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
+    );
+
+    /* ------------- WORKSPACE -------------- */
+
     const { data: workspace } = await supabase
       .from("workspaces")
       .select("id")
@@ -71,86 +81,84 @@ Deno.serve(async (req) => {
 
     if (!workspace) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
           error: "No workspace found for user",
-          error_ar: "لم يتم العثور على مساحة عمل للمستخدم"
+          error_ar: "لم يتم العثور على مساحة عمل للمستخدم",
         }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Parse query parameters - handle both URL search params and request body
-    let conversationId: string | null = null;
-    let page = 1;
-    let limit = 50;
+    /* ----------- QUERY PARAMS ------------- */
 
-    // Try to get from URL query params first
+    let conversationId: string | null = null;
+    let before: string | null = null;
+    let limit = 30;
+
     try {
       const url = new URL(req.url);
       conversationId = url.searchParams.get("conversation_id");
-      page = parseInt(url.searchParams.get("page") || "1");
-      limit = parseInt(url.searchParams.get("limit") || "50");
-    } catch (e) {
-      console.log("URL parsing failed, trying request body:", e);
+      before = url.searchParams.get("before");
+      limit = parseInt(url.searchParams.get("limit") || "30");
+    } catch {}
+
+    if (req.method === "POST" && !conversationId) {
+      const body = await req.json();
+      conversationId = body.conversation_id;
+      before = body.before || null;
+      limit = parseInt(String(body.limit)) || 30;
     }
 
-    // If not in URL, try request body (for POST requests)
-    if (!conversationId && req.method === "POST") {
-      try {
-        const body = await req.json();
-        conversationId = body.conversation_id;
-        page = parseInt(String(body.page)) || 1;
-        limit = parseInt(String(body.limit)) || 50;
-      } catch (e) {
-        console.log("Body parsing failed:", e);
-      }
-    }
+    limit = Math.max(1, Math.min(50, limit));
 
-    // Ensure page and limit are integers
-    page = Math.max(1, Math.floor(Number(page) || 1));
-    limit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
-    
-    const offset = (page - 1) * limit;
-
-    console.log("Parsed params - conversationId:", conversationId, "page:", page, "limit:", limit);
-
-    // Validate conversation_id
     if (!conversationId) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
           error: "conversation_id is required",
-          error_ar: "معرف المحادثة مطلوب"
+          error_ar: "معرف المحادثة مطلوب",
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Verify conversation exists and belongs to user's workspace
-    const { data: conversation, error: convError } = await supabase
+    /* -------- CONVERSATION CHECK ---------- */
+
+    const { data: conversation } = await supabase
       .from("conversations")
-      .select("id, workspace_id")
+      .select("id")
       .eq("id", conversationId)
       .eq("workspace_id", workspace.id)
       .single();
 
-    if (convError || !conversation) {
+    if (!conversation) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
           error: "Conversation not found or access denied",
-          error_ar: "المحادثة غير موجودة أو غير مصرح بالوصول إليها"
+          error_ar:
+            "المحادثة غير موجودة أو غير مصرح بالوصول إليها",
         }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Fetch messages for the conversation
-    // Order by created_at descending (newest first) - client can reverse for display
-    const { data: messages, error: messagesError, count } = await supabase
+    /* ------------- MESSAGES --------------- */
+
+    let query = supabase
       .from("messages")
-      .select(`
+      .select(
+        `
         id,
         content,
         sender_type,
@@ -159,51 +167,63 @@ Deno.serve(async (req) => {
         is_read,
         created_at,
         message_id
-      `, { count: "exact" })
+      `
+      )
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .limit(limit);
 
-    if (messagesError) {
-      console.error("Error fetching messages:", messagesError);
+    if (before) {
+      query = query.lt("created_at", before);
+    }
+
+    const { data: messages, error } = await query;
+
+    if (error) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
           error: "Failed to fetch messages",
-          error_ar: "فشل في جلب الرسائل"
+          error_ar: "فشل في جلب الرسائل",
         }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    const totalCount = typeof count === 'number' ? count : 0;
-    const totalPages = Math.ceil(totalCount / limit);
+    const nextCursor =
+      messages && messages.length
+        ? messages[messages.length - 1].created_at
+        : null;
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
           messages: messages || [],
-          pagination: {
-            page: page,
-            limit: limit,
-            total: totalCount,
-            total_pages: totalPages,
-          }
-        }
+          has_more: messages?.length === limit,
+          next_cursor: nextCursor,
+        },
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
-
-  } catch (error) {
-    console.error("Unexpected error:", error);
+  } catch (err) {
+    console.error(err);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: false,
         error: "Internal server error",
-        error_ar: "خطأ داخلي في الخادم"
+        error_ar: "خطأ داخلي في الخادم",
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
   }
 });
