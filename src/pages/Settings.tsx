@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LayoutDashboard, Store, ExternalLink, CheckCircle2, Smartphone } from "lucide-react";
+import { LayoutDashboard, Store, ExternalLink, CheckCircle2, Smartphone, Users } from "lucide-react";
 import { ChannelCard } from "@/components/ChannelCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +16,7 @@ import {
   TelegramIcon 
 } from "@/components/ChannelIcons";
 import MobileIntegration from "@/components/settings/MobileIntegration";
+import UserManagement from "@/components/settings/UserManagement";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -32,12 +33,13 @@ const Settings = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data: workspace } = await supabase
-          .from('workspaces')
-          .select('id, settings')
-          .eq('owner_user_id', user.id)
-          .limit(1)
-          .single();
+        const { getWorkspaceIdForUser } = await import("@/hooks/useWorkspace");
+        const wsId = await getWorkspaceIdForUser(user.id);
+        let workspace: { id: string; settings: any } | null = null;
+        if (wsId) {
+          const { data } = await supabase.from('workspaces').select('id, settings').eq('id', wsId).single();
+          workspace = data;
+        }
 
         if (workspace?.settings) {
           const settings = workspace.settings as { default_ai_enabled?: boolean };
@@ -74,12 +76,13 @@ const Settings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: workspace } = await supabase
-        .from('workspaces')
-        .select('id, settings')
-        .eq('owner_user_id', user.id)
-        .limit(1)
-        .single();
+      const { getWorkspaceIdForUser } = await import("@/hooks/useWorkspace");
+      const wsId = await getWorkspaceIdForUser(user.id);
+      let workspace: { id: string; settings: any } | null = null;
+      if (wsId) {
+        const { data } = await supabase.from('workspaces').select('id, settings').eq('id', wsId).single();
+        workspace = data;
+      }
 
       if (!workspace) return;
 
@@ -128,6 +131,10 @@ const Settings = () => {
           <TabsTrigger value="mobile">
             <Smartphone className="w-4 h-4 ml-2" />
             تكامل الموبايل
+          </TabsTrigger>
+          <TabsTrigger value="users">
+            <Users className="w-4 h-4 ml-2" />
+            المستخدمين
           </TabsTrigger>
         </TabsList>
 
@@ -239,6 +246,10 @@ const Settings = () => {
 
         <TabsContent value="mobile">
           <MobileIntegration />
+        </TabsContent>
+
+        <TabsContent value="users">
+          <UserManagement />
         </TabsContent>
       </Tabs>
     </div>

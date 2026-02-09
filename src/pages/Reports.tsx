@@ -13,11 +13,9 @@ const Reports = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
-      const { data: workspace } = await supabase
-        .from("workspaces")
-        .select("id")
-        .eq("owner_user_id", user.id)
-        .single();
+      const { getWorkspaceIdForUser } = await import("@/hooks/useWorkspace");
+      const wsId = await getWorkspaceIdForUser(user.id);
+      const workspace = wsId ? { id: wsId } : null;
 
       if (!workspace) return null;
 

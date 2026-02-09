@@ -44,14 +44,15 @@ const StoreSettings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: workspace, error } = await supabase
-        .from('workspaces')
-        .select('*')
-        .eq('owner_user_id', user.id)
-        .limit(1)
-        .single();
+      const { getWorkspaceIdForUser } = await import("@/hooks/useWorkspace");
+      const wsId = await getWorkspaceIdForUser(user.id);
+      let workspace: any = null;
+      if (wsId) {
+        const { data, error } = await supabase.from('workspaces').select('*').eq('id', wsId).single();
+        if (error) throw error;
+        workspace = data;
+      }
 
-      if (error) throw error;
       
       if (workspace) {
         setWorkspaceId(workspace.id);
