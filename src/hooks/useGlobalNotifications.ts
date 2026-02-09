@@ -1,10 +1,30 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { playNotificationSound } from "@/utils/notificationSound";
-import { useWorkspace } from "@/hooks/useWorkspace";
 
 export const useGlobalNotifications = () => {
-  const { workspaceId } = useWorkspace();
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+
+  // Get workspace ID on mount
+  useEffect(() => {
+    const getWorkspace = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .limit(1)
+        .single();
+
+      if (workspace) {
+        setWorkspaceId(workspace.id);
+      }
+    };
+
+    getWorkspace();
+  }, []);
 
   // Subscribe to new messages globally
   useEffect(() => {

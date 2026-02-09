@@ -187,9 +187,12 @@ const Products = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { getWorkspaceIdForUser } = await import("@/hooks/useWorkspace");
-      const wsId = await getWorkspaceIdForUser(user.id);
-      const workspace = wsId ? { id: wsId } : null;
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .limit(1)
+        .single();
 
       if (workspace) {
         setWorkspaceId(workspace.id);

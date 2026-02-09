@@ -149,9 +149,11 @@ const POS = () => {
         .eq('id', user.id)
         .single();
 
-      const { getWorkspaceIdForUser } = await import("@/hooks/useWorkspace");
-      const wsId = await getWorkspaceIdForUser(user.id);
-      const workspace = wsId ? { id: wsId } : null;
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .single();
 
       if (!workspace) return;
 
@@ -290,9 +292,11 @@ const POS = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { getWorkspaceIdForUser: getWsId } = await import("@/hooks/useWorkspace");
-      const wsId2 = await getWsId(user.id);
-      const workspace = wsId2 ? { id: wsId2 } : null;
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .single();
 
       if (!workspace) throw new Error("Workspace not found");
 

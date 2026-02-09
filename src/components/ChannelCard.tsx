@@ -29,10 +29,14 @@ export const ChannelCard = ({
     const getWorkspace = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { getWorkspaceIdForUser } = await import("@/hooks/useWorkspace");
-        const wsId = await getWorkspaceIdForUser(user.id);
-        if (wsId) {
-          setWorkspaceId(wsId);
+        const { data: workspaces } = await supabase
+          .from('workspaces')
+          .select('id')
+          .eq('owner_user_id', user.id)
+          .limit(1);
+        
+        if (workspaces && workspaces.length > 0) {
+          setWorkspaceId(workspaces[0].id);
         }
       }
     };
