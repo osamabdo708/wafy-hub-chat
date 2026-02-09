@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { playOrderNotificationSound } from "@/utils/orderNotificationSound";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export interface OrderNotification {
   id: string;
@@ -13,28 +14,7 @@ export interface OrderNotification {
 
 export const useOrderNotifications = () => {
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-
-  // Get workspace ID on mount
-  useEffect(() => {
-    const getWorkspace = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: workspace } = await supabase
-        .from('workspaces')
-        .select('id')
-        .eq('owner_user_id', user.id)
-        .limit(1)
-        .single();
-
-      if (workspace) {
-        setWorkspaceId(workspace.id);
-      }
-    };
-
-    getWorkspace();
-  }, []);
+  const { workspaceId } = useWorkspace();
 
   // Load recent orders as initial notifications
   useEffect(() => {
