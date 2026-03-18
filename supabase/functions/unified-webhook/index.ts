@@ -711,7 +711,8 @@ async function saveIncomingMessage(
       realName = userInfo.name;
     }
     if (userInfo.profilePic) {
-      realAvatar = userInfo.profilePic;
+      // Persist avatar to storage so it doesn't expire
+      realAvatar = await persistAvatar(userInfo.profilePic, `${channel}_${senderId}`);
     }
   }
 
