@@ -692,7 +692,7 @@ async function saveIncomingMessage(
   // Look for existing conversation in THIS workspace ONLY
   let { data: conversation } = await supabase
     .from('conversations')
-    .select('id, customer_name, customer_avatar')
+    .select('id, customer_name, customer_avatar, client_id')
     .eq('customer_phone', senderId)
     .eq('channel', channel)
     .eq('workspace_id', workspaceId)
@@ -737,13 +737,19 @@ async function saveIncomingMessage(
       console.log(`[UNIFIED-WEBHOOK] Updating conversation name from "${currentName}" to "${realName}"`);
     }
 
-    // Update avatar if we have one and current is empty or is an expired Meta CDN URL
-    const currentAvatar = conversation.customer_avatar || '';
-    const isExpirableAvatar = !currentAvatar || 
-      (currentAvatar.includes('fbcdn.net') || currentAvatar.includes('facebook.com') || currentAvatar.includes('cdninstagram.com'));
-    if (realAvatar && isExpirableAvatar) {
+    // Always update avatar on every message (refreshes storage with latest pic)
+    if (realAvatar) {
       updateData.customer_avatar = realAvatar;
       console.log(`[UNIFIED-WEBHOOK] Updating conversation avatar`);
+      
+      // Also update the linked client's avatar
+      if (conversation.client_id) {
+        await supabase
+          .from('clients')
+          .update({ avatar_url: realAvatar, updated_at: new Date().toISOString() })
+          .eq('id', conversation.client_id);
+        console.log(`[UNIFIED-WEBHOOK] Updated client avatar for client_id: ${conversation.client_id}`);
+      }
     }
 
     await supabase

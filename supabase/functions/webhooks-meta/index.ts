@@ -176,7 +176,7 @@ async function processMessageForWorkspace({
   // Look for existing conversation by customer_phone (sender_id) + channel + workspace
   const { data: existingConvo } = await supabase
     .from("conversations")
-    .select("id, thread_id")
+    .select("id, thread_id, client_id")
     .eq("workspace_id", workspaceId)
     .eq("channel", channelType)
     .eq("customer_phone", source.senderId)
@@ -186,18 +186,28 @@ async function processMessageForWorkspace({
 
   if (existingConvo) {
     conversationId = existingConvo.id;
-    // Update thread_id if changed
+    const updateData: any = { last_message_at: new Date().toISOString() };
     if (existingConvo.thread_id !== source.conversationId) {
-      await supabase
-        .from("conversations")
-        .update({ thread_id: source.conversationId, last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
-    } else {
-      await supabase
-        .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
+      updateData.thread_id = source.conversationId;
     }
+    // Always update avatar on every message
+    if (senderAvatar) {
+      updateData.customer_avatar = senderAvatar;
+      // Also update linked client avatar
+      if (existingConvo.client_id) {
+        await supabase
+          .from("clients")
+          .update({ avatar_url: senderAvatar, updated_at: new Date().toISOString() })
+          .eq("id", existingConvo.client_id);
+      }
+    }
+    if (senderName && senderName !== source.senderId) {
+      updateData.customer_name = senderName;
+    }
+    await supabase
+      .from("conversations")
+      .update(updateData)
+      .eq("id", conversationId);
     console.log(`[WEBHOOK-META] Found existing conversation: ${conversationId}`);
   } else {
     // Create new conversation
