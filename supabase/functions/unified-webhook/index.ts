@@ -523,6 +523,8 @@ async function getWhatsAppAvatar(phone: string): Promise<string | null> {
   }
 }
 
+import { persistAvatar } from "../_shared/persist-avatar.ts";
+
 async function fetchUserInfo(
   userId: string,
   accessToken: string | null,
@@ -709,7 +711,8 @@ async function saveIncomingMessage(
       realName = userInfo.name;
     }
     if (userInfo.profilePic) {
-      realAvatar = userInfo.profilePic;
+      // Persist avatar to storage so it doesn't expire
+      realAvatar = await persistAvatar(userInfo.profilePic, `${channel}_${senderId}`);
     }
   }
 
@@ -734,8 +737,11 @@ async function saveIncomingMessage(
       console.log(`[UNIFIED-WEBHOOK] Updating conversation name from "${currentName}" to "${realName}"`);
     }
 
-    // Update avatar if we have one and current is empty
-    if (realAvatar && !conversation.customer_avatar) {
+    // Update avatar if we have one and current is empty or is an expired Meta CDN URL
+    const currentAvatar = conversation.customer_avatar || '';
+    const isExpirableAvatar = !currentAvatar || 
+      (currentAvatar.includes('fbcdn.net') || currentAvatar.includes('facebook.com') || currentAvatar.includes('cdninstagram.com'));
+    if (realAvatar && isExpirableAvatar) {
       updateData.customer_avatar = realAvatar;
       console.log(`[UNIFIED-WEBHOOK] Updating conversation avatar`);
     }
