@@ -158,7 +158,11 @@ async function processMessageForWorkspace({
     console.log(`[WEBHOOK-META] User info result:`, JSON.stringify(userInfo));
     if (userInfo) {
       senderName = userInfo.name || source.senderId;
-      senderAvatar = userInfo.profilePic;
+      if (userInfo.profilePic) {
+        // Persist avatar to storage so Meta CDN URLs don't expire
+        const channelType = source.provider === "messenger" ? "facebook" : source.provider;
+        senderAvatar = await persistAvatar(userInfo.profilePic, `${channelType}_${source.senderId}`);
+      }
     }
   } catch (e) {
     console.error(`[WEBHOOK-META] Failed to fetch sender info:`, e);
