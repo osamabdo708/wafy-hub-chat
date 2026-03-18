@@ -523,8 +523,6 @@ async function getWhatsAppAvatar(phone: string): Promise<string | null> {
   }
 }
 
-import { persistAvatar } from "../_shared/persist-avatar.ts";
-
 async function fetchUserInfo(
   userId: string,
   accessToken: string | null,
@@ -692,7 +690,7 @@ async function saveIncomingMessage(
   // Look for existing conversation in THIS workspace ONLY
   let { data: conversation } = await supabase
     .from('conversations')
-    .select('id, customer_name, customer_avatar, client_id')
+    .select('id, customer_name, customer_avatar')
     .eq('customer_phone', senderId)
     .eq('channel', channel)
     .eq('workspace_id', workspaceId)
@@ -711,8 +709,7 @@ async function saveIncomingMessage(
       realName = userInfo.name;
     }
     if (userInfo.profilePic) {
-      // Persist avatar to storage so it doesn't expire
-      realAvatar = await persistAvatar(userInfo.profilePic, `${channel}_${senderId}`);
+      realAvatar = userInfo.profilePic;
     }
   }
 
@@ -737,19 +734,10 @@ async function saveIncomingMessage(
       console.log(`[UNIFIED-WEBHOOK] Updating conversation name from "${currentName}" to "${realName}"`);
     }
 
-    // Always update avatar on every message (refreshes storage with latest pic)
-    if (realAvatar) {
+    // Update avatar if we have one and current is empty
+    if (realAvatar && !conversation.customer_avatar) {
       updateData.customer_avatar = realAvatar;
       console.log(`[UNIFIED-WEBHOOK] Updating conversation avatar`);
-      
-      // Also update the linked client's avatar
-      if (conversation.client_id) {
-        await supabase
-          .from('clients')
-          .update({ avatar_url: realAvatar, updated_at: new Date().toISOString() })
-          .eq('id', conversation.client_id);
-        console.log(`[UNIFIED-WEBHOOK] Updated client avatar for client_id: ${conversation.client_id}`);
-      }
     }
 
     await supabase
