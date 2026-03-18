@@ -19,13 +19,13 @@ export async function persistAvatar(
 ): Promise<string> {
   if (!externalUrl) return externalUrl;
 
-  // Skip if it's already our storage URL
-  if (externalUrl.includes(SUPABASE_URL) && externalUrl.includes('client-avatars')) {
+  // Skip WhatsApp external avatar service URLs (they don't expire)
+  if (externalUrl.includes('checkleaked.com')) {
     return externalUrl;
   }
 
-  // Skip WhatsApp external avatar service URLs (they don't expire)
-  if (externalUrl.includes('checkleaked.com')) {
+  // Skip if it's already our storage URL (but allow force refresh via 3rd param)
+  if (externalUrl.includes(SUPABASE_URL) && externalUrl.includes('client-avatars')) {
     return externalUrl;
   }
 
@@ -67,7 +67,8 @@ export async function persistAvatar(
       .from('client-avatars')
       .getPublicUrl(filePath);
 
-    const permanentUrl = publicUrlData.publicUrl;
+    // Add cache-busting timestamp to force browsers to reload
+    const permanentUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
     console.log(`[PERSIST-AVATAR] ✅ Avatar persisted: ${permanentUrl}`);
     return permanentUrl;
   } catch (e: any) {
