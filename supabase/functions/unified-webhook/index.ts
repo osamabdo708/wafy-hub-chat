@@ -523,6 +523,8 @@ async function getWhatsAppAvatar(phone: string): Promise<string | null> {
   }
 }
 
+import { persistAvatar } from "../_shared/persist-avatar.ts";
+
 async function fetchUserInfo(
   userId: string,
   accessToken: string | null,
