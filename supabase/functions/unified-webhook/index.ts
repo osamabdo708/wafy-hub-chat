@@ -692,7 +692,7 @@ async function saveIncomingMessage(
   // Look for existing conversation in THIS workspace ONLY
   let { data: conversation } = await supabase
     .from('conversations')
-    .select('id, customer_name, customer_avatar')
+    .select('id, customer_name, customer_avatar, client_id')
     .eq('customer_phone', senderId)
     .eq('channel', channel)
     .eq('workspace_id', workspaceId)
