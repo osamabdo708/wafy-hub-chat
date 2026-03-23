@@ -163,6 +163,31 @@ async function processMessageForWorkspace({
   } catch (e) {
     console.error(`[WEBHOOK-META] Failed to fetch sender info:`, e);
   }
+
+  // Store profile image permanently in storage
+  const channelType = source.provider === "messenger" ? "facebook" : source.provider;
+  
+  // Get existing avatar to check for changes
+  const { data: existingConvoForAvatar } = await supabase
+    .from("conversations")
+    .select("customer_avatar")
+    .eq("workspace_id", workspaceId)
+    .eq("channel", channelType)
+    .eq("customer_phone", source.senderId)
+    .maybeSingle();
+
+  if (senderAvatar) {
+    const storedAvatarUrl = await storeProfileImage(supabase, {
+      externalUrl: senderAvatar,
+      senderId: source.senderId,
+      channel: channelType,
+      workspaceId,
+      existingAvatarUrl: existingConvoForAvatar?.customer_avatar,
+    });
+    if (storedAvatarUrl) {
+      senderAvatar = storedAvatarUrl;
+    }
+  }
   
   console.log(`[WEBHOOK-META] Using sender name: "${senderName}", hasAvatar: ${!!senderAvatar}`);
 
