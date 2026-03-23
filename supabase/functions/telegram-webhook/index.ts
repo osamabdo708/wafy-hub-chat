@@ -118,6 +118,7 @@ serve(async (req) => {
 
         // Try to get user profile photo
         let profilePicUrl: string | null = null;
+        let externalProfileUrl: string | null = null;
         if (botToken) {
           try {
             const photosResponse = await fetch(
@@ -127,16 +128,13 @@ serve(async (req) => {
 
             if (photosResponse.ok) {
               const photosData = await photosResponse.json();
-              console.log('[TELEGRAM-WEBHOOK] Profile photos response:', JSON.stringify(photosData));
               
               if (photosData.ok && photosData.result?.photos?.length > 0) {
-                // Get the largest photo (last in the array)
                 const photos = photosData.result.photos[0];
                 const largestPhoto = photos[photos.length - 1];
                 const fileId = largestPhoto?.file_id;
                 
                 if (fileId) {
-                  // Get the file path
                   const fileResponse = await fetch(
                     `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`,
                     { signal: AbortSignal.timeout(5000) }
@@ -144,10 +142,8 @@ serve(async (req) => {
                   
                   if (fileResponse.ok) {
                     const fileData = await fileResponse.json();
-                    
                     if (fileData.ok && fileData.result?.file_path) {
-                      profilePicUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
-                      console.log('[TELEGRAM-WEBHOOK] Got profile pic URL:', profilePicUrl);
+                      externalProfileUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
                     }
                   }
                 }
@@ -156,6 +152,27 @@ serve(async (req) => {
           } catch (e) {
             console.log('[TELEGRAM-WEBHOOK] Error fetching profile photo:', e);
           }
+        }
+
+        // Get existing avatar for comparison
+        const { data: existingConvForAvatar } = await supabase
+          .from('conversations')
+          .select('customer_avatar')
+          .eq('customer_phone', chatId)
+          .eq('channel', 'telegram')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle();
+
+        // Store profile image permanently in storage
+        if (externalProfileUrl) {
+          profilePicUrl = await storeProfileImage(supabase, {
+            externalUrl: externalProfileUrl,
+            senderId: chatId,
+            channel: 'telegram',
+            workspaceId,
+            existingAvatarUrl: existingConvForAvatar?.customer_avatar,
+          });
+          console.log('[TELEGRAM-WEBHOOK] Stored profile pic:', profilePicUrl);
         }
 
         // Find or create conversation
