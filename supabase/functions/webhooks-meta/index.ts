@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyMetaSignature } from "../_shared/webhook-signature.ts";
 import { detectMetaSource, getMetaUserInfo } from "../_shared/message-router.ts";
 import { decryptToken } from "../_shared/crypto.ts";
+import { storeProfileImage } from "../_shared/profile-image.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
