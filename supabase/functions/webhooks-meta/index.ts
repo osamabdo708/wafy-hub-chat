@@ -192,7 +192,6 @@ async function processMessageForWorkspace({
   console.log(`[WEBHOOK-META] Using sender name: "${senderName}", hasAvatar: ${!!senderAvatar}`);
 
   // Find or create conversation for THIS workspace
-  const channelType = source.provider === "messenger" ? "facebook" : source.provider;
 
   // Look for existing conversation by customer_phone (sender_id) + channel + workspace
   const { data: existingConvo } = await supabase
