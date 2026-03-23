@@ -700,8 +700,13 @@ const ChatView = ({
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
               <AvatarImage src={customerAvatar} alt={customerName} />
-              <AvatarFallback>
-                <User className="w-5 h-5 text-primary" />
+              <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                {customerName
+                  .split(' ')
+                  .map(word => word[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div>

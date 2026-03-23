@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyMetaSignature } from "../_shared/webhook-signature.ts";
 import { detectMetaSource, getMetaUserInfo } from "../_shared/message-router.ts";
 import { decryptToken } from "../_shared/crypto.ts";
+import { storeProfileImage } from "../_shared/profile-image.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -162,11 +163,35 @@ async function processMessageForWorkspace({
   } catch (e) {
     console.error(`[WEBHOOK-META] Failed to fetch sender info:`, e);
   }
+
+  // Store profile image permanently in storage
+  const channelType = source.provider === "messenger" ? "facebook" : source.provider;
+  
+  // Get existing avatar to check for changes
+  const { data: existingConvoForAvatar } = await supabase
+    .from("conversations")
+    .select("customer_avatar")
+    .eq("workspace_id", workspaceId)
+    .eq("channel", channelType)
+    .eq("customer_phone", source.senderId)
+    .maybeSingle();
+
+  if (senderAvatar) {
+    const storedAvatarUrl = await storeProfileImage(supabase, {
+      externalUrl: senderAvatar,
+      senderId: source.senderId,
+      channel: channelType,
+      workspaceId,
+      existingAvatarUrl: existingConvoForAvatar?.customer_avatar,
+    });
+    if (storedAvatarUrl) {
+      senderAvatar = storedAvatarUrl;
+    }
+  }
   
   console.log(`[WEBHOOK-META] Using sender name: "${senderName}", hasAvatar: ${!!senderAvatar}`);
 
   // Find or create conversation for THIS workspace
-  const channelType = source.provider === "messenger" ? "facebook" : source.provider;
 
   // Look for existing conversation by customer_phone (sender_id) + channel + workspace
   const { data: existingConvo } = await supabase
@@ -181,18 +206,18 @@ async function processMessageForWorkspace({
 
   if (existingConvo) {
     conversationId = existingConvo.id;
-    // Update thread_id if changed
+    // Update conversation with latest info
+    const updateData: any = { last_message_at: new Date().toISOString() };
     if (existingConvo.thread_id !== source.conversationId) {
-      await supabase
-        .from("conversations")
-        .update({ thread_id: source.conversationId, last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
-    } else {
-      await supabase
-        .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
+      updateData.thread_id = source.conversationId;
     }
+    if (senderAvatar) {
+      updateData.customer_avatar = senderAvatar;
+    }
+    await supabase
+      .from("conversations")
+      .update(updateData)
+      .eq("id", conversationId);
     console.log(`[WEBHOOK-META] Found existing conversation: ${conversationId}`);
   } else {
     // Create new conversation

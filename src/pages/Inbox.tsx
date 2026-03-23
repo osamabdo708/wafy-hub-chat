@@ -550,8 +550,13 @@ const Inbox = () => {
                                 src={conversation.customer_avatar}
                                 alt={conversation.customer_name}
                               />
-                              <AvatarFallback>
-                                <User className="w-5 h-5 text-primary" />
+                              <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                                {conversation.customer_name
+                                  .split(' ')
+                                  .map(word => word[0])
+                                  .join('')
+                                  .slice(0, 2)
+                                  .toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             {/* Unread badge on avatar */}
