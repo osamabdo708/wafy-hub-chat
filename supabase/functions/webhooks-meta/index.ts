@@ -206,18 +206,18 @@ async function processMessageForWorkspace({
 
   if (existingConvo) {
     conversationId = existingConvo.id;
-    // Update thread_id if changed
+    // Update conversation with latest info
+    const updateData: any = { last_message_at: new Date().toISOString() };
     if (existingConvo.thread_id !== source.conversationId) {
-      await supabase
-        .from("conversations")
-        .update({ thread_id: source.conversationId, last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
-    } else {
-      await supabase
-        .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
+      updateData.thread_id = source.conversationId;
     }
+    if (senderAvatar) {
+      updateData.customer_avatar = senderAvatar;
+    }
+    await supabase
+      .from("conversations")
+      .update(updateData)
+      .eq("id", conversationId);
     console.log(`[WEBHOOK-META] Found existing conversation: ${conversationId}`);
   } else {
     // Create new conversation
