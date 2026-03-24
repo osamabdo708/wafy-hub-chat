@@ -340,14 +340,35 @@ serve(async (req) => {
     try {
       const rawBody = await req.text();
       const signature = req.headers.get("X-Hub-Signature-256");
-      const appSecret = Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+      
+      // Determine which app secret to use based on payload
+      const payload = JSON.parse(rawBody);
+      const isInstagram = payload.object === "instagram";
+      
+      let appSecret: string | undefined;
+      
+      if (isInstagram) {
+        // Try Instagram-specific app secret first
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const tempSupabase = createClient(supabaseUrl, supabaseKey);
+        
+        const { data: igSecretSetting } = await tempSupabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'INSTAGRAM_APP_SECRET')
+          .single();
+        
+        appSecret = igSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+      } else {
+        appSecret = Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+      }
 
       if (appSecret && !verifyMetaSignature(rawBody, signature, appSecret)) {
         console.error("[WEBHOOK-META] Invalid signature");
         return new Response("Invalid signature", { status: 403 });
       }
 
-      const payload = JSON.parse(rawBody);
       console.log("[WEBHOOK-META] Received:", payload.object);
 
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
