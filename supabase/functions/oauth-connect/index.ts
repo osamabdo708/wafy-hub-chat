@@ -50,23 +50,49 @@ serve(async (req) => {
       );
     }
 
-    // Get Meta App credentials from dynamic settings first, then fall back to env
-    const { data: appIdSetting } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'META_APP_ID')
-      .single();
+    // Determine which app credentials to use based on provider
+    let appId: string | null = null;
 
-    const appId = appIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+    if (provider === "instagram") {
+      // Instagram uses its own separate app credentials
+      const { data: igAppIdSetting } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'INSTAGRAM_APP_ID')
+        .single();
+
+      appId = igAppIdSetting?.value || null;
+
+      if (!appId) {
+        // Fall back to Meta App ID if Instagram-specific not configured
+        const { data: metaAppIdSetting } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'META_APP_ID')
+          .single();
+        appId = metaAppIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+      }
+
+      console.log("[OAUTH-CONNECT] Using Instagram App ID:", appId);
+    } else {
+      // Facebook/WhatsApp use Meta App credentials
+      const { data: appIdSetting } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'META_APP_ID')
+        .single();
+
+      appId = appIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+    }
     
     if (!appId) {
       return new Response(
-        JSON.stringify({ error: "Meta App ID not configured. Please configure it in Super Admin settings." }),
+        JSON.stringify({ error: "App ID not configured. Please configure it in Super Admin settings." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
 
-    console.log("[OAUTH-CONNECT] Using App ID:", appId);
+    console.log("[OAUTH-CONNECT] Using App ID:", appId, "for provider:", provider);
 
     // Generate state with workspace info for CSRF protection
     const state = btoa(JSON.stringify({

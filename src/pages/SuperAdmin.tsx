@@ -874,6 +874,143 @@ const SuperAdmin = () => {
             </div>
           </Card>
 
+          {/* Instagram App Credentials (Separate from Meta) */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-pink-500/10">
+                  <MessageCircle className="w-5 h-5 text-pink-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">بيانات تطبيق Instagram (منفصل)</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Instagram App ID و App Secret - إذا لم يتم إدخالها سيتم استخدام بيانات Meta أعلاه
+                  </p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => handleSaveSettings('instagram')}
+                disabled={savingSettings}
+                className="gap-2"
+              >
+                {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                حفظ التغييرات
+              </Button>
+            </div>
+            
+            <Separator className="mb-6" />
+            
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Instagram App ID */}
+              <div className="space-y-2">
+                <Label htmlFor="INSTAGRAM_APP_ID" className="text-sm font-medium flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4" />
+                  Instagram App ID
+                </Label>
+                <Input
+                  id="INSTAGRAM_APP_ID"
+                  placeholder="أدخل Instagram App ID"
+                  value={editedSettings['INSTAGRAM_APP_ID'] || ''}
+                  onChange={(e) => setEditedSettings(prev => ({
+                    ...prev,
+                    INSTAGRAM_APP_ID: e.target.value
+                  }))}
+                  className="font-mono text-sm"
+                  dir="ltr"
+                />
+                {getSettingValue('INSTAGRAM_APP_ID') && (
+                  <p className="text-xs text-muted-foreground">
+                    القيمة الحالية: {getSettingValue('INSTAGRAM_APP_ID')}
+                  </p>
+                )}
+              </div>
+
+              {/* Instagram App Secret */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="INSTAGRAM_APP_SECRET" className="text-sm font-medium flex items-center gap-2">
+                    <Key className="w-4 h-4" />
+                    Instagram App Secret
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleSensitive('INSTAGRAM_APP_SECRET')}
+                    className="h-8 px-2"
+                  >
+                    {showSensitive['INSTAGRAM_APP_SECRET'] ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <Input
+                  id="INSTAGRAM_APP_SECRET"
+                  type={showSensitive['INSTAGRAM_APP_SECRET'] ? 'text' : 'password'}
+                  placeholder="أدخل Instagram App Secret"
+                  value={editedSettings['INSTAGRAM_APP_SECRET'] || ''}
+                  onChange={(e) => setEditedSettings(prev => ({
+                    ...prev,
+                    INSTAGRAM_APP_SECRET: e.target.value
+                  }))}
+                  className="font-mono text-sm"
+                  dir="ltr"
+                />
+                {getSettingValue('INSTAGRAM_APP_SECRET') && (
+                  <p className="text-xs text-muted-foreground">
+                    القيمة الحالية: {getSettingValue('INSTAGRAM_APP_SECRET')}
+                  </p>
+                )}
+              </div>
+
+              {/* Instagram Webhook Verify Token */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="INSTAGRAM_WEBHOOK_VERIFY_TOKEN" className="text-sm font-medium flex items-center gap-2">
+                    <Webhook className="w-4 h-4" />
+                    Instagram Webhook Verify Token
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleSensitive('INSTAGRAM_WEBHOOK_VERIFY_TOKEN')}
+                    className="h-8 px-2"
+                  >
+                    {showSensitive['INSTAGRAM_WEBHOOK_VERIFY_TOKEN'] ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <Input
+                  id="INSTAGRAM_WEBHOOK_VERIFY_TOKEN"
+                  type={showSensitive['INSTAGRAM_WEBHOOK_VERIFY_TOKEN'] ? 'text' : 'password'}
+                  placeholder="أدخل Instagram Webhook Verify Token"
+                  value={editedSettings['INSTAGRAM_WEBHOOK_VERIFY_TOKEN'] || ''}
+                  onChange={(e) => setEditedSettings(prev => ({
+                    ...prev,
+                    INSTAGRAM_WEBHOOK_VERIFY_TOKEN: e.target.value
+                  }))}
+                  className="font-mono text-sm"
+                  dir="ltr"
+                />
+                {getSettingValue('INSTAGRAM_WEBHOOK_VERIFY_TOKEN') && (
+                  <p className="text-xs text-muted-foreground">
+                    القيمة الحالية: {getSettingValue('INSTAGRAM_WEBHOOK_VERIFY_TOKEN')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+              <p className="text-sm text-muted-foreground">
+                💡 حسب تحديثات Meta الجديدة، يمكن لـ Instagram استخدام تطبيق منفصل عن Facebook. إذا لم تدخل بيانات Instagram سيتم استخدام بيانات Meta تلقائياً.
+              </p>
+            </div>
+          </Card>
+
           {/* Webhook & OAuth URLs */}
           <Card className="p-6">
             <div className="flex items-center gap-3 mb-6">

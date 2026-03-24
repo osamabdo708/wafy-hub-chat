@@ -53,27 +53,67 @@ serve(async (req) => {
       return createErrorResponse(`Provider ${provider} not configured`);
     }
 
-    // Get Meta App credentials from dynamic settings first, then fall back to env
-    const { data: appIdSetting } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'META_APP_ID')
-      .single();
-    
-    const { data: appSecretSetting } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'META_APP_SECRET')
-      .single();
+    // Get App credentials - use Instagram-specific credentials for Instagram provider
+    let appId: string | null = null;
+    let appSecret: string | null = null;
 
-    const appId = appIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
-    const appSecret = appSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+    if (provider === "instagram") {
+      // Try Instagram-specific credentials first
+      const { data: igAppIdSetting } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'INSTAGRAM_APP_ID')
+        .single();
+      
+      const { data: igAppSecretSetting } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'INSTAGRAM_APP_SECRET')
+        .single();
 
-    if (!appId || !appSecret) {
-      return createErrorResponse("Meta App credentials not configured. Please configure them in Super Admin settings.");
+      appId = igAppIdSetting?.value || null;
+      appSecret = igAppSecretSetting?.value || null;
+
+      // Fall back to Meta credentials if Instagram-specific not configured
+      if (!appId || !appSecret) {
+        const { data: metaAppIdSetting } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'META_APP_ID')
+          .single();
+        const { data: metaAppSecretSetting } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'META_APP_SECRET')
+          .single();
+        appId = appId || metaAppIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+        appSecret = appSecret || metaAppSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+      }
+
+      console.log("[OAUTH-CALLBACK] Using Instagram App ID:", appId);
+    } else {
+      // Facebook/WhatsApp use Meta App credentials
+      const { data: appIdSetting } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'META_APP_ID')
+        .single();
+      
+      const { data: appSecretSetting } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'META_APP_SECRET')
+        .single();
+
+      appId = appIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+      appSecret = appSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
     }
 
-    console.log("[OAUTH-CALLBACK] Using App ID:", appId);
+    if (!appId || !appSecret) {
+      return createErrorResponse("App credentials not configured. Please configure them in Super Admin settings.");
+    }
+
+    console.log("[OAUTH-CALLBACK] Using App ID:", appId, "for provider:", provider);
 
     // Exchange code for token
     const callbackUrl = `${supabaseUrl}/functions/v1/oauth-callback`;
