@@ -879,7 +879,7 @@ const SuperAdmin = () => {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-pink-500/10">
-                  <Instagram className="w-5 h-5 text-pink-500" />
+                  <MessageCircle className="w-5 h-5 text-pink-500" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold">بيانات تطبيق Instagram (منفصل)</h3>
