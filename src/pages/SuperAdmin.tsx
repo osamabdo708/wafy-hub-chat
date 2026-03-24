@@ -904,7 +904,7 @@ const SuperAdmin = () => {
               {/* Instagram App ID */}
               <div className="space-y-2">
                 <Label htmlFor="INSTAGRAM_APP_ID" className="text-sm font-medium flex items-center gap-2">
-                  <Instagram className="w-4 h-4" />
+                  <MessageCircle className="w-4 h-4" />
                   Instagram App ID
                 </Label>
                 <Input
