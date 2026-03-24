@@ -65,8 +65,42 @@ serve(async (req) => {
       return errorResponse('Missing workspace ID');
     }
 
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // Get app credentials based on channel type
+    let appId: string | null = null;
+    let appSecret: string | null = null;
+
+    if (channelType === 'instagram') {
+      // Try Instagram-specific credentials first
+      const { data: igIdSetting } = await supabase
+        .from('app_settings').select('value').eq('key', 'INSTAGRAM_APP_ID').single();
+      const { data: igSecretSetting } = await supabase
+        .from('app_settings').select('value').eq('key', 'INSTAGRAM_APP_SECRET').single();
+      
+      appId = igIdSetting?.value || null;
+      appSecret = igSecretSetting?.value || null;
+    }
+
+    // Fall back to Meta credentials
+    if (!appId || !appSecret) {
+      const { data: metaIdSetting } = await supabase
+        .from('app_settings').select('value').eq('key', 'META_APP_ID').single();
+      const { data: metaSecretSetting } = await supabase
+        .from('app_settings').select('value').eq('key', 'META_APP_SECRET').single();
+      
+      appId = appId || metaIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+      appSecret = appSecret || metaSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+    }
+
+    if (!appId || !appSecret) {
+      return errorResponse('App credentials not configured');
+    }
+
+    console.log("[CHANNEL-OAUTH] Using App ID for", channelType, ":", appId);
+
     // Exchange code for access token
-    const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${META_APP_SECRET}&code=${code}`;
+    const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
     
     console.log("[CHANNEL-OAUTH] Exchanging code for token...");
     const tokenResponse = await fetch(tokenUrl);
@@ -81,13 +115,11 @@ serve(async (req) => {
     console.log("[CHANNEL-OAUTH] Got access token");
 
     // Exchange for long-lived token
-    const longLivedUrl = `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${accessToken}`;
+    const longLivedUrl = `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`;
     const longLivedResponse = await fetch(longLivedUrl);
     const longLivedData = await longLivedResponse.json();
     const longLivedToken = longLivedData.access_token || accessToken;
     console.log("[CHANNEL-OAUTH] Got long-lived token");
-
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     // Route to appropriate handler
     switch (channelType) {
