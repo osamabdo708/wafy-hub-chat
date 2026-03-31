@@ -54,7 +54,7 @@ serve(async (req) => {
     let appId: string | null = null;
 
     if (provider === "instagram") {
-      // Instagram uses its own separate app credentials
+      // Instagram MUST use its own dedicated credentials
       const { data: igAppIdSetting } = await supabase
         .from('app_settings')
         .select('value')
@@ -64,13 +64,10 @@ serve(async (req) => {
       appId = igAppIdSetting?.value || null;
 
       if (!appId) {
-        // Fall back to Meta App ID if Instagram-specific not configured
-        const { data: metaAppIdSetting } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'META_APP_ID')
-          .single();
-        appId = metaAppIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+        return new Response(
+          JSON.stringify({ error: "Instagram App ID not configured. Please configure it in Super Admin settings." }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+        );
       }
 
       console.log("[OAUTH-CONNECT] Using Instagram App ID:", appId);

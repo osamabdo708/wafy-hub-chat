@@ -53,57 +53,31 @@ serve(async (req) => {
       return createErrorResponse(`Provider ${provider} not configured`);
     }
 
-    // Get App credentials - use Instagram-specific credentials for Instagram provider
+    // Get App credentials - Instagram MUST use its own dedicated credentials
     let appId: string | null = null;
     let appSecret: string | null = null;
+    const isInstagram = provider === "instagram";
 
-    if (provider === "instagram") {
-      // Try Instagram-specific credentials first
+    if (isInstagram) {
       const { data: igAppIdSetting } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'INSTAGRAM_APP_ID')
-        .single();
-      
+        .from('app_settings').select('value').eq('key', 'INSTAGRAM_APP_ID').single();
       const { data: igAppSecretSetting } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'INSTAGRAM_APP_SECRET')
-        .single();
+        .from('app_settings').select('value').eq('key', 'INSTAGRAM_APP_SECRET').single();
 
       appId = igAppIdSetting?.value || null;
       appSecret = igAppSecretSetting?.value || null;
 
-      // Fall back to Meta credentials if Instagram-specific not configured
       if (!appId || !appSecret) {
-        const { data: metaAppIdSetting } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'META_APP_ID')
-          .single();
-        const { data: metaAppSecretSetting } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'META_APP_SECRET')
-          .single();
-        appId = appId || metaAppIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
-        appSecret = appSecret || metaAppSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
+        return createErrorResponse("Instagram App credentials not configured. Please set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET in Super Admin settings.");
       }
 
       console.log("[OAUTH-CALLBACK] Using Instagram App ID:", appId);
     } else {
       // Facebook/WhatsApp use Meta App credentials
       const { data: appIdSetting } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'META_APP_ID')
-        .single();
-      
+        .from('app_settings').select('value').eq('key', 'META_APP_ID').single();
       const { data: appSecretSetting } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'META_APP_SECRET')
-        .single();
+        .from('app_settings').select('value').eq('key', 'META_APP_SECRET').single();
 
       appId = appIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
       appSecret = appSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
