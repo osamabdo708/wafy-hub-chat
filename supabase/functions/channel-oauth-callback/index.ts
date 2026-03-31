@@ -102,27 +102,58 @@ serve(async (req) => {
 
     console.log("[CHANNEL-OAUTH] Using App ID for", channelType, ":", appId);
 
-    // Exchange code for access token using Graph API v22.0
-    const tokenUrl = `https://graph.facebook.com/v22.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`;
-    
+    // Exchange code for access token
     console.log("[CHANNEL-OAUTH] Exchanging code for token...");
-    const tokenResponse = await fetch(tokenUrl);
-    const tokenData = await tokenResponse.json();
+    let accessToken: string;
 
-    if (!tokenResponse.ok || tokenData.error || !tokenData.access_token) {
-      console.error("[CHANNEL-OAUTH] Token exchange error:", JSON.stringify(tokenData));
-      return errorResponse(tokenData.error?.message || 'Failed to exchange authorization code for token');
+    if (isInstagram) {
+      // Instagram uses POST with form-urlencoded body to its own endpoint
+      const tokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: appId,
+          client_secret: appSecret,
+          grant_type: "authorization_code",
+          redirect_uri: redirectUri,
+          code: code,
+        }),
+      });
+      const tokenData = await tokenResponse.json();
+      if (tokenData.error_message || !tokenData.access_token) {
+        console.error("[CHANNEL-OAUTH] Instagram token exchange error:", JSON.stringify(tokenData));
+        return errorResponse(tokenData.error_message || 'Failed to exchange Instagram authorization code');
+      }
+      accessToken = tokenData.access_token;
+    } else {
+      // Facebook/WhatsApp use GET with query params
+      const tokenUrl = `https://graph.facebook.com/v22.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`;
+      const tokenResponse = await fetch(tokenUrl);
+      const tokenData = await tokenResponse.json();
+      if (!tokenResponse.ok || tokenData.error || !tokenData.access_token) {
+        console.error("[CHANNEL-OAUTH] Token exchange error:", JSON.stringify(tokenData));
+        return errorResponse(tokenData.error?.message || 'Failed to exchange authorization code for token');
+      }
+      accessToken = tokenData.access_token;
     }
-
-    const accessToken = tokenData.access_token;
     console.log("[CHANNEL-OAUTH] Got access token");
 
-    // Exchange for long-lived token (works for both Meta and Instagram apps via Graph API)
-    const longLivedUrl = `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`;
-    const longLivedResponse = await fetch(longLivedUrl);
-    const longLivedData = await longLivedResponse.json();
-    const longLivedToken = longLivedData.access_token || accessToken;
-    console.log("[CHANNEL-OAUTH] Got long-lived token, used fallback:", !longLivedData.access_token);
+    // Exchange for long-lived token
+    let longLivedToken: string;
+    if (isInstagram) {
+      // Instagram uses ig_exchange_token on graph.instagram.com
+      const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${accessToken}`;
+      const longLivedResponse = await fetch(longLivedUrl);
+      const longLivedData = await longLivedResponse.json();
+      longLivedToken = longLivedData.access_token || accessToken;
+      console.log("[CHANNEL-OAUTH] Got Instagram long-lived token, used fallback:", !longLivedData.access_token);
+    } else {
+      const longLivedUrl = `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`;
+      const longLivedResponse = await fetch(longLivedUrl);
+      const longLivedData = await longLivedResponse.json();
+      longLivedToken = longLivedData.access_token || accessToken;
+      console.log("[CHANNEL-OAUTH] Got long-lived token, used fallback:", !longLivedData.access_token);
+    }
 
     // Route to appropriate handler
     switch (channelType) {
