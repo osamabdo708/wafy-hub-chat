@@ -70,9 +70,10 @@ serve(async (req) => {
     // Get app credentials based on channel type
     let appId: string | null = null;
     let appSecret: string | null = null;
+    const isInstagram = channelType === 'instagram';
 
-    if (channelType === 'instagram') {
-      // Try Instagram-specific credentials first
+    if (isInstagram) {
+      // Instagram MUST use its own dedicated credentials - never fall back to Meta
       const { data: igIdSetting } = await supabase
         .from('app_settings').select('value').eq('key', 'INSTAGRAM_APP_ID').single();
       const { data: igSecretSetting } = await supabase
@@ -80,46 +81,48 @@ serve(async (req) => {
       
       appId = igIdSetting?.value || null;
       appSecret = igSecretSetting?.value || null;
-    }
 
-    // Fall back to Meta credentials
-    if (!appId || !appSecret) {
+      if (!appId || !appSecret) {
+        return errorResponse('Instagram App credentials not configured. Please set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET in Super Admin settings.');
+      }
+    } else {
+      // Facebook/WhatsApp use Meta credentials
       const { data: metaIdSetting } = await supabase
         .from('app_settings').select('value').eq('key', 'META_APP_ID').single();
       const { data: metaSecretSetting } = await supabase
         .from('app_settings').select('value').eq('key', 'META_APP_SECRET').single();
       
-      appId = appId || metaIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
-      appSecret = appSecret || metaSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
-    }
+      appId = metaIdSetting?.value || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("META_APP_ID");
+      appSecret = metaSecretSetting?.value || Deno.env.get("FACEBOOK_APP_SECRET") || Deno.env.get("META_APP_SECRET");
 
-    if (!appId || !appSecret) {
-      return errorResponse('App credentials not configured');
+      if (!appId || !appSecret) {
+        return errorResponse('Meta App credentials not configured');
+      }
     }
 
     console.log("[CHANNEL-OAUTH] Using App ID for", channelType, ":", appId);
 
-    // Exchange code for access token
-    const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
+    // Exchange code for access token using Graph API v22.0
+    const tokenUrl = `https://graph.facebook.com/v22.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`;
     
     console.log("[CHANNEL-OAUTH] Exchanging code for token...");
     const tokenResponse = await fetch(tokenUrl);
     const tokenData = await tokenResponse.json();
 
-    if (tokenData.error) {
-      console.error("[CHANNEL-OAUTH] Token exchange error:", tokenData.error);
-      return errorResponse(tokenData.error.message);
+    if (!tokenResponse.ok || tokenData.error || !tokenData.access_token) {
+      console.error("[CHANNEL-OAUTH] Token exchange error:", JSON.stringify(tokenData));
+      return errorResponse(tokenData.error?.message || 'Failed to exchange authorization code for token');
     }
 
     const accessToken = tokenData.access_token;
     console.log("[CHANNEL-OAUTH] Got access token");
 
-    // Exchange for long-lived token
-    const longLivedUrl = `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`;
+    // Exchange for long-lived token (works for both Meta and Instagram apps via Graph API)
+    const longLivedUrl = `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`;
     const longLivedResponse = await fetch(longLivedUrl);
     const longLivedData = await longLivedResponse.json();
     const longLivedToken = longLivedData.access_token || accessToken;
-    console.log("[CHANNEL-OAUTH] Got long-lived token");
+    console.log("[CHANNEL-OAUTH] Got long-lived token, used fallback:", !longLivedData.access_token);
 
     // Route to appropriate handler
     switch (channelType) {
