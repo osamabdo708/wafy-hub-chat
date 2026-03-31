@@ -337,6 +337,80 @@ async function handleInstagramConnect(supabase: any, accessToken: string, worksp
 }
 
 // ============================================
+// INSTAGRAM FALLBACK: Connect via Facebook Pages API
+// ============================================
+async function handleInstagramConnectViaFacebook(supabase: any, accessToken: string, workspaceId: string) {
+  console.log("[CHANNEL-OAUTH] Fallback: Connecting Instagram via Facebook Pages API...");
+
+  const pagesResponse = await fetch(
+    `https://graph.facebook.com/v22.0/me/accounts?access_token=${accessToken}`
+  );
+  const pagesData = await pagesResponse.json();
+
+  if (!pagesData.data || pagesData.data.length === 0) {
+    return errorResponse('No Facebook pages found. Instagram Business accounts must be linked to a Facebook page.');
+  }
+
+  let instagramAccountId: string | null = null;
+  let instagramUsername: string | null = null;
+  let pageAccessToken: string | null = null;
+
+  for (const page of pagesData.data) {
+    const igResponse = await fetch(
+      `https://graph.facebook.com/v22.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+    );
+    const igData = await igResponse.json();
+    if (igData.instagram_business_account) {
+      instagramAccountId = igData.instagram_business_account.id;
+      pageAccessToken = page.access_token;
+      const igInfoResponse = await fetch(
+        `https://graph.facebook.com/v22.0/${instagramAccountId}?fields=username,name&access_token=${page.access_token}`
+      );
+      const igInfo = await igInfoResponse.json();
+      instagramUsername = igInfo.username || igInfo.name;
+      break;
+    }
+  }
+
+  if (!instagramAccountId) {
+    return errorResponse('No Instagram Business Account found.');
+  }
+
+  const config = {
+    instagram_account_id: instagramAccountId,
+    account_name: instagramUsername,
+    page_access_token: pageAccessToken,
+    access_token: accessToken,
+    connected_at: new Date().toISOString(),
+  };
+
+  const { data: existing } = await supabase
+    .from('channel_integrations')
+    .select('id')
+    .eq('channel', 'instagram')
+    .eq('workspace_id', workspaceId)
+    .eq('account_id', instagramAccountId)
+    .maybeSingle();
+
+  let saveError: any = null;
+  if (existing) {
+    const { error } = await supabase
+      .from('channel_integrations')
+      .update({ is_connected: true, config, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+    saveError = error;
+  } else {
+    const { error } = await supabase
+      .from('channel_integrations')
+      .insert({ channel: 'instagram', account_id: instagramAccountId, workspace_id: workspaceId, is_connected: true, config });
+    saveError = error;
+  }
+
+  if (saveError) return errorResponse(`Database error: ${saveError.message}`);
+  return successResponse('instagram', instagramUsername ? `@${instagramUsername}` : 'Instagram Account');
+}
+
+// ============================================
 // WHATSAPP CONNECTION (INDEPENDENT)
 // ============================================
 async function handleWhatsAppConnect(supabase: any, accessToken: string, workspaceId: string) {
