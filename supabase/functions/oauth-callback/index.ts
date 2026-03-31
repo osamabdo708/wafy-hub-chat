@@ -180,41 +180,46 @@ serve(async (req) => {
       console.log("[OAUTH-CALLBACK] Connecting Facebook Page:", channelName);
 
     } else if (provider === "instagram") {
-      // For Instagram, we need to find the Instagram Business Account.
-      // The user may have granted access to multiple Pages, and the Instagram account
-      // could be linked to any of them, or the user might want to connect an IG account
-      // from a different FB account.
+      // For Instagram with dedicated Instagram app, try graph.instagram.com first
+      const meResponse = await fetch(
+        `https://graph.instagram.com/me?fields=user_id,username,name&access_token=${accessToken}`
+      );
+      const meData = await meResponse.json();
 
-      // To support the user's request for decoupling, we will iterate through all pages
-      // and check for an associated Instagram Business Account.
-      // In a production environment, the user would select the desired IG account from a list.
-
-      let igAccountFound = false;
-      for (const p of pagesData.data) {
-        const igResponse = await fetch(
-          `https://graph.facebook.com/v19.0/${p.id}?fields=instagram_business_account&access_token=${p.access_token}`
-        );
-        const igData = await igResponse.json();
-
-        if (igData.instagram_business_account?.id) {
-          // Found an Instagram Business Account
-          const igInfoResponse = await fetch(
-            `https://graph.facebook.com/v19.0/${igData.instagram_business_account.id}?fields=username,name&access_token=${p.access_token}`
+      if (meResponse.ok && !meData.error && (meData.user_id || meData.id)) {
+        channelId = meData.user_id || meData.id;
+        channelName = meData.username ? `@${meData.username}` : meData.name || "Instagram Account";
+        pageAccessToken = accessToken; // Instagram token is the access token itself
+        pageId = channelId;
+        console.log("[OAUTH-CALLBACK] Connected Instagram via Instagram API:", channelName);
+      } else {
+        // Fallback: try Facebook Graph API for Business accounts
+        let igAccountFound = false;
+        for (const p of pagesData.data) {
+          const igResponse = await fetch(
+            `https://graph.facebook.com/v22.0/${p.id}?fields=instagram_business_account&access_token=${p.access_token}`
           );
-          const igInfo = await igInfoResponse.json();
+          const igData = await igResponse.json();
 
-          channelId = igData.instagram_business_account.id;
-          channelName = igInfo.username ? `@${igInfo.username}` : igInfo.name || "Instagram Account";
-          pageAccessToken = p.access_token; // Use the Page's token to manage the IG account
-          pageId = p.id;
-          igAccountFound = true;
-          console.log("[OAUTH-CALLBACK] Connecting Instagram Account:", channelName, "via Page:", p.name);
-          break; // Connect the first one found
+          if (igData.instagram_business_account?.id) {
+            const igInfoResponse = await fetch(
+              `https://graph.facebook.com/v22.0/${igData.instagram_business_account.id}?fields=username,name&access_token=${p.access_token}`
+            );
+            const igInfo = await igInfoResponse.json();
+
+            channelId = igData.instagram_business_account.id;
+            channelName = igInfo.username ? `@${igInfo.username}` : igInfo.name || "Instagram Account";
+            pageAccessToken = p.access_token;
+            pageId = p.id;
+            igAccountFound = true;
+            console.log("[OAUTH-CALLBACK] Connected Instagram via Facebook API:", channelName);
+            break;
+          }
         }
-      }
 
-      if (!igAccountFound) {
-        return createErrorResponse("No Instagram Business Account found linked to any of the accessible Facebook Pages. Please ensure your Instagram account is a Business or Creator account and is linked to a Facebook Page you manage.");
+        if (!igAccountFound) {
+          return createErrorResponse("No Instagram Business Account found.");
+        }
       }
 
     } else {
