@@ -102,27 +102,58 @@ serve(async (req) => {
 
     console.log("[CHANNEL-OAUTH] Using App ID for", channelType, ":", appId);
 
-    // Exchange code for access token using Graph API v22.0
-    const tokenUrl = `https://graph.facebook.com/v22.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`;
-    
+    // Exchange code for access token
     console.log("[CHANNEL-OAUTH] Exchanging code for token...");
-    const tokenResponse = await fetch(tokenUrl);
-    const tokenData = await tokenResponse.json();
+    let accessToken: string;
 
-    if (!tokenResponse.ok || tokenData.error || !tokenData.access_token) {
-      console.error("[CHANNEL-OAUTH] Token exchange error:", JSON.stringify(tokenData));
-      return errorResponse(tokenData.error?.message || 'Failed to exchange authorization code for token');
+    if (isInstagram) {
+      // Instagram uses POST with form-urlencoded body to its own endpoint
+      const tokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: appId,
+          client_secret: appSecret,
+          grant_type: "authorization_code",
+          redirect_uri: redirectUri,
+          code: code,
+        }),
+      });
+      const tokenData = await tokenResponse.json();
+      if (tokenData.error_message || !tokenData.access_token) {
+        console.error("[CHANNEL-OAUTH] Instagram token exchange error:", JSON.stringify(tokenData));
+        return errorResponse(tokenData.error_message || 'Failed to exchange Instagram authorization code');
+      }
+      accessToken = tokenData.access_token;
+    } else {
+      // Facebook/WhatsApp use GET with query params
+      const tokenUrl = `https://graph.facebook.com/v22.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`;
+      const tokenResponse = await fetch(tokenUrl);
+      const tokenData = await tokenResponse.json();
+      if (!tokenResponse.ok || tokenData.error || !tokenData.access_token) {
+        console.error("[CHANNEL-OAUTH] Token exchange error:", JSON.stringify(tokenData));
+        return errorResponse(tokenData.error?.message || 'Failed to exchange authorization code for token');
+      }
+      accessToken = tokenData.access_token;
     }
-
-    const accessToken = tokenData.access_token;
     console.log("[CHANNEL-OAUTH] Got access token");
 
-    // Exchange for long-lived token (works for both Meta and Instagram apps via Graph API)
-    const longLivedUrl = `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`;
-    const longLivedResponse = await fetch(longLivedUrl);
-    const longLivedData = await longLivedResponse.json();
-    const longLivedToken = longLivedData.access_token || accessToken;
-    console.log("[CHANNEL-OAUTH] Got long-lived token, used fallback:", !longLivedData.access_token);
+    // Exchange for long-lived token
+    let longLivedToken: string;
+    if (isInstagram) {
+      // Instagram uses ig_exchange_token on graph.instagram.com
+      const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${accessToken}`;
+      const longLivedResponse = await fetch(longLivedUrl);
+      const longLivedData = await longLivedResponse.json();
+      longLivedToken = longLivedData.access_token || accessToken;
+      console.log("[CHANNEL-OAUTH] Got Instagram long-lived token, used fallback:", !longLivedData.access_token);
+    } else {
+      const longLivedUrl = `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`;
+      const longLivedResponse = await fetch(longLivedUrl);
+      const longLivedData = await longLivedResponse.json();
+      longLivedToken = longLivedData.access_token || accessToken;
+      console.log("[CHANNEL-OAUTH] Got long-lived token, used fallback:", !longLivedData.access_token);
+    }
 
     // Route to appropriate handler
     switch (channelType) {
@@ -229,64 +260,35 @@ async function handleFacebookConnect(supabase: any, accessToken: string, workspa
 async function handleInstagramConnect(supabase: any, accessToken: string, workspaceId: string) {
   console.log("[CHANNEL-OAUTH] Connecting Instagram...");
 
-  // Get user's Facebook pages (needed to access Instagram Business Accounts)
-  const pagesResponse = await fetch(
-    `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
+  // With Instagram API tokens, we can directly get the user's IG account info
+  // using the Instagram Graph API (graph.instagram.com)
+  const meResponse = await fetch(
+    `https://graph.instagram.com/me?fields=user_id,username,name,profile_picture_url,account_type&access_token=${accessToken}`
   );
-  const pagesData = await pagesResponse.json();
-  console.log("[CHANNEL-OAUTH] Pages for Instagram lookup:", JSON.stringify(pagesData));
+  const meData = await meResponse.json();
+  console.log("[CHANNEL-OAUTH] Instagram me data:", JSON.stringify(meData));
 
-  if (!pagesData.data || pagesData.data.length === 0) {
-    return errorResponse('No Facebook pages found. Instagram Business accounts must be linked to a Facebook page.');
+  if (meData.error) {
+    console.error("[CHANNEL-OAUTH] Instagram API error:", meData.error);
+    // Fallback: try Facebook Graph API approach for Business accounts
+    return await handleInstagramConnectViaFacebook(supabase, accessToken, workspaceId);
   }
 
-  // Find a page with Instagram Business Account
-  let instagramAccountId: string | null = null;
-  let instagramUsername: string | null = null;
-  let pageAccessToken: string | null = null;
-  let linkedPageId: string | null = null;
-
-  for (const page of pagesData.data) {
-    const igResponse = await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
-    );
-    const igData = await igResponse.json();
-    
-    if (igData.instagram_business_account) {
-      instagramAccountId = igData.instagram_business_account.id;
-      pageAccessToken = page.access_token;
-      linkedPageId = page.id;
-
-      // Get Instagram username
-      const igInfoResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${instagramAccountId}?fields=username,name,profile_picture_url&access_token=${page.access_token}`
-      );
-      const igInfo = await igInfoResponse.json();
-      instagramUsername = igInfo.username || igInfo.name;
-      
-      console.log("[CHANNEL-OAUTH] Found Instagram account:", instagramUsername);
-      break;
-    }
-  }
+  const instagramAccountId = meData.user_id || meData.id;
+  const instagramUsername = meData.username || meData.name;
 
   if (!instagramAccountId) {
-    return errorResponse('No Instagram Business Account found. Please ensure your Instagram account is connected to a Facebook page as a Business or Creator account.');
+    return errorResponse('Could not retrieve Instagram account ID.');
   }
 
-  // Subscribe to webhook
-  if (linkedPageId && pageAccessToken) {
-    await subscribeToWebhook(linkedPageId, pageAccessToken, 'instagram');
-  }
+  console.log("[CHANNEL-OAUTH] Found Instagram account:", instagramUsername);
 
   // Store configuration - ONLY for Instagram, SEPARATE from Facebook
   const config = {
     instagram_account_id: instagramAccountId,
     account_name: instagramUsername,
-    page_id: linkedPageId,
-    page_access_token: pageAccessToken,
     access_token: accessToken,
     connected_at: new Date().toISOString(),
-    webhook_subscribed: true
   };
 
   // Upsert: Update if exists for this workspace, otherwise insert
@@ -331,6 +333,80 @@ async function handleInstagramConnect(supabase: any, accessToken: string, worksp
   }
 
   console.log("[CHANNEL-OAUTH] ✅ Instagram connected for workspace:", workspaceId);
+  return successResponse('instagram', instagramUsername ? `@${instagramUsername}` : 'Instagram Account');
+}
+
+// ============================================
+// INSTAGRAM FALLBACK: Connect via Facebook Pages API
+// ============================================
+async function handleInstagramConnectViaFacebook(supabase: any, accessToken: string, workspaceId: string) {
+  console.log("[CHANNEL-OAUTH] Fallback: Connecting Instagram via Facebook Pages API...");
+
+  const pagesResponse = await fetch(
+    `https://graph.facebook.com/v22.0/me/accounts?access_token=${accessToken}`
+  );
+  const pagesData = await pagesResponse.json();
+
+  if (!pagesData.data || pagesData.data.length === 0) {
+    return errorResponse('No Facebook pages found. Instagram Business accounts must be linked to a Facebook page.');
+  }
+
+  let instagramAccountId: string | null = null;
+  let instagramUsername: string | null = null;
+  let pageAccessToken: string | null = null;
+
+  for (const page of pagesData.data) {
+    const igResponse = await fetch(
+      `https://graph.facebook.com/v22.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+    );
+    const igData = await igResponse.json();
+    if (igData.instagram_business_account) {
+      instagramAccountId = igData.instagram_business_account.id;
+      pageAccessToken = page.access_token;
+      const igInfoResponse = await fetch(
+        `https://graph.facebook.com/v22.0/${instagramAccountId}?fields=username,name&access_token=${page.access_token}`
+      );
+      const igInfo = await igInfoResponse.json();
+      instagramUsername = igInfo.username || igInfo.name;
+      break;
+    }
+  }
+
+  if (!instagramAccountId) {
+    return errorResponse('No Instagram Business Account found.');
+  }
+
+  const config = {
+    instagram_account_id: instagramAccountId,
+    account_name: instagramUsername,
+    page_access_token: pageAccessToken,
+    access_token: accessToken,
+    connected_at: new Date().toISOString(),
+  };
+
+  const { data: existing } = await supabase
+    .from('channel_integrations')
+    .select('id')
+    .eq('channel', 'instagram')
+    .eq('workspace_id', workspaceId)
+    .eq('account_id', instagramAccountId)
+    .maybeSingle();
+
+  let saveError: any = null;
+  if (existing) {
+    const { error } = await supabase
+      .from('channel_integrations')
+      .update({ is_connected: true, config, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+    saveError = error;
+  } else {
+    const { error } = await supabase
+      .from('channel_integrations')
+      .insert({ channel: 'instagram', account_id: instagramAccountId, workspace_id: workspaceId, is_connected: true, config });
+    saveError = error;
+  }
+
+  if (saveError) return errorResponse(`Database error: ${saveError.message}`);
   return successResponse('instagram', instagramUsername ? `@${instagramUsername}` : 'Instagram Account');
 }
 
