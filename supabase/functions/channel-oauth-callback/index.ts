@@ -283,20 +283,12 @@ async function handleInstagramConnect(supabase: any, accessToken: string, worksp
 
   console.log("[CHANNEL-OAUTH] Found Instagram account:", instagramUsername);
 
-  // Subscribe to webhook
-  if (linkedPageId && pageAccessToken) {
-    await subscribeToWebhook(linkedPageId, pageAccessToken, 'instagram');
-  }
-
   // Store configuration - ONLY for Instagram, SEPARATE from Facebook
   const config = {
     instagram_account_id: instagramAccountId,
     account_name: instagramUsername,
-    page_id: linkedPageId,
-    page_access_token: pageAccessToken,
     access_token: accessToken,
     connected_at: new Date().toISOString(),
-    webhook_subscribed: true
   };
 
   // Upsert: Update if exists for this workspace, otherwise insert
