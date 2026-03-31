@@ -260,49 +260,28 @@ async function handleFacebookConnect(supabase: any, accessToken: string, workspa
 async function handleInstagramConnect(supabase: any, accessToken: string, workspaceId: string) {
   console.log("[CHANNEL-OAUTH] Connecting Instagram...");
 
-  // Get user's Facebook pages (needed to access Instagram Business Accounts)
-  const pagesResponse = await fetch(
-    `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
+  // With Instagram API tokens, we can directly get the user's IG account info
+  // using the Instagram Graph API (graph.instagram.com)
+  const meResponse = await fetch(
+    `https://graph.instagram.com/me?fields=user_id,username,name,profile_picture_url,account_type&access_token=${accessToken}`
   );
-  const pagesData = await pagesResponse.json();
-  console.log("[CHANNEL-OAUTH] Pages for Instagram lookup:", JSON.stringify(pagesData));
+  const meData = await meResponse.json();
+  console.log("[CHANNEL-OAUTH] Instagram me data:", JSON.stringify(meData));
 
-  if (!pagesData.data || pagesData.data.length === 0) {
-    return errorResponse('No Facebook pages found. Instagram Business accounts must be linked to a Facebook page.');
+  if (meData.error) {
+    console.error("[CHANNEL-OAUTH] Instagram API error:", meData.error);
+    // Fallback: try Facebook Graph API approach for Business accounts
+    return await handleInstagramConnectViaFacebook(supabase, accessToken, workspaceId);
   }
 
-  // Find a page with Instagram Business Account
-  let instagramAccountId: string | null = null;
-  let instagramUsername: string | null = null;
-  let pageAccessToken: string | null = null;
-  let linkedPageId: string | null = null;
-
-  for (const page of pagesData.data) {
-    const igResponse = await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
-    );
-    const igData = await igResponse.json();
-    
-    if (igData.instagram_business_account) {
-      instagramAccountId = igData.instagram_business_account.id;
-      pageAccessToken = page.access_token;
-      linkedPageId = page.id;
-
-      // Get Instagram username
-      const igInfoResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${instagramAccountId}?fields=username,name,profile_picture_url&access_token=${page.access_token}`
-      );
-      const igInfo = await igInfoResponse.json();
-      instagramUsername = igInfo.username || igInfo.name;
-      
-      console.log("[CHANNEL-OAUTH] Found Instagram account:", instagramUsername);
-      break;
-    }
-  }
+  const instagramAccountId = meData.user_id || meData.id;
+  const instagramUsername = meData.username || meData.name;
 
   if (!instagramAccountId) {
-    return errorResponse('No Instagram Business Account found. Please ensure your Instagram account is connected to a Facebook page as a Business or Creator account.');
+    return errorResponse('Could not retrieve Instagram account ID.');
   }
+
+  console.log("[CHANNEL-OAUTH] Found Instagram account:", instagramUsername);
 
   // Subscribe to webhook
   if (linkedPageId && pageAccessToken) {
