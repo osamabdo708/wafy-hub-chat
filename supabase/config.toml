@@ -141,6 +141,12 @@ verify_jwt = false
 [functions.mobile-device-token]
 verify_jwt = false
 
+[functions.mobile-logout]
+verify_jwt = false
+
+[functions.mobile-refresh-token]
+verify_jwt = false
+
 # ============================================
 # PUSH NOTIFICATIONS
 # ============================================
