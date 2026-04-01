@@ -5,18 +5,19 @@ export const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-export interface AuthError {
-  code: string;
-  message: string;
-  retryable: boolean;
-}
-
 export function authErrorResponse(code: string, message: string, retryable: boolean, status: number) {
   return new Response(
     JSON.stringify({
       success: false,
       error: { code, message, retryable },
     }),
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+export function errorResponse(message: string, status: number) {
+  return new Response(
+    JSON.stringify({ success: false, error: { code: "REQUEST_ERROR", message, retryable: false } }),
     { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
@@ -29,8 +30,8 @@ export function successResponse(data: unknown, status = 200) {
 }
 
 /**
- * Validates Bearer token from request and returns user + workspace.
- * Returns structured auth error responses for mobile clients.
+ * Validates Bearer token and returns user + workspace + adminSupabase.
+ * Returns consistent error envelope for mobile clients.
  */
 export async function authenticateMobileRequest(req: Request) {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -53,7 +54,6 @@ export async function authenticateMobileRequest(req: Request) {
 
   if (userError || !user) {
     const msg = userError?.message || "";
-    // Distinguish expired vs invalid
     if (msg.includes("expired") || msg.includes("JWT expired")) {
       return {
         error: authErrorResponse("ACCESS_TOKEN_EXPIRED", "Access token has expired, please refresh", true, 401),
