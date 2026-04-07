@@ -656,7 +656,9 @@ async function sendToChannel(supabase: any, conversation: any, message: string) 
 
       if (channelConfig?.config) {
         const config = channelConfig.config as any;
-        const sendUrl = `https://graph.facebook.com/v18.0/me/messages?access_token=${config.page_access_token}`;
+        const sendUrl = conversation.channel === 'instagram'
+          ? `https://graph.instagram.com/v22.0/me/messages?access_token=${config.page_access_token || config.access_token}`
+          : `https://graph.facebook.com/v22.0/me/messages?access_token=${config.page_access_token}`;
 
         const sendResponse = await fetch(sendUrl, {
           method: 'POST',

@@ -57,7 +57,7 @@ serve(async (req) => {
 
     // Send message via Instagram Graph API (uses the same endpoint as Facebook Messenger)
     // Instagram uses the page access token and sends to IGSID (Instagram Scoped User ID)
-    const igApiUrl = `https://graph.facebook.com/v18.0/me/messages`;
+    const igApiUrl = `https://graph.instagram.com/v22.0/me/messages`;
     
     const igResponse = await fetch(igApiUrl, {
       method: 'POST',

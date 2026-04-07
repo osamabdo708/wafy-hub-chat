@@ -357,14 +357,14 @@ async function handleInstagramConnectViaFacebook(supabase: any, accessToken: str
 
   for (const page of pagesData.data) {
     const igResponse = await fetch(
-      `https://graph.facebook.com/v22.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+      `https://graph.instagram.com/v22.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
     );
     const igData = await igResponse.json();
     if (igData.instagram_business_account) {
       instagramAccountId = igData.instagram_business_account.id;
       pageAccessToken = page.access_token;
       const igInfoResponse = await fetch(
-        `https://graph.facebook.com/v22.0/${instagramAccountId}?fields=username,name&access_token=${page.access_token}`
+        `https://graph.instagram.com/v22.0/${instagramAccountId}?fields=username,name&access_token=${page.access_token}`
       );
       const igInfo = await igInfoResponse.json();
       instagramUsername = igInfo.username || igInfo.name;

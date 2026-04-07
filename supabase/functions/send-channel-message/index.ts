@@ -206,7 +206,7 @@ async function sendInstagramMessage(
 
   // Instagram also uses /me/messages endpoint with page access token (same as Facebook)
   // This is the working approach used in auto-reply-messages
-  const response = await fetch("https://graph.facebook.com/v18.0/me/messages", {
+  const response = await fetch("https://graph.instagram.com/v22.0/me/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
