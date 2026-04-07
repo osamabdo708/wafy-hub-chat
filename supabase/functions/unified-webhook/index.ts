@@ -63,14 +63,20 @@ serve(async (req) => {
 
     console.log('[UNIFIED-WEBHOOK] Verification request:', { mode, token, challenge });
 
-    // Get verify token from dynamic settings
-    const verifyToken = await getAppSetting(supabase, 'META_WEBHOOK_VERIFY_TOKEN');
+    // Get verify tokens from dynamic settings (Meta + Instagram separate app)
+    const metaVerifyToken = await getAppSetting(supabase, 'META_WEBHOOK_VERIFY_TOKEN');
+    const igVerifyToken = await getAppSetting(supabase, 'INSTAGRAM_WEBHOOK_VERIFY_TOKEN');
     
-    if (mode === 'subscribe' && token && verifyToken && token === verifyToken) {
+    const isValid = mode === 'subscribe' && token && (
+      (metaVerifyToken && token === metaVerifyToken) ||
+      (igVerifyToken && token === igVerifyToken)
+    );
+
+    if (isValid) {
       console.log('[UNIFIED-WEBHOOK] ✅ Verification successful');
       return new Response(challenge, { status: 200 });
     } else {
-      console.log('[UNIFIED-WEBHOOK] ❌ Verification failed - token mismatch. Expected:', verifyToken, 'Got:', token);
+      console.log('[UNIFIED-WEBHOOK] ❌ Verification failed - token mismatch. Got:', token);
       return new Response('Forbidden', { status: 403 });
     }
   }
@@ -556,7 +562,7 @@ async function fetchUserInfo(
       if (accessToken) {
         try {
           const response = await fetch(
-            `https://graph.facebook.com/v21.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
+            `https://graph.instagram.com/v22.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
             { signal: AbortSignal.timeout(5000) }
           );
 

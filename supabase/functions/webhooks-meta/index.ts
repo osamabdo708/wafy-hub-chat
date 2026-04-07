@@ -319,9 +319,28 @@ serve(async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    const verifyToken = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN") || "lovable_webhook_2024";
+    const metaVerifyToken = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN") || "lovable_webhook_2024";
+    
+    // Also check Instagram-specific verify token
+    let igVerifyToken: string | undefined;
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const tempSupabase = createClient(supabaseUrl, supabaseKey);
+      const { data: igSetting } = await tempSupabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'INSTAGRAM_WEBHOOK_VERIFY_TOKEN')
+        .single();
+      igVerifyToken = igSetting?.value || undefined;
+    } catch {}
 
-    if (mode === "subscribe" && token === verifyToken) {
+    const isValid = mode === "subscribe" && (
+      token === metaVerifyToken || 
+      (igVerifyToken && token === igVerifyToken)
+    );
+
+    if (isValid) {
       console.log("[WEBHOOK-META] Verification successful");
       return new Response(challenge, { status: 200 });
     }

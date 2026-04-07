@@ -90,7 +90,7 @@ export async function getMetaUserInfo(
       try {
         // First try the standard user endpoint
         const response = await fetch(
-          `https://graph.facebook.com/v21.0/${userId}?fields=name,username&access_token=${accessToken}`,
+          `https://graph.instagram.com/v22.0/${userId}?fields=name,username&access_token=${accessToken}`,
           { signal: AbortSignal.timeout(5000) }
         );
         
