@@ -197,13 +197,13 @@ serve(async (req) => {
         let igAccountFound = false;
         for (const p of pagesData.data) {
           const igResponse = await fetch(
-            `https://graph.facebook.com/v22.0/${p.id}?fields=instagram_business_account&access_token=${p.access_token}`
+            `https://graph.instagram.com/v22.0/${p.id}?fields=instagram_business_account&access_token=${p.access_token}`
           );
           const igData = await igResponse.json();
 
           if (igData.instagram_business_account?.id) {
             const igInfoResponse = await fetch(
-              `https://graph.facebook.com/v22.0/${igData.instagram_business_account.id}?fields=username,name&access_token=${p.access_token}`
+              `https://graph.instagram.com/v22.0/${igData.instagram_business_account.id}?fields=username,name&access_token=${p.access_token}`
             );
             const igInfo = await igInfoResponse.json();
 

@@ -142,7 +142,7 @@ serve(async (req) => {
       // Handle Instagram connection - INDEPENDENT from Facebook
       if (channelType === "instagram") {
         const igResponse = await fetch(
-          `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+          `https://graph.instagram.com/v22.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
         );
         const igData = await igResponse.json();
         console.log("[OAUTH] Instagram data:", JSON.stringify(igData));
@@ -152,7 +152,7 @@ serve(async (req) => {
           accountId = igData.instagram_business_account.id;
           
           const igInfoResponse = await fetch(
-            `https://graph.facebook.com/v19.0/${igData.instagram_business_account.id}?fields=username,name,profile_picture_url&access_token=${page.access_token}`
+            `https://graph.instagram.com/v22.0/${igData.instagram_business_account.id}?fields=username,name,profile_picture_url&access_token=${page.access_token}`
           );
           const igInfo = await igInfoResponse.json();
           console.log("[OAUTH] Instagram info:", JSON.stringify(igInfo));
