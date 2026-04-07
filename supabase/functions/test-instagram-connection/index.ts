@@ -35,7 +35,7 @@ serve(async (req) => {
     // Fallback: try Facebook Graph API (for tokens from Meta app)
     if (instagram_account_id) {
       const accountResponse = await fetch(
-        `https://graph.facebook.com/v22.0/${instagram_account_id}?fields=id,username,name,account_type&access_token=${access_token}`
+        `https://graph.instagram.com/v22.0/${instagram_account_id}?fields=id,username,name,account_type&access_token=${access_token}`
       );
       const accountData = await accountResponse.json();
 
