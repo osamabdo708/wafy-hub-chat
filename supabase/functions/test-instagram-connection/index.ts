@@ -15,9 +15,9 @@ serve(async (req) => {
 
     console.log('Testing Instagram connection...');
 
-    // Try Instagram Graph API first (for tokens from Instagram app)
+    // Use Instagram Graph API with versioned endpoint
     const meResponse = await fetch(
-      `https://graph.instagram.com/me?fields=user_id,username,name,account_type&access_token=${access_token}`
+      `https://graph.instagram.com/v22.0/me?fields=user_id,username,name,account_type&access_token=${access_token}`
     );
     const meData = await meResponse.json();
 

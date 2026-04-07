@@ -241,12 +241,14 @@ export const ChannelConfigManager = ({ workspaceId }: ChannelConfigManagerProps)
           break;
         case 'instagram':
           config = instagramConfig;
-          if (!config.config.page_access_token || !config.config.instagram_account_id) {
-            toast.error('يرجى إدخال Instagram Account ID و Access Token أولاً');
+          if (!config.config.page_access_token && !config.config.access_token) {
+            toast.error('يرجى إدخال Access Token أولاً');
             setTesting(null);
             return;
           }
-          testUrl = `https://graph.facebook.com/v19.0/${config.config.instagram_account_id}?fields=id,username&access_token=${config.config.page_access_token}`;
+          // Instagram tokens work on graph.instagram.com, NOT graph.facebook.com
+          const igToken = config.config.access_token || config.config.page_access_token;
+          testUrl = `https://graph.instagram.com/v22.0/me?fields=user_id,username,name,account_type&access_token=${igToken}`;
           break;
         case 'whatsapp':
           config = whatsappConfig;
