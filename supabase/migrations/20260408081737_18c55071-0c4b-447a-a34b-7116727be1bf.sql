@@ -1,0 +1,1 @@
+UPDATE public.channel_configs SET scopes = '{"default": ["instagram_business_basic", "instagram_business_manage_messages"]}'::jsonb WHERE provider = 'instagram';
