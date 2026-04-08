@@ -85,30 +85,47 @@ export async function getMetaUserInfo(
     // For Instagram, we need to use the Instagram Graph API properly
     // The user profile endpoint requires different permissions
     if (provider === "instagram") {
+      let igName: string | null = null;
+      let igPic: string | undefined;
+
+      // Try graph.instagram.com first (Instagram Login tokens)
       try {
-        // Use Instagram Graph API with correct fields for IGSID users
-        const response = await fetch(
+        const igResponse = await fetch(
           `https://graph.instagram.com/v22.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
           { signal: AbortSignal.timeout(5000) }
         );
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log("[ROUTER] Instagram user data:", JSON.stringify(data));
-          
-          const displayName = data.username ? `@${data.username}` : (data.name || null);
-          if (displayName) {
-            return {
-              name: displayName,
-              profilePic: data.profile_pic || undefined
-            };
-          }
-        } else {
-          const errorText = await response.text();
-          console.log(`[ROUTER] Instagram user API returned ${response.status}: ${errorText}`);
+        if (igResponse.ok) {
+          const data = await igResponse.json();
+          console.log("[ROUTER] Instagram user data (ig graph):", JSON.stringify(data));
+          if (data.username) igName = `@${data.username}`;
+          else if (data.name) igName = data.name;
+          if (data.profile_pic) igPic = data.profile_pic;
         }
       } catch (e) {
-        console.log("[ROUTER] Instagram user fetch failed:", e);
+        console.log("[ROUTER] Instagram graph fetch failed:", e);
+      }
+
+      // Fallback: try graph.facebook.com (Facebook Login / Page tokens)
+      if (!igName && !igPic) {
+        try {
+          const fbResponse = await fetch(
+            `https://graph.facebook.com/v22.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+          if (fbResponse.ok) {
+            const data = await fbResponse.json();
+            console.log("[ROUTER] Instagram user data (fb graph):", JSON.stringify(data));
+            if (data.username) igName = `@${data.username}`;
+            else if (data.name) igName = data.name;
+            if (data.profile_pic) igPic = data.profile_pic;
+          }
+        } catch (e) {
+          console.log("[ROUTER] Facebook graph fallback failed:", e);
+        }
+      }
+
+      if (igName) {
+        return { name: igName, profilePic: igPic };
       }
       return null;
     }
