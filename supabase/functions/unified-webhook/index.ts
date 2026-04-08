@@ -557,18 +557,17 @@ async function fetchUserInfo(
         }
       }
     } else if (channel === 'instagram') {
-      // Instagram has very limited profile access for messaging users
-      // Try to get username at least
       if (accessToken) {
+        // Try graph.instagram.com first (Instagram Login tokens)
         try {
-          const response = await fetch(
+          const igResponse = await fetch(
             `https://graph.instagram.com/v22.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
             { signal: AbortSignal.timeout(5000) }
           );
 
-          if (response.ok) {
-            const data = await response.json();
-            console.log('[UNIFIED-WEBHOOK] Instagram user data:', JSON.stringify(data));
+          if (igResponse.ok) {
+            const data = await igResponse.json();
+            console.log('[UNIFIED-WEBHOOK] Instagram user data (ig graph):', JSON.stringify(data));
             
             if (data.username) {
               name = `@${data.username}`;
@@ -578,13 +577,38 @@ async function fetchUserInfo(
             if (data.profile_pic) {
               profilePic = data.profile_pic;
             }
-          } else {
-            const errorText = await response.text();
-            console.log(`[UNIFIED-WEBHOOK] Instagram user API ${response.status}: ${errorText.substring(0, 200)}`);
           }
         } catch (e: any) {
-          console.log('[UNIFIED-WEBHOOK] Instagram user fetch error:', e?.message || e);
+          console.log('[UNIFIED-WEBHOOK] Instagram graph fetch error:', e?.message || e);
         }
+
+        // If ig graph returned empty, try graph.facebook.com (Facebook Login / Page tokens)
+        if (!name && !profilePic) {
+          try {
+            const fbResponse = await fetch(
+              `https://graph.facebook.com/v22.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
+              { signal: AbortSignal.timeout(5000) }
+            );
+
+            if (fbResponse.ok) {
+              const data = await fbResponse.json();
+              console.log('[UNIFIED-WEBHOOK] Instagram user data (fb graph):', JSON.stringify(data));
+              
+              if (data.username) {
+                name = `@${data.username}`;
+              } else if (data.name) {
+                name = data.name;
+              }
+              if (data.profile_pic) {
+                profilePic = data.profile_pic;
+              }
+            }
+          } catch (e: any) {
+            console.log('[UNIFIED-WEBHOOK] Facebook graph fallback error:', e?.message || e);
+          }
+        }
+
+        console.log(`[UNIFIED-WEBHOOK] Instagram user info result: name="${name}", hasProfilePic=${!!profilePic}`);
       }
     } else if (channel === 'facebook') {
       // Facebook Messenger has better profile access
