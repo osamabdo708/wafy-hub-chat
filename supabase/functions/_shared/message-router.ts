@@ -85,12 +85,10 @@ export async function getMetaUserInfo(
     // For Instagram, we need to use the Instagram Graph API properly
     // The user profile endpoint requires different permissions
     if (provider === "instagram") {
-      // Try to get Instagram user info - Instagram API has limited user info access
-      // For Instagram scoped user IDs, we can try fetching from conversations
       try {
-        // First try the standard user endpoint
+        // Use Instagram Graph API with correct fields for IGSID users
         const response = await fetch(
-          `https://graph.instagram.com/v22.0/${userId}?fields=name,username&access_token=${accessToken}`,
+          `https://graph.instagram.com/v22.0/${userId}?fields=name,username,profile_pic&access_token=${accessToken}`,
           { signal: AbortSignal.timeout(5000) }
         );
         
@@ -98,10 +96,11 @@ export async function getMetaUserInfo(
           const data = await response.json();
           console.log("[ROUTER] Instagram user data:", JSON.stringify(data));
           
-          if (data.username || data.name) {
+          const displayName = data.username ? `@${data.username}` : (data.name || null);
+          if (displayName) {
             return {
-              name: data.username ? `@${data.username}` : data.name,
-              profilePic: undefined // Instagram API doesn't expose profile_pic for messaging users
+              name: displayName,
+              profilePic: data.profile_pic || undefined
             };
           }
         } else {
@@ -111,9 +110,6 @@ export async function getMetaUserInfo(
       } catch (e) {
         console.log("[ROUTER] Instagram user fetch failed:", e);
       }
-      
-      // Instagram API has strict limitations on accessing user profiles
-      // Return null to use fallback naming
       return null;
     }
     
