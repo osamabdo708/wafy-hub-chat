@@ -49,7 +49,7 @@ const DashboardCards = () => {
       today.setHours(0, 0, 0, 0);
       const todayISO = today.toISOString();
 
-      const completedStatuses = ["مكتمل", "تم التوصيل"];
+      const completedStatuses = ["مكتمل", "تم التوصيل"] as const;
 
       const [
         ordersRes,

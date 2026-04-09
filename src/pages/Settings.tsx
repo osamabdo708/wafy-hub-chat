@@ -16,6 +16,7 @@ import {
   TelegramIcon 
 } from "@/components/ChannelIcons";
 import MobileIntegration from "@/components/settings/MobileIntegration";
+import DashboardCards from "@/components/settings/DashboardCards";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -118,6 +119,8 @@ const Settings = () => {
         </h1>
         <p className="text-muted-foreground mt-1">إدارة القنوات وإعدادات المارد الذكي</p>
       </div>
+
+      <DashboardCards />
 
       <Tabs defaultValue="general" className="w-full">
         <TabsList className="mb-4">
