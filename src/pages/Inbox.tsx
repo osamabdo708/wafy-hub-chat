@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Clock, User, Wifi, WifiOff, Crown, Star, UserCheck, UserPlus } from "lucide-react";
+import { MessageSquare, Clock, User, Wifi, WifiOff, Crown, Star, UserCheck, UserPlus, ShoppingBag } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -593,6 +593,13 @@ const Inbox = () => {
                           </div>
                         )}
                       </div>
+                      {/* Order count */}
+                      {(conversation.order_count ?? 0) > 0 && (
+                        <div className="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
+                          <ShoppingBag className="w-3 h-3" />
+                          <span>{conversation.order_count} طلب</span>
+                        </div>
+                      )}
                       
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
