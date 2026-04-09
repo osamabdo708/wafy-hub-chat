@@ -52,9 +52,15 @@ Deno.serve(async (req) => {
           .eq("is_read", false)
           .eq("sender_type", "customer");
 
+        const { count: orderCount } = await supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", conv.id);
+
         return {
           ...conv,
           unread_count: unreadCount || 0,
+          order_count: orderCount || 0,
           last_message: lastMessage || null,
           mared_enabled: conv.ai_enabled || false,
         };

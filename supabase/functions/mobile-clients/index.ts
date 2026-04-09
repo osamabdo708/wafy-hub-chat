@@ -77,6 +77,15 @@ Deno.serve(async (req) => {
 
         const totalSpent = (orderSums || []).reduce((sum, o) => sum + (Number(o.price) || 0), 0);
 
+        // Get latest conversation for this client
+        const { data: latestConversation } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("client_id", client.id)
+          .order("last_message_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
         return {
           ...client,
           order_count: totalOrders,
@@ -84,6 +93,7 @@ Deno.serve(async (req) => {
           tier_en: tierInfo.tier_en,
           total_spent: totalSpent,
           last_order_at: lastOrder?.created_at || null,
+          conversation_id: latestConversation?.id || null,
         };
       })
     );
