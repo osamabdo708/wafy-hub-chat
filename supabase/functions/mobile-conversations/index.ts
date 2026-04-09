@@ -1,5 +1,12 @@
 import { authenticateMobileRequest, corsHeaders, authErrorResponse, errorResponse, successResponse } from "../_shared/mobile-auth.ts";
 
+function getClientTier(orderCount: number): { tier: string; tier_en: string } {
+  if (orderCount === 0) return { tier: "جديد", tier_en: "new" };
+  if (orderCount === 1) return { tier: "عادي", tier_en: "regular" };
+  if (orderCount >= 2 && orderCount <= 4) return { tier: "متكرر", tier_en: "frequent" };
+  return { tier: "VIP", tier_en: "vip" };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
