@@ -64,10 +64,22 @@ Deno.serve(async (req) => {
           .select("id", { count: "exact", head: true })
           .eq("conversation_id", conv.id);
 
+        // Get client tier based on total orders for the client
+        let clientTier = { tier: "جديد", tier_en: "new" };
+        if (conv.client_id) {
+          const { count: clientOrderCount } = await supabase
+            .from("orders")
+            .select("id", { count: "exact", head: true })
+            .eq("client_id", conv.client_id);
+          clientTier = getClientTier(clientOrderCount || 0);
+        }
+
         return {
           ...conv,
           unread_count: unreadCount || 0,
           order_count: orderCount || 0,
+          client_tier: clientTier.tier,
+          client_tier_en: clientTier.tier_en,
           last_message: lastMessage || null,
           mared_enabled: conv.ai_enabled || false,
         };
