@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
 
     let query = supabase
       .from("conversations")
-      .select(`id, customer_name, customer_phone, customer_avatar, channel, status, last_message_at, created_at, assigned_agent_id, ai_enabled`, { count: "exact" })
+      .select(`id, customer_name, customer_phone, customer_avatar, channel, status, last_message_at, created_at, assigned_agent_id, ai_enabled, client_id`, { count: "exact" })
       .eq("workspace_id", workspace.id)
       .order("last_message_at", { ascending: false })
       .range(offset, offset + limit - 1);
