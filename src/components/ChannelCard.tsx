@@ -1,8 +1,10 @@
 import { useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, LogIn, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface ChannelCardProps {
   channel: string;
@@ -23,9 +25,12 @@ export const ChannelCard = ({
   const [isConnected, setIsConnected] = useState(false);
   const [accountInfo, setAccountInfo] = useState('');
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const { toast } = useToast();
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
   useEffect(() => {
-    // Get the user's workspace
     const getWorkspace = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -47,7 +52,6 @@ export const ChannelCard = ({
     if (!comingSoon && workspaceId) {
       loadSettings();
 
-      // Subscribe to realtime changes for channel integrations
       const channel_sub = supabase
         .channel(`channel_integration_${channel}_${workspaceId}`)
         .on(
@@ -70,12 +74,31 @@ export const ChannelCard = ({
     }
   }, [channel, comingSoon, workspaceId]);
 
+  // Listen for OAuth popup messages
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'oauth-success' && event.data?.provider === channel) {
+        toast({
+          title: "تم الربط بنجاح",
+          description: `تم ربط ${name}: ${event.data.channelName || ''}`,
+        });
+        loadSettings();
+      } else if (event.data?.type === 'oauth-error' && event.data?.provider === channel) {
+        toast({
+          title: "فشل الربط",
+          description: event.data.error || 'خطأ غير معروف',
+          variant: "destructive",
+        });
+      }
+    };
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [channel, name]);
+
   const loadSettings = async () => {
-    // Only load for supported channels
     if (!['whatsapp', 'facebook', 'instagram', 'telegram'].includes(channel)) return;
     if (!workspaceId) return;
     
-    // Get the integration for this channel in THIS workspace
     const { data, error } = await supabase
       .from('channel_integrations')
       .select('*')
@@ -93,7 +116,6 @@ export const ChannelCard = ({
       const config = data[0].config as any;
       setIsConnected(true);
       
-      // Set account info based on channel type
       if (channel === 'whatsapp') {
         setAccountInfo(config?.display_phone_number || config?.phone_number || 'WhatsApp Business');
       } else if (channel === 'facebook') {
@@ -110,6 +132,47 @@ export const ChannelCard = ({
       setAccountInfo('');
     }
   };
+
+  const handleOAuthConnect = async () => {
+    if (!workspaceId) return;
+    
+    setConnecting(true);
+    try {
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/oauth-connect?provider=${channel}&workspace_id=${workspaceId}`,
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      const result = await response.json();
+      
+      if (result.error) {
+        toast({
+          title: "خطأ",
+          description: result.error,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (result.authUrl) {
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        window.open(result.authUrl, `${channel}_oauth`, `width=${width},height=${height},left=${left},top=${top}`);
+      }
+    } catch (e: any) {
+      toast({
+        title: "خطأ",
+        description: e.message,
+        variant: "destructive",
+      });
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  // Channels that support OAuth login
+  const supportsOAuth = ['instagram', 'facebook'].includes(channel);
 
   return (
     <div className={cn(
@@ -154,11 +217,25 @@ export const ChannelCard = ({
         {comingSoon ? 'قريباً' : (isConnected ? accountInfo : 'يتم التحكم من المشرف')}
       </p>
 
-      {/* Status badge */}
+      {/* Action area */}
       {comingSoon ? (
         <Badge variant="secondary" className="w-full justify-center py-2">
           قريباً
         </Badge>
+      ) : !isConnected && supportsOAuth ? (
+        <Button
+          size="sm"
+          onClick={handleOAuthConnect}
+          disabled={connecting}
+          className={cn(
+            "w-full gap-2",
+            channel === 'instagram' && "bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white",
+            channel === 'facebook' && "bg-blue-600 hover:bg-blue-700 text-white"
+          )}
+        >
+          {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+          تسجيل الدخول
+        </Button>
       ) : (
         <Badge 
           variant={isConnected ? "default" : "outline"} 
