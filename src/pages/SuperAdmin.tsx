@@ -1081,6 +1081,43 @@ const SuperAdmin = () => {
                 💡 حسب تحديثات Meta الجديدة، يمكن لـ Instagram استخدام تطبيق منفصل عن Facebook. إذا لم تدخل بيانات Instagram سيتم استخدام بيانات Meta تلقائياً.
               </p>
             </div>
+
+            <Separator className="my-6" />
+
+            {/* Instagram OAuth Login Button */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-base font-semibold">ربط حساب Instagram</h4>
+                  <p className="text-sm text-muted-foreground">
+                    بعد حفظ بيانات التطبيق أعلاه، اضغط لتسجيل الدخول وربط صفحة Instagram
+                  </p>
+                </div>
+                {instagramConnected && (
+                  <Badge className="bg-green-600 hover:bg-green-700 gap-1">
+                    <Check className="w-3 h-3" />
+                    متصل: {instagramAccountName}
+                  </Badge>
+                )}
+              </div>
+              <Button
+                onClick={handleInstagramOAuth}
+                disabled={instagramConnecting || !getSettingValue('INSTAGRAM_APP_ID')}
+                className="gap-2 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white"
+              >
+                {instagramConnecting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <MessageCircle className="w-4 h-4" />
+                )}
+                {instagramConnected ? 'إعادة ربط Instagram' : 'تسجيل الدخول بـ Instagram'}
+              </Button>
+              {!getSettingValue('INSTAGRAM_APP_ID') && (
+                <p className="text-xs text-destructive">
+                  ⚠️ يجب إدخال Instagram App ID وحفظه أولاً قبل تسجيل الدخول
+                </p>
+              )}
+            </div>
           </Card>
 
           {/* Webhook & OAuth URLs */}
