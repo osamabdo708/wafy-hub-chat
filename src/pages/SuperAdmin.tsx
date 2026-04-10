@@ -118,6 +118,9 @@ const SuperAdmin = () => {
   const [settingWebhook, setSettingWebhook] = useState(false);
   const [savingTelegram, setSavingTelegram] = useState(false);
   const [telegramConnected, setTelegramConnected] = useState(false);
+  const [instagramConnecting, setInstagramConnecting] = useState(false);
+  const [instagramConnected, setInstagramConnected] = useState(false);
+  const [instagramAccountName, setInstagramAccountName] = useState('');
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
@@ -129,10 +132,79 @@ const SuperAdmin = () => {
     { key: 'META_GRAPH_API_VERSION', description: 'Graph API Version (e.g., v21.0)', is_sensitive: false, category: 'meta' },
   ];
 
+  const loadInstagramConnection = async () => {
+    try {
+      const { data } = await supabase
+        .from('channel_integrations')
+        .select('id, account_id, config, is_connected')
+        .eq('channel', 'instagram' as any)
+        .eq('is_connected', true)
+        .limit(1);
+      
+      if (data && data.length > 0) {
+        setInstagramConnected(true);
+        const config = data[0].config as any;
+        setInstagramAccountName(config?.page_name || config?.account_name || data[0].account_id || 'Instagram');
+      } else {
+        setInstagramConnected(false);
+        setInstagramAccountName('');
+      }
+    } catch (e) {
+      console.error('Error loading Instagram connection:', e);
+    }
+  };
+
+  const handleInstagramOAuth = async () => {
+    if (!workspaces || workspaces.length === 0) {
+      toast.error("لا يوجد workspace متاح");
+      return;
+    }
+    
+    setInstagramConnecting(true);
+    try {
+      const workspaceId = workspaces[0].id;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/oauth-connect?provider=instagram&workspace_id=${workspaceId}`,
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      const result = await response.json();
+      
+      if (result.error) {
+        toast.error(result.error);
+        setInstagramConnecting(false);
+        return;
+      }
+
+      if (result.authUrl) {
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        window.open(result.authUrl, 'instagram_oauth', `width=${width},height=${height},left=${left},top=${top}`);
+      }
+    } catch (e: any) {
+      toast.error(`خطأ: ${e.message}`);
+    } finally {
+      setInstagramConnecting(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
     fetchSettings();
     loadTelegramIntegration();
+    loadInstagramConnection();
+
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'oauth-success' && event.data?.provider === 'instagram') {
+        toast.success(`✅ تم ربط Instagram بنجاح: ${event.data.channelName || 'Instagram'}`);
+        loadInstagramConnection();
+      } else if (event.data?.type === 'oauth-error') {
+        toast.error(`فشل ربط Instagram: ${event.data.error || 'خطأ غير معروف'}`);
+      }
+    };
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
   }, []);
 
   const fetchData = async () => {
